@@ -1,7 +1,7 @@
 [toolchain]
 # arcium-anchor 0.14.1 пінить anchor-lang точною рівністю =1.0.2 — не діапазоном.
 anchor_version = "1.0.2"
-solana_version = "4.2.0"
+solana_version = "3.1.10"
 
 [features]
 resolution = true
