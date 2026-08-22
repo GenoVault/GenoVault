@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+target/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+.anchor/
+test-ledger/
+.arcium/
+
+# Ключі. Програмний keypair теж: він дає право задеплоїти під той самий адрес.
+id.json
+*-keypair.json
+*.keypair.json
+
+# Шифротекст і згенеровані датасети в репо не потрапляють: навіть синтетичні
+# геномні фікстури важать десятки мегабайт і відтворюються генератором.
+fixtures/generated/
+
+
+*.md
+!README.md
+
+.DS_Store
