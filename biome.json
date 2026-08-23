@@ -6,6 +6,7 @@
       "**/*.tsx",
       "**/*.json",
       "!packages/sdk/src/idl",
+      "!fixtures/generated",
       "!**/target",
       "!**/.anchor",
       "!**/dist"
