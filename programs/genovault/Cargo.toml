@@ -1,0 +1,22 @@
+[package]
+name = "genovault"
+version = "0.1.0"
+edition = "2021"
+description = "Конфіденційний маркетплейс медичних і геномних даних"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "genovault"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+# Точна рівність, а не діапазон: arcium-anchor 0.14.1 залежить від
+# anchor-lang =1.0.2, і будь-яке розходження тут ламає збірку каскадом.
+anchor-lang = "=1.0.2"

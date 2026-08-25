@@ -1,5 +1,4 @@
 [toolchain]
-# arcium-anchor 0.14.1 пінить anchor-lang точною рівністю =1.0.2 — не діапазоном.
 anchor_version = "1.0.2"
 solana_version = "3.1.10"
 
@@ -8,10 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-genovault = "GenoVau1t1111111111111111111111111111111111"
-
-[registry]
-url = "https://api.apr.dev"
+genovault = "EBDdxS1AsBojwbLBQqAsh61194ZNUqZRSbB8gyUZJ2p1"
 
 [provider]
 cluster = "localnet"
@@ -19,3 +15,5 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "pnpm --filter @genovault/sdk test"
+
+[hooks]
