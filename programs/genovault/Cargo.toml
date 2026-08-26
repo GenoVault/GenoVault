@@ -14,9 +14,15 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+idl-build = ["anchor-lang/idl-build", "arcium-anchor/idl-build"]
 
 [dependencies]
 # Точна рівність, а не діапазон: arcium-anchor 0.14.1 залежить від
 # anchor-lang =1.0.2, і будь-яке розходження тут ламає збірку каскадом.
-anchor-lang = "=1.0.2"
+anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
+arcium-client = { version = "=0.14.1", default-features = false }
+arcium-macros = "=0.14.1"
+arcium-anchor = "=0.14.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

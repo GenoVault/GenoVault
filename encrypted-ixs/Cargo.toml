@@ -1,0 +1,10 @@
+[package]
+name = "encrypted-ixs"
+version = "0.1.0"
+edition = "2021"
+description = "Рецепти GenoVault мовою Arcis — виконуються над зашифрованими даними"
+
+[dependencies]
+# Іде в ногу з тулчейном Arcium. Не плутати з `arcis-imports`, який на crates.io
+# застряг на 0.10.4 і до 0.14 не має стосунку.
+arcis = "0.14.1"
