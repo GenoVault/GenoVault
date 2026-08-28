@@ -7,6 +7,10 @@
       "**/*.json",
       "!packages/sdk/src/idl",
       "!fixtures/generated",
+      "!artifacts",
+      "!build",
+      "!target",
+      "!.anchor",
       "!**/target",
       "!**/.anchor",
       "!**/dist"

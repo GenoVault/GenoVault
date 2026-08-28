@@ -3,7 +3,7 @@ use arcium_anchor::prelude::*;
 
 const COMP_DEF_OFFSET_PROBE_SUM: u32 = comp_def_offset("probe_sum");
 
-declare_id!("EBDdxS1AsBojwbLBQqAsh61194ZNUqZRSbB8gyUZJ2p1");
+declare_id!("9G5ri75FHhrD5V4ujTwvmv5ULCSRTcu4x4mvzKk6tNEb");
 
 /// Каркас програми GenoVault.
 ///

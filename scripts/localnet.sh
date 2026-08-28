@@ -1,54 +1,46 @@
 #!/usr/bin/env bash
-# Локальна мережа GenoVault. Запускати з PowerShell:
+# Локальна мережа GenoVault: валідатор + MPC-кластер Arcium однією командою.
+# Запускати з PowerShell:
 #   wsl -d Ubuntu-24.04 -e bash /mnt/<диск>/<шлях>/GenoVault/scripts/localnet.sh
 #
-# Зупинити — Ctrl+C. Валідатор тримається на передньому плані навмисно: фонові
-# валідатори переживають сесію й потім мовчки конфліктують портами з наступним
-# запуском, і на це вже пішов час.
+# Зупинити — Ctrl+C. Кластер тримається на передньому плані навмисно: фонові
+# валідатори переживають сесію й потім мовчки конфліктують портами.
 set -uo pipefail
 
-PATH="$HOME/.local/share/solana/install/active_release/bin:$HOME/.cargo/bin:$HOME/.arcium/bin:$PATH"
+PATH="$HOME/.arcium/bin:$HOME/.cargo/bin:$HOME/.avm/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH"
 export PATH
-
-# Порти нетипові навмисно. На цій машині вже працює локальний валідатор іншого
-# проекту на 8899/9900/8000, і на типових портах ми б мовчки під'єднались до
-# ЧУЖОЇ мережі замість своєї — програма просто «не знаходилась» би.
-RPC_PORT=8909
-FAUCET_PORT=9910
-GOSSIP_PORT=8030
-DYNAMIC_PORTS='8031-8060'
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+# shellcheck disable=SC1091
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/genovault/target}"
-LEDGER="${GENOVAULT_LEDGER:-$HOME/.cache/genovault/ledger}"
-PROGRAM_SO="$TARGET_DIR/deploy/genovault.so"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/wsl-dirs.sh"
+setup_target_dir "$REPO_DIR"
+setup_anchor_dir "$REPO_DIR"
 
-PROGRAM_ID="$(grep -oE 'declare_id!\("[^"]+"\)' "$REPO_DIR/programs/genovault/src/lib.rs" \
-  | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}')"
+cd "$REPO_DIR" || exit 1
 
-if [ ! -f "$PROGRAM_SO" ]; then
-  echo "немає $PROGRAM_SO — спершу scripts/wsl-build.sh" >&2
+# Порт 8899 не налаштовується. arcium localnet зашиває host.docker.internal:8899
+# у конфіги ARX-вузлів і rpc_port з Anchor.toml ігнорує. Якщо порт зайнятий
+# чужою локальною мережею, вузли підключаються ДО НЕЇ і падають з
+# AccountNotFound — це виглядає як поламаний кластер, хоча це конфлікт портів.
+if ss -ltn 2>/dev/null | grep -q ':8899'; then
+  echo 'Порт 8899 зайнятий. Найімовірніше — локальна мережа іншого проекту.' >&2
+  echo 'Дві локальні мережі одночасно не працюють; зупини ту, що не потрібна:' >&2
+  echo '  pkill -f solana-test-validator' >&2
   exit 1
 fi
 
-# Реєстр поза /mnt/: там кожен файловий доступ іде через 9p, і валідатор,
-# який пише блоки безперервно, стає непридатно повільним.
-rm -rf "$LEDGER"
-mkdir -p "$LEDGER"
+if ! docker info >/dev/null 2>&1; then
+  echo 'Docker недоступний — MPC-вузли не піднімуться.' >&2
+  echo 'Docker Desktop → Settings → Resources → WSL Integration → Ubuntu-24.04' >&2
+  exit 1
+fi
 
-echo "програма:  $PROGRAM_ID"
-echo "RPC:       http://127.0.0.1:$RPC_PORT"
-echo "реєстр:    $LEDGER"
+echo "репозиторій: $REPO_DIR"
+echo "target:      $CARGO_TARGET_DIR"
+echo "RPC:         http://127.0.0.1:8899"
 echo
 
-# Програма кладеться в генезис, а не деплоїться окремо: не потрібен ані фандинг
-# гаманця, ані очікування підтверджень, і мережа одразу стартує з нею.
-# --bind-address не задаємо: з ним валідатор слухає, але localhost віддає чуже.
-exec solana-test-validator \
-  --ledger "$LEDGER" \
-  --rpc-port "$RPC_PORT" \
-  --faucet-port "$FAUCET_PORT" \
-  --gossip-port "$GOSSIP_PORT" \
-  --dynamic-port-range "$DYNAMIC_PORTS" \
-  --bpf-program "$PROGRAM_ID" "$PROGRAM_SO" \
-  --reset
+exec arcium localnet "$@"

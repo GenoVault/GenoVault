@@ -16,10 +16,9 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Тека збірки й реєстр cargo виносяться з /mnt/ у файлову систему WSL. На /mnt/
-# кожен файловий доступ іде через 9p, і збірка сповільнюється на порядок.
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/genovault/target}"
-mkdir -p "$CARGO_TARGET_DIR"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/wsl-dirs.sh"
+setup_target_dir "$REPO_DIR"
 
 cd "$REPO_DIR" || exit 1
 
