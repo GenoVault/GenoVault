@@ -24,5 +24,13 @@ arcium-client = { version = "=0.14.1", default-features = false }
 arcium-macros = "=0.14.1"
 arcium-anchor = "=0.14.1"
 
+[dev-dependencies]
+# Стенд для тестів програми. `litesvm` тут не працює — падає з E0027 на
+# сучасному Anchor (відоме). Mollusk бере вже зібраний .so, тому перевіряє
+# рівно те, що поїде в мережу, разом із перевірками акаунтів від Anchor.
+mollusk-svm = "=0.15.1"
+solana-account = "4.3"
+solana-sdk-ids = "3.1"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -1,19 +1,37 @@
 use anchor_lang::prelude::*;
 use arcium_anchor::prelude::*;
 
+pub mod errors;
+pub mod instructions;
+pub mod state;
+
+pub use errors::GenoVaultError;
+pub use instructions::*;
+pub use state::*;
+
 const COMP_DEF_OFFSET_PROBE_SUM: u32 = comp_def_offset("probe_sum");
 
 declare_id!("9G5ri75FHhrD5V4ujTwvmv5ULCSRTcu4x4mvzKk6tNEb");
 
-/// Каркас програми GenoVault.
+/// Програма GenoVault.
 ///
-/// Тут поки один каркасний прохід через MPC — він доводить, що ланцюг
+/// Каркасний прохід через MPC (`probe_sum`) лишається тут доти, доки не
+/// з'явиться справжній рецепт у `T018`: він доводить, що ланцюг
 /// «черга обчислень → вузли → callback» замикається на нашому репозиторії.
-/// Стан продукту (конфігурація, датасети, згоди, прогони, нарахування)
-/// приходить задачами T009-T012, справжні рецепти — T018.
+/// Решта стану продукту (датасети, згоди, прогони, нарахування) приходить
+/// задачами T010-T012.
 #[arcium_program]
 pub mod genovault {
     use super::*;
+
+    /// Одноразове розгортання платформи (`FR-019`).
+    ///
+    /// Повторний виклик падає на `init`: конфігурація існує в єдиному
+    /// екземплярі, і мовчазне перезаписування комісії було б рівно тим, від
+    /// чого захищає межа `MAX_FEE_BPS`.
+    pub fn initialize(ctx: Context<Initialize>, fee_bps: u16) -> Result<()> {
+        instructions::initialize::handler(ctx, fee_bps)
+    }
 
     pub fn init_probe_sum_comp_def(ctx: Context<InitProbeSumCompDef>) -> Result<()> {
         init_computation_def(ctx.accounts, None)?;
@@ -155,10 +173,4 @@ pub struct InitProbeSumCompDef<'info> {
 pub struct ProbeSumEvent {
     pub result: [u8; 32],
     pub nonce: [u8; 16],
-}
-
-#[error_code]
-pub enum GenoVaultError {
-    #[msg("Обчислення перервано")]
-    AbortedComputation,
 }
