@@ -11,4 +11,18 @@ pub enum GenoVaultError {
     AbortedComputation,
     #[msg("Комісія платформи перевищує дозволену межу")]
     FeeBpsTooHigh,
+    #[msg("Ідентифікатор датасету порожній або довший за 32 байти")]
+    DatasetIdLength,
+    #[msg("Датасет без записів не реєструється")]
+    EmptyDataset,
+    #[msg("Відбиток вмісту порожній")]
+    EmptyContentHash,
+    #[msg("Ви не власник цього датасету")]
+    NotDatasetOwner,
+    #[msg("Датасет знято з каталогу")]
+    DatasetNotActive,
+    #[msg("Вміст датасету не змінився — нова версія не потрібна")]
+    DatasetContentUnchanged,
+    #[msg("Лічильник версій датасету переповнився")]
+    DatasetVersionOverflow,
 }

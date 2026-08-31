@@ -33,6 +33,35 @@ pub mod genovault {
         instructions::initialize::handler(ctx, fee_bps)
     }
 
+    /// Реєстрація датасету (`FR-001`, `FR-003`).
+    pub fn register_dataset(
+        ctx: Context<RegisterDataset>,
+        args: RegisterDatasetArgs,
+    ) -> Result<()> {
+        instructions::dataset::register(ctx, args)
+    }
+
+    /// Нова версія вмісту (`FR-003`). Стара не зникає: на неї посилаються
+    /// прогони, що вже пройшли, і подія в журналі.
+    pub fn update_dataset_content(
+        ctx: Context<UpdateDataset>,
+        content_hash: [u8; 32],
+        record_count_claimed: u64,
+    ) -> Result<()> {
+        instructions::dataset::update_content(ctx, content_hash, record_count_claimed)
+    }
+
+    /// Ціна за 1000 записів (`FR-015`).
+    pub fn set_dataset_price(ctx: Context<UpdateDataset>, price_per_1k: u64) -> Result<()> {
+        instructions::dataset::set_price(ctx, price_per_1k)
+    }
+
+    /// Зняття датасету з каталогу. Акаунт лишається — на нього посилаються
+    /// завершені прогони.
+    pub fn retire_dataset(ctx: Context<UpdateDataset>) -> Result<()> {
+        instructions::dataset::retire(ctx)
+    }
+
     pub fn init_probe_sum_comp_def(ctx: Context<InitProbeSumCompDef>) -> Result<()> {
         init_computation_def(ctx.accounts, None)?;
         Ok(())

@@ -5,6 +5,7 @@ import {
   apiErrorSchema,
   bpsSchema,
   contentHashSchema,
+  DATASET_ID_MAX_LENGTH,
   datasetIdSchema,
   recordCountSchema,
   solanaAddressSchema,
@@ -83,6 +84,11 @@ describe('datasetIdSchema', () => {
     expect(datasetIdSchema.safeParse('Exome').success).toBe(false)
     expect(datasetIdSchema.safeParse('-exome').success).toBe(false)
     expect(datasetIdSchema.safeParse('ab').success).toBe(false)
+  })
+
+  it('тримається межі seed: 32 символи проходять, 33 — ні', () => {
+    expect(datasetIdSchema.safeParse('a'.repeat(DATASET_ID_MAX_LENGTH)).success).toBe(true)
+    expect(datasetIdSchema.safeParse('a'.repeat(DATASET_ID_MAX_LENGTH + 1)).success).toBe(false)
   })
 })
 

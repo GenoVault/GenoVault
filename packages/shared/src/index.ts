@@ -15,6 +15,7 @@ export {
   BPS_DENOMINATOR,
   bpsSchema,
   contentHashSchema,
+  DATASET_ID_MAX_LENGTH,
   datasetIdSchema,
   pricePer1kSchema,
   recordCountSchema,

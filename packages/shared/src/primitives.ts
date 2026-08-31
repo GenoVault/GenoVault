@@ -26,10 +26,19 @@ export const solanaAddressSchema = z
 
 export type SolanaAddress = Brand<string, 'SolanaAddress'>
 
-/** Ідентифікатор датасету в межах одного власника. */
+/**
+ * Ідентифікатор датасету в межах одного власника.
+ *
+ * Межа 32 — не смак, а розмір seed у Solana: ідентифікатор іде в деривацію
+ * PDA датасету як є, щоб адресу можна було відновити з URL каталогу без
+ * жодного запиту. Довший ідентифікатор довелось би хешувати, і зв'язок
+ * «адреса ↔ ідентифікатор» перестав би читатися оком в експлорері.
+ */
+export const DATASET_ID_MAX_LENGTH = 32
+
 export const datasetIdSchema = z
   .string()
-  .regex(/^[a-z0-9][a-z0-9-]{2,47}$/, 'дозволені малі літери, цифри й дефіс, 3–48 символів')
+  .regex(/^[a-z0-9][a-z0-9-]{2,31}$/, 'дозволені малі літери, цифри й дефіс, 3–32 символи')
   .transform((value) => value as DatasetId)
 
 export type DatasetId = Brand<string, 'DatasetId'>
