@@ -12,18 +12,21 @@ use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
 use genovault::instructions::dataset::RegisterDatasetArgs;
 use genovault::state::{Dataset, DatasetStatus};
+use genovault::GenoVaultError;
 use mollusk_svm::result::{InstructionResult, ProgramResult};
 use mollusk_svm::Mollusk;
 use solana_account::Account;
 
-/// `GenoVaultError` нумерується з 6000 у порядку оголошення в `errors.rs`.
-const ERR_DATASET_ID_LENGTH: u32 = 6002;
-const ERR_EMPTY_DATASET: u32 = 6003;
-const ERR_EMPTY_CONTENT_HASH: u32 = 6004;
-const ERR_DATASET_NOT_ACTIVE: u32 = 6006;
-const ERR_DATASET_CONTENT_UNCHANGED: u32 = 6007;
-/// Код Anchor для порушеного `seeds = [...]`.
-const ANCHOR_CONSTRAINT_SEEDS: u32 = 2006;
+/// Коди беруться з самого enum, а не з таблиці констант: додати помилку в
+/// середину `errors.rs` — звичайна річ, а зсунуті вручну числа роблять тест,
+/// який зеленіє на неправильній причині відмови.
+fn expected(error: GenoVaultError) -> u32 {
+    error.into()
+}
+
+fn anchor_code(error: anchor_lang::error::ErrorCode) -> u32 {
+    error.into()
+}
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const DATASET_ID: &str = "exome-cohort-2026";
@@ -167,7 +170,7 @@ fn register_rejects_an_empty_content_hash() {
 
     assert_eq!(
         custom_error_code(&result),
-        Some(ERR_EMPTY_CONTENT_HASH),
+        Some(expected(GenoVaultError::EmptyContentHash)),
         "нульовий відбиток нічого не доводить: {:?}",
         result.program_result
     );
@@ -192,7 +195,7 @@ fn register_rejects_a_dataset_without_records() {
 
     assert_eq!(
         custom_error_code(&result),
-        Some(ERR_EMPTY_DATASET),
+        Some(expected(GenoVaultError::EmptyDataset)),
         "{:?}",
         result.program_result
     );
@@ -217,7 +220,7 @@ fn register_rejects_an_empty_dataset_id() {
 
     assert_eq!(
         custom_error_code(&result),
-        Some(ERR_DATASET_ID_LENGTH),
+        Some(expected(GenoVaultError::DatasetIdLength)),
         "порожній ідентифікатор дає валідний PDA, тому ловити його має програма: {:?}",
         result.program_result
     );
@@ -262,7 +265,7 @@ fn the_same_content_is_not_a_new_version() {
 
     assert_eq!(
         custom_error_code(&result),
-        Some(ERR_DATASET_CONTENT_UNCHANGED),
+        Some(expected(GenoVaultError::DatasetContentUnchanged)),
         "номер версії має щось означати: {:?}",
         result.program_result
     );
@@ -288,7 +291,7 @@ fn a_stranger_cannot_touch_someone_elses_dataset() {
     // лишається другим рубежем на випадок, якщо seeds колись зміняться.
     assert_eq!(
         custom_error_code(&result),
-        Some(ANCHOR_CONSTRAINT_SEEDS),
+        Some(anchor_code(anchor_lang::error::ErrorCode::ConstraintSeeds)),
         "{:?}",
         result.program_result
     );
@@ -348,7 +351,7 @@ fn a_retired_dataset_stops_accepting_changes() {
 
     assert_eq!(
         custom_error_code(&after),
-        Some(ERR_DATASET_NOT_ACTIVE),
+        Some(expected(GenoVaultError::DatasetNotActive)),
         "{:?}",
         after.program_result
     );

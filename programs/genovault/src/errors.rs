@@ -25,4 +25,28 @@ pub enum GenoVaultError {
     DatasetContentUnchanged,
     #[msg("Лічильник версій датасету переповнився")]
     DatasetVersionOverflow,
+    #[msg("Згода, яка нічого не дозволяє, — це відкликання, а не згода")]
+    ConsentAllowsNothing,
+    #[msg("Строк дії згоди вже минув на момент її запису")]
+    ConsentExpiryInPast,
+    #[msg("Згоду вже відкликано")]
+    ConsentAlreadyRevoked,
+    #[msg("Згоду відкликано")]
+    ConsentIsRevoked,
+    #[msg("Строк дії згоди минув")]
+    ConsentExpired,
+    #[msg("Невідомий тип використання")]
+    UnknownUseType,
+    #[msg("Невідома категорія покупця")]
+    UnknownBuyerCategory,
+    #[msg("Цей тип використання прямо заборонений власником")]
+    UseTypeForbidden,
+    #[msg("Цей тип використання не дозволений згодою")]
+    UseTypeNotAllowed,
+    #[msg("Ця категорія покупця не дозволена згодою")]
+    BuyerCategoryNotAllowed,
+    #[msg("Лічильник версій згоди переповнився")]
+    ConsentVersionOverflow,
+    #[msg("Не передано попередню версію згоди")]
+    PreviousConsentMissing,
 }

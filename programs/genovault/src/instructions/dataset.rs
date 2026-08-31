@@ -116,6 +116,7 @@ pub fn register(ctx: Context<RegisterDataset>, args: RegisterDatasetArgs) -> Res
         content_hash: args.content_hash,
         record_count_claimed: args.record_count_claimed,
         price_per_1k: args.price_per_1k,
+        consent_version: 0,
         status: DatasetStatus::Active,
         verified_badge: None,
         bump: ctx.bumps.dataset,

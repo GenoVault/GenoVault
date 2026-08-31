@@ -12,14 +12,21 @@ use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
 use genovault::instructions::initialize::TOKEN_2022_PROGRAM_ID;
 use genovault::state::{PlatformConfig, MAX_FEE_BPS};
+use genovault::GenoVaultError;
 use mollusk_svm::result::{InstructionResult, ProgramResult};
 use mollusk_svm::Mollusk;
 use solana_account::Account;
 
-/// Код помилки Anchor для порушеного `owner = ...`.
-const ANCHOR_CONSTRAINT_OWNER: u32 = 2004;
-/// `GenoVaultError::FeeBpsTooHigh` — другий варіант, тобто 6000 + 1.
-const ERR_FEE_BPS_TOO_HIGH: u32 = 6001;
+/// Коди беруться з самого enum, а не з таблиці констант: додати помилку в
+/// середину `errors.rs` — звичайна річ, а зсунуті вручну числа роблять тест,
+/// який зеленіє на неправильній причині відмови.
+fn expected(error: GenoVaultError) -> u32 {
+    error.into()
+}
+
+fn anchor_code(error: anchor_lang::error::ErrorCode) -> u32 {
+    error.into()
+}
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
@@ -159,7 +166,7 @@ fn rejects_fee_above_the_cap() {
 
     assert_eq!(
         custom_error_code(&result),
-        Some(ERR_FEE_BPS_TOO_HIGH),
+        Some(expected(GenoVaultError::FeeBpsTooHigh)),
         "комісія понад межу має падати іменною помилкою, а не мовчки: {:?}",
         result.program_result
     );
@@ -176,7 +183,7 @@ fn rejects_mint_outside_token_2022() {
 
     assert_eq!(
         custom_error_code(&result),
-        Some(ANCHOR_CONSTRAINT_OWNER),
+        Some(anchor_code(anchor_lang::error::ErrorCode::ConstraintOwner)),
         "мінт поза Token-2022 має відхилятись: {:?}",
         result.program_result
     );

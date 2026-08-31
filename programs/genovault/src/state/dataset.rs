@@ -56,6 +56,9 @@ pub struct Dataset {
     pub record_count_claimed: u64,
     /// Ціна за 1000 записів (`FR-015`).
     pub price_per_1k: u64,
+    /// Номер чинної версії згоди; 0 — згоди ще немає. Тримається тут, щоб
+    /// адреса чинного `Consent` деривувалась без пошуку по ланцюгу версій.
+    pub consent_version: u32,
     pub status: DatasetStatus,
     pub verified_badge: Option<VerificationBadge>,
     pub bump: u8,
