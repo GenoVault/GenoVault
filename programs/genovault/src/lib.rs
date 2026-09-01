@@ -65,13 +65,13 @@ pub mod genovault {
     /// Нова версія згоди (`FR-005`). Попередня лишається окремим акаунтом,
     /// на який посилається нова.
     pub fn set_consent(ctx: Context<SetConsent>, args: SetConsentArgs) -> Result<()> {
-        instructions::consent::set_consent(ctx, args)
+        instructions::consent::set(ctx, args)
     }
 
     /// Відкликання згоди однією дією (`FR-007`). Діє на прогони, замовлені
     /// після нього; завершені лишаються дійсними.
     pub fn revoke_consent(ctx: Context<RevokeConsent>) -> Result<()> {
-        instructions::consent::revoke_consent(ctx)
+        instructions::consent::revoke(ctx)
     }
 
     pub fn init_probe_sum_comp_def(ctx: Context<InitProbeSumCompDef>) -> Result<()> {

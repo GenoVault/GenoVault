@@ -1,9 +1,6 @@
 //! Тести інструкції `initialize` (`T009`, `FR-019`).
 //!
-//! Стенд — `mollusk-svm` поверх зібраного `genovault.so`. Це навмисно не
-//! юніт-тест на `handler`: перевірки Anchor (`init`, `seeds`, `owner`) живуть
-//! у згенерованому коді `try_accounts`, і виклик самого хендлера пройшов би
-//! повз них — тобто повз рівно те, на що ми покладаємось.
+//! Стенд — `tests/harness/`: `mollusk-svm` поверх зібраного `genovault.so`.
 //!
 //! Запуск: `scripts/wsl-test-program.sh` (спершу збирає .so).
 
@@ -13,30 +10,12 @@ use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
 use genovault::instructions::initialize::TOKEN_2022_PROGRAM_ID;
 use genovault::state::{PlatformConfig, MAX_FEE_BPS};
 use genovault::GenoVaultError;
-use mollusk_svm::result::{InstructionResult, ProgramResult};
+use mollusk_svm::result::ProgramResult;
 use mollusk_svm::Mollusk;
 use solana_account::Account;
 
-/// Коди беруться з самого enum, а не з таблиці констант: додати помилку в
-/// середину `errors.rs` — звичайна річ, а зсунуті вручну числа роблять тест,
-/// який зеленіє на неправильній причині відмови.
-fn expected(error: GenoVaultError) -> u32 {
-    error.into()
-}
-
-fn anchor_code(error: anchor_lang::error::ErrorCode) -> u32 {
-    error.into()
-}
-
-const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
-
-fn mollusk() -> Mollusk {
-    Mollusk::new(&genovault::ID, "genovault")
-}
-
-fn config_pda() -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[PlatformConfig::SEED], &genovault::ID)
-}
+mod harness;
+use harness::*;
 
 /// Мінт як акаунт, а не як аргумент: перевірка `owner` має що перевіряти лише
 /// тоді, коли акаунт реально їде в транзакції.
@@ -45,16 +24,6 @@ fn mint_account(owner: Pubkey) -> Account {
         lamports: LAMPORTS_PER_SOL,
         data: vec![0u8; 82],
         owner,
-        executable: false,
-        rent_epoch: 0,
-    }
-}
-
-fn funded_wallet() -> Account {
-    Account {
-        lamports: 10 * LAMPORTS_PER_SOL,
-        data: Vec::new(),
-        owner: solana_sdk_ids::system_program::ID,
         executable: false,
         rent_epoch: 0,
     }
@@ -77,9 +46,9 @@ fn fixture(mint_owner: Pubkey) -> Fixture {
 
     let accounts = vec![
         (authority, funded_wallet()),
-        (config, Account::default()),
+        empty(config),
         (mint, mint_account(mint_owner)),
-        mollusk_svm::program::keyed_account_for_system_program(),
+        system_program(),
     ];
 
     Fixture {
@@ -99,17 +68,10 @@ fn initialize_ix(authority: Pubkey, config: Pubkey, mint: Pubkey, fee_bps: u16) 
             authority,
             config,
             mint,
-            system_program: solana_sdk_ids::system_program::ID,
+            system_program: system_program_id(),
         }
         .to_account_metas(None),
         data: genovault::instruction::Initialize { fee_bps }.data(),
-    }
-}
-
-fn custom_error_code(result: &InstructionResult) -> Option<u32> {
-    match &result.program_result {
-        ProgramResult::Failure(ProgramError::Custom(code)) => Some(*code),
-        _ => None,
     }
 }
 
@@ -176,7 +138,7 @@ fn rejects_fee_above_the_cap() {
 fn rejects_mint_outside_token_2022() {
     // Мінт зі старого SPL Token не має конфіденційного розширення й ніколи
     // його не отримає: розширення вмикаються лише при створенні мінта.
-    let f = fixture(solana_sdk_ids::system_program::ID);
+    let f = fixture(system_program_id());
     let ix = initialize_ix(f.authority, f.config, f.mint, 250);
 
     let result = f.mollusk.process_instruction(&ix, &f.accounts);

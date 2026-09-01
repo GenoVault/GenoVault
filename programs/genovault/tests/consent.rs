@@ -7,69 +7,19 @@
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::Instruction;
-use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
+use anchor_lang::{InstructionData, ToAccountMetas};
 use genovault::instructions::consent::SetConsentArgs;
 use genovault::instructions::dataset::RegisterDatasetArgs;
 use genovault::state::{buyer_category, use_type, Consent, Dataset};
 use genovault::GenoVaultError;
-use mollusk_svm::result::{InstructionResult, ProgramResult};
+use mollusk_svm::result::ProgramResult;
 use mollusk_svm::Mollusk;
 use solana_account::Account;
 
-/// Коди беруться з самого enum, а не з таблиці констант: додати помилку в
-/// середину `errors.rs` — звичайна річ, а зсунуті вручну числа роблять тест,
-/// який зеленіє на неправильній причині відмови.
-fn expected(error: GenoVaultError) -> u32 {
-    error.into()
-}
+mod harness;
+use harness::*;
 
-fn anchor_code(error: anchor_lang::error::ErrorCode) -> u32 {
-    error.into()
-}
-
-const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const DATASET_ID: &str = "exome-cohort-2026";
-
-fn funded_wallet() -> Account {
-    Account {
-        lamports: 10 * LAMPORTS_PER_SOL,
-        data: Vec::new(),
-        owner: solana_sdk_ids::system_program::ID,
-        executable: false,
-        rent_epoch: 0,
-    }
-}
-
-fn dataset_pda(owner: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[Dataset::SEED, owner.as_ref(), DATASET_ID.as_bytes()],
-        &genovault::ID,
-    )
-    .0
-}
-
-fn consent_pda(dataset: &Pubkey, version: u32) -> Pubkey {
-    Pubkey::find_program_address(
-        &[Consent::SEED, dataset.as_ref(), &version.to_le_bytes()],
-        &genovault::ID,
-    )
-    .0
-}
-
-fn custom_error_code(result: &InstructionResult) -> Option<u32> {
-    match &result.program_result {
-        ProgramResult::Failure(ProgramError::Custom(code)) => Some(*code),
-        _ => None,
-    }
-}
-
-fn read<T: AccountDeserialize>(accounts: &[(Pubkey, Account)], key: &Pubkey) -> T {
-    let (_, account) = accounts
-        .iter()
-        .find(|(k, _)| k == key)
-        .expect("акаунт має бути в результаті");
-    T::try_deserialize(&mut account.data.as_slice()).expect("акаунт має читатися")
-}
 
 fn default_args() -> SetConsentArgs {
     SetConsentArgs {
@@ -86,7 +36,7 @@ fn register_ix(owner: Pubkey, dataset: Pubkey) -> Instruction {
         accounts: genovault::accounts::RegisterDataset {
             owner,
             dataset,
-            system_program: solana_sdk_ids::system_program::ID,
+            system_program: system_program_id(),
         }
         .to_account_metas(None),
         data: genovault::instruction::RegisterDataset {
@@ -115,7 +65,7 @@ fn set_consent_ix(
             dataset,
             previous_consent,
             consent: consent_pda(&dataset, next_version),
-            system_program: solana_sdk_ids::system_program::ID,
+            system_program: system_program_id(),
         }
         .to_account_metas(None),
         data: genovault::instruction::SetConsent { args }.data(),
@@ -131,18 +81,18 @@ struct Fixture {
 }
 
 fn with_dataset() -> Fixture {
-    let mollusk = Mollusk::new(&genovault::ID, "genovault");
+    let mollusk = mollusk();
     let owner = Pubkey::new_unique();
-    let dataset = dataset_pda(&owner);
+    let dataset = dataset_pda(&owner, DATASET_ID);
 
     let mut accounts = vec![
         (owner, funded_wallet()),
-        (dataset, Account::default()),
-        mollusk_svm::program::keyed_account_for_system_program(),
+        empty(dataset),
+        system_program(),
     ];
     // Місце під перші три версії згоди — mollusk не створює акаунтів сам.
     for version in 1..=3u32 {
-        accounts.push((consent_pda(&dataset, version), Account::default()));
+        accounts.push(empty(consent_pda(&dataset, version)));
     }
 
     let result = mollusk.process_instruction(&register_ix(owner, dataset), &accounts);
@@ -253,13 +203,13 @@ fn a_foreign_consent_cannot_be_passed_as_the_predecessor() {
     // спробував би підставити клієнт, який будує ланцюг сам. Ланцюг має
     // будувати програма: інакше «посилання на попередню» не доводить нічого.
     let stranger = Pubkey::new_unique();
-    let foreign_dataset = dataset_pda(&stranger);
+    let foreign_dataset = dataset_pda(&stranger, DATASET_ID);
     let foreign_consent = consent_pda(&foreign_dataset, 1);
 
     let mut accounts = f.accounts.clone();
     accounts.push((stranger, funded_wallet()));
-    accounts.push((foreign_dataset, Account::default()));
-    accounts.push((foreign_consent, Account::default()));
+    accounts.push(empty(foreign_dataset));
+    accounts.push(empty(foreign_consent));
 
     let registered = f
         .mollusk

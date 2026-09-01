@@ -1,58 +1,28 @@
 //! Тести датасету (`T010`, `FR-001`, `FR-003`, `FR-015`).
 //!
-//! Стенд той самий, що в `initialize.rs`: `mollusk-svm` поверх зібраного .so.
-//! Помічники поки продубльовані навмисно — спільний стенд витягується в `T013`,
-//! коли комплектів стане три-чотири. Витягувати спільне з двох файлів рано:
-//! перша спроба узагальнення майже завжди вгадує не той шов.
+//! Стенд — `tests/harness/`: `mollusk-svm` поверх зібраного .so.
 //!
 //! Запуск: `scripts/wsl-test-program.sh`.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::Instruction;
-use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
+use anchor_lang::{InstructionData, ToAccountMetas};
 use genovault::instructions::dataset::RegisterDatasetArgs;
 use genovault::state::{Dataset, DatasetStatus};
 use genovault::GenoVaultError;
-use mollusk_svm::result::{InstructionResult, ProgramResult};
+use mollusk_svm::result::ProgramResult;
 use mollusk_svm::Mollusk;
 use solana_account::Account;
 
-/// Коди беруться з самого enum, а не з таблиці констант: додати помилку в
-/// середину `errors.rs` — звичайна річ, а зсунуті вручну числа роблять тест,
-/// який зеленіє на неправильній причині відмови.
-fn expected(error: GenoVaultError) -> u32 {
-    error.into()
-}
+mod harness;
+use harness::*;
 
-fn anchor_code(error: anchor_lang::error::ErrorCode) -> u32 {
-    error.into()
-}
-
-const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const DATASET_ID: &str = "exome-cohort-2026";
 const PRICE_PER_1K: u64 = 25_000_000;
 const RECORDS: u64 = 12_500;
 
 fn hash(seed: u8) -> [u8; 32] {
     [seed; 32]
-}
-
-fn funded_wallet() -> Account {
-    Account {
-        lamports: 10 * LAMPORTS_PER_SOL,
-        data: Vec::new(),
-        owner: solana_sdk_ids::system_program::ID,
-        executable: false,
-        rent_epoch: 0,
-    }
-}
-
-fn dataset_pda(owner: &Pubkey, dataset_id: &str) -> Pubkey {
-    Pubkey::find_program_address(
-        &[Dataset::SEED, owner.as_ref(), dataset_id.as_bytes()],
-        &genovault::ID,
-    )
-    .0
 }
 
 fn register_ix(owner: Pubkey, args: RegisterDatasetArgs) -> Instruction {
@@ -62,7 +32,7 @@ fn register_ix(owner: Pubkey, args: RegisterDatasetArgs) -> Instruction {
         accounts: genovault::accounts::RegisterDataset {
             owner,
             dataset,
-            system_program: solana_sdk_ids::system_program::ID,
+            system_program: system_program_id(),
         }
         .to_account_metas(None),
         data: genovault::instruction::RegisterDataset { args }.data(),
@@ -82,21 +52,6 @@ fn default_args() -> RegisterDatasetArgs {
     }
 }
 
-fn custom_error_code(result: &InstructionResult) -> Option<u32> {
-    match &result.program_result {
-        ProgramResult::Failure(ProgramError::Custom(code)) => Some(*code),
-        _ => None,
-    }
-}
-
-fn read_dataset(accounts: &[(Pubkey, Account)], key: &Pubkey) -> Dataset {
-    let (_, account) = accounts
-        .iter()
-        .find(|(k, _)| k == key)
-        .expect("акаунт датасету має бути в результаті");
-    Dataset::try_deserialize(&mut account.data.as_slice()).expect("датасет має читатися")
-}
-
 /// Зареєстрований датасет разом зі станом акаунтів після реєстрації — основа
 /// для тестів, що міняють уже наявний датасет.
 struct Registered {
@@ -107,14 +62,14 @@ struct Registered {
 }
 
 fn registered() -> Registered {
-    let mollusk = Mollusk::new(&genovault::ID, "genovault");
+    let mollusk = mollusk();
     let owner = Pubkey::new_unique();
     let dataset = dataset_pda(&owner, DATASET_ID);
 
     let accounts = vec![
         (owner, funded_wallet()),
-        (dataset, Account::default()),
-        mollusk_svm::program::keyed_account_for_system_program(),
+        empty(dataset),
+        system_program(),
     ];
 
     let result = mollusk.process_instruction(&register_ix(owner, default_args()), &accounts);
@@ -136,7 +91,7 @@ fn registered() -> Registered {
 #[test]
 fn register_writes_the_first_version() {
     let r = registered();
-    let dataset = read_dataset(&r.accounts, &r.dataset);
+    let dataset = read::<Dataset>(&r.accounts, &r.dataset);
 
     assert_eq!(dataset.owner, r.owner);
     assert_eq!(dataset.dataset_id, DATASET_ID);
@@ -153,13 +108,13 @@ fn register_writes_the_first_version() {
 
 #[test]
 fn register_rejects_an_empty_content_hash() {
-    let mollusk = Mollusk::new(&genovault::ID, "genovault");
+    let mollusk = mollusk();
     let owner = Pubkey::new_unique();
     let dataset = dataset_pda(&owner, DATASET_ID);
     let accounts = vec![
         (owner, funded_wallet()),
-        (dataset, Account::default()),
-        mollusk_svm::program::keyed_account_for_system_program(),
+        empty(dataset),
+        system_program(),
     ];
 
     let args = RegisterDatasetArgs {
@@ -178,13 +133,13 @@ fn register_rejects_an_empty_content_hash() {
 
 #[test]
 fn register_rejects_a_dataset_without_records() {
-    let mollusk = Mollusk::new(&genovault::ID, "genovault");
+    let mollusk = mollusk();
     let owner = Pubkey::new_unique();
     let dataset = dataset_pda(&owner, DATASET_ID);
     let accounts = vec![
         (owner, funded_wallet()),
-        (dataset, Account::default()),
-        mollusk_svm::program::keyed_account_for_system_program(),
+        empty(dataset),
+        system_program(),
     ];
 
     let args = RegisterDatasetArgs {
@@ -203,13 +158,13 @@ fn register_rejects_a_dataset_without_records() {
 
 #[test]
 fn register_rejects_an_empty_dataset_id() {
-    let mollusk = Mollusk::new(&genovault::ID, "genovault");
+    let mollusk = mollusk();
     let owner = Pubkey::new_unique();
     let dataset = dataset_pda(&owner, "");
     let accounts = vec![
         (owner, funded_wallet()),
-        (dataset, Account::default()),
-        mollusk_svm::program::keyed_account_for_system_program(),
+        empty(dataset),
+        system_program(),
     ];
 
     let args = RegisterDatasetArgs {
@@ -242,7 +197,7 @@ fn new_content_bumps_the_version() {
     let result = r.mollusk.process_instruction(&ix, &r.accounts);
     assert_eq!(result.program_result, ProgramResult::Success);
 
-    let dataset = read_dataset(&result.resulting_accounts, &r.dataset);
+    let dataset = read::<Dataset>(&result.resulting_accounts, &r.dataset);
     assert_eq!(dataset.version, 2);
     assert_eq!(dataset.content_hash, hash(2));
     assert_eq!(dataset.record_count_claimed, RECORDS + 500);
@@ -312,7 +267,7 @@ fn price_changes_and_stays_readable() {
     let result = r.mollusk.process_instruction(&ix, &r.accounts);
     assert_eq!(result.program_result, ProgramResult::Success);
     assert_eq!(
-        read_dataset(&result.resulting_accounts, &r.dataset).price_per_1k,
+        read::<Dataset>(&result.resulting_accounts, &r.dataset).price_per_1k,
         PRICE_PER_1K * 2
     );
 }
@@ -329,7 +284,7 @@ fn a_retired_dataset_stops_accepting_changes() {
     let retired = r.mollusk.process_instruction(&retire, &r.accounts);
     assert_eq!(retired.program_result, ProgramResult::Success);
 
-    let dataset = read_dataset(&retired.resulting_accounts, &r.dataset);
+    let dataset = read::<Dataset>(&retired.resulting_accounts, &r.dataset);
     assert_eq!(dataset.status, DatasetStatus::Retired);
     assert_eq!(
         dataset.version, 1,

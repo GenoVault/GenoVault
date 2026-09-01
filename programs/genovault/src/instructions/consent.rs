@@ -84,7 +84,7 @@ pub struct ConsentRevoked {
     pub revoked_at: i64,
 }
 
-pub fn set_consent(ctx: Context<SetConsent>, args: SetConsentArgs) -> Result<()> {
+pub fn set(ctx: Context<SetConsent>, args: SetConsentArgs) -> Result<()> {
     let dataset = &mut ctx.accounts.dataset;
     require!(dataset.is_active(), GenoVaultError::DatasetNotActive);
 
@@ -156,7 +156,7 @@ pub fn set_consent(ctx: Context<SetConsent>, args: SetConsentArgs) -> Result<()>
     Ok(())
 }
 
-pub fn revoke_consent(ctx: Context<RevokeConsent>) -> Result<()> {
+pub fn revoke(ctx: Context<RevokeConsent>) -> Result<()> {
     let consent = &mut ctx.accounts.consent;
     require!(
         consent.revoked_at.is_none(),

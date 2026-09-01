@@ -10,6 +10,11 @@ name = "genovault"
 
 [features]
 default = []
+# Оголошені, щоб `cargo` не вважав їх невідомими: макроси Anchor читають ці
+# cfg самі, і без оголошення кожна збірка тоне у warning'ах про них.
+anchor-debug = []
+custom-heap = []
+custom-panic = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
