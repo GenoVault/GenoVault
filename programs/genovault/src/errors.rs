@@ -49,4 +49,28 @@ pub enum GenoVaultError {
     ConsentVersionOverflow,
     #[msg("Не передано попередню версію згоди")]
     PreviousConsentMissing,
+    #[msg("Прогін без жодного датасету")]
+    RunWithoutDatasets,
+    #[msg("У прогоні забагато датасетів")]
+    RunTooManyDatasets,
+    #[msg("Датасет повторюється у складі прогону")]
+    RunDuplicateDataset,
+    #[msg("Прогін не в статусі «прийнято»")]
+    RunNotAccepted,
+    #[msg("Прогін не виконується")]
+    RunNotRunning,
+    #[msg("Прогін уже в кінцевому статусі")]
+    RunIsFinal,
+    #[msg("Результат прогону вже записано")]
+    RunResultAlreadyRecorded,
+    #[msg("Результату прогону ще немає")]
+    RunResultMissing,
+    #[msg("Усім датасетам прогону вже нараховано")]
+    RunAlreadySettled,
+    #[msg("Нарахування перевищує заблоковане в депозиті")]
+    RunSettlementExceedsEscrow,
+    #[msg("Переповнення суми нарахувань")]
+    RunSettlementOverflow,
+    #[msg("Нараховано не всім датасетам прогону")]
+    RunSettlementIncomplete,
 }
