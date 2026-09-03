@@ -1,4 +1,5 @@
 export { decodeBase58 } from './base58.ts'
+export { contentHash } from './content-hash.ts'
 export type { ApiError, ApiErrorCode } from './errors.ts'
 export { API_ERROR_CODES, apiError, apiErrorSchema } from './errors.ts'
 export type {
