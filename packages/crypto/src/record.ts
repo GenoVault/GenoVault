@@ -1,3 +1,4 @@
+import { SCALAR_FIELD_COUNT } from '@genovault/shared'
 import { z } from 'zod'
 
 /**
@@ -18,14 +19,6 @@ export interface DatasetRecord {
   /** Кількість копій мінорного алеля на кожен маркер: 0, 1 або 2. */
   genotypes: number[]
 }
-
-/**
- * Скільки полів іде попереду генотипів: `sex`, `age`, `affected`.
- *
- * Порядок фіксований і продубльований у рецепті мовою Arcis (`T018`): MPC
- * читає плаский вектор і не має заголовка, з якого дізнався б розкладку.
- */
-export const SCALAR_FIELD_COUNT = 3
 
 const MAX_AGE = 200
 

@@ -1,19 +1,20 @@
 import { RescueCipher, x25519 } from '@arcium-hq/client'
-import { type ContentHash, contentHash } from '@genovault/shared'
 import {
+  type ContentHash,
+  contentHash,
   DatasetEnvelopeError,
   type EnvelopeHeader,
   type Frame,
   NONCE_BYTES,
-  parse,
-  serialize,
+  parseEnvelope,
+  SCALAR_FIELD_COUNT,
+  serializeEnvelope,
   X25519_KEY_BYTES,
-} from './envelope.ts'
+} from '@genovault/shared'
 import {
   type DatasetRecord,
   datasetRecordSchema,
   fromFieldElements,
-  SCALAR_FIELD_COUNT,
   toFieldElements,
 } from './record.ts'
 
@@ -88,7 +89,7 @@ export function encryptDataset(
   }
 
   return {
-    bytes: serialize(header, frames),
+    bytes: serializeEnvelope(header, frames),
     ephemeralPublicKey,
     recordCount: header.recordCount,
     markerCount,
@@ -121,7 +122,7 @@ export async function sealDataset(
  * кластері ключ наш, тож нею ж міряється звірка якості (`SC-002`).
  */
 export function decryptDataset(bytes: Uint8Array, mxeSecretKey: Uint8Array): DatasetRecord[] {
-  const { header, frames } = parse(bytes)
+  const { header, frames } = parseEnvelope(bytes)
 
   const derived = x25519.getPublicKey(mxeSecretKey)
   if (!derived.every((byte, index) => header.mxePublicKey[index] === byte)) {

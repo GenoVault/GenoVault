@@ -1,19 +1,15 @@
 import { x25519 } from '@arcium-hq/client'
-import { contentHash } from '@genovault/shared'
-import { describe, expect, it } from 'vitest'
 import {
+  contentHash,
   DatasetEnvelopeError,
-  type DatasetRecord,
-  decryptDataset,
-  encryptDataset,
-  FORMAT_VERSION,
   HEADER_BYTES,
   LIMB_BYTES,
   NONCE_BYTES,
   parseEnvelope,
   SCALAR_FIELD_COUNT,
-  sealDataset,
-} from '../src/index.ts'
+} from '@genovault/shared'
+import { describe, expect, it } from 'vitest'
+import { type DatasetRecord, decryptDataset, encryptDataset, sealDataset } from '../src/index.ts'
 
 /** Кластер, який у тестах грає MXE: у проді цей ключ розділений між вузлами. */
 function mxeKeypair() {
@@ -142,55 +138,14 @@ describe('свіжа пара ключів на кожне шифрування'
   })
 })
 
-describe('конверт відмовляє, а не вгадує', () => {
-  const mxe = mxeKeypair()
-  const valid = () => encryptDataset(RECORDS, mxe.publicKey).bytes
-
-  it('на чужому magic', () => {
-    const bytes = valid()
-    bytes[0] = 0x00
-    expect(() => parseEnvelope(bytes)).toThrow(/не конверт датасету/)
-  })
-
-  it('на незнайомій версії формату', () => {
-    const bytes = valid()
-    bytes[4] = FORMAT_VERSION + 1
-    expect(() => parseEnvelope(bytes)).toThrow(/версія формату/)
-  })
-
-  it('на ненульовому резерві — щоб майбутній прапорець не знехтували мовчки', () => {
-    const bytes = valid()
-    bytes[6] = 0b1
-    expect(() => parseEnvelope(bytes)).toThrow(/резервні байти/)
-  })
-
-  it('на обрізаному файлі', () => {
-    expect(() => parseEnvelope(valid().slice(0, HEADER_BYTES + 10))).toThrow(/очікувалось \d+ байт/)
-    expect(() => parseEnvelope(new Uint8Array(10))).toThrow(/коротший за заголовок/)
-  })
-
-  it('на заголовку, що суперечить сам собі', () => {
-    const bytes = valid()
-    // markerCount на одиницю більший за той, під який нарізані кадри.
-    new DataView(bytes.buffer).setUint32(76, MARKERS + 1, true)
-    expect(() => parseEnvelope(bytes)).toThrow(/сам собі суперечить/)
-  })
-
-  it('на повтореному nonce — це вже скомпрометована гама, а не дрібна вада', () => {
-    const bytes = valid()
-    const second = HEADER_BYTES + frameBytes(MARKERS)
-    bytes.set(bytes.subarray(HEADER_BYTES, HEADER_BYTES + NONCE_BYTES), second)
-
-    expect(() => parseEnvelope(bytes)).toThrow(/nonce повторюється/)
-  })
-
-  it('на підміненому шифротексті — бо цілісність тут тримає відбиток, не шифр', () => {
-    // Rescue у режимі CTR не автентифікований: підміна байта не «не сходиться»,
-    // а дає інший відкритий текст. Ловить її sha-256 ончейн (FR-004); тут
-    // видно лише другий, слабший бар'єр — значення поза межами схеми.
-    const bytes = valid()
-    const firstLimb = HEADER_BYTES + NONCE_BYTES
-    bytes.set([0xff, 0xff, 0xff, 0xff], firstLimb)
+describe('конверт не автентифікований, і це треба знати', () => {
+  it('підмінений шифротекст не «не сходиться», а дає інший відкритий текст', () => {
+    // Rescue у режимі CTR коду автентифікації не має. Цілісність тут тримає
+    // sha-256 ончейн (FR-004); нижче видно лише другий, слабший бар'єр —
+    // значення поза межами схеми запису. Підміна в межах 0..2 пройде його.
+    const mxe = mxeKeypair()
+    const bytes = encryptDataset(RECORDS, mxe.publicKey).bytes
+    bytes.set([0xff, 0xff, 0xff, 0xff], HEADER_BYTES + NONCE_BYTES)
 
     expect(() => decryptDataset(bytes, mxe.secretKey)).toThrow(RangeError)
   })
