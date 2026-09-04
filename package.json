@@ -13,7 +13,8 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "gate": "pnpm lint && pnpm typecheck && pnpm test"
+    "idl:check": "node scripts/sync-idl.mjs --check",
+    "gate": "pnpm idl:check && pnpm lint && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",
