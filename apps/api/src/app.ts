@@ -2,11 +2,25 @@ import { DatasetEnvelopeError } from '@genovault/shared'
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
 import { fail } from './errors.ts'
+import type { AuthVariables } from './middleware/auth.ts'
+import { sessionRoutes } from './routes/session.ts'
+import type { TokenVerifier } from './services/auth.ts'
 
-export function createApp() {
-  const app = new Hono()
+export interface AppDeps {
+  /**
+   * Перевіряч сесійного токена. Збирається в `server.ts` із змінних оточення,
+   * щоб ненастроєна автентифікація падала на старті, а не на першому запиті;
+   * у тестах підставляється напряму, без мережі й без ключів Privy.
+   */
+  verifyAccessToken?: TokenVerifier
+}
+
+export function createApp(deps: AppDeps = {}) {
+  const app = new Hono<{ Variables: AuthVariables }>()
 
   app.get('/health', (c) => c.json({ status: 'ok' }))
+
+  app.route('/', sessionRoutes(deps.verifyAccessToken))
 
   app.notFound((c) => fail(c, 'NOT_FOUND', 'маршрут не знайдено'))
 
