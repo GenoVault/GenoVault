@@ -18,24 +18,291 @@ export type Genovault = {
   "docs": [
     "Програма GenoVault.",
     "",
-    "Каркасний прохід через MPC (`probe_sum`) лишається тут доти, доки не",
-    "з'явиться справжній рецепт у `T018`: він доводить, що ланцюг",
-    "«черга обчислень → вузли → callback» замикається на нашому репозиторії.",
-    "Решта стану продукту (датасети, згоди, прогони, нарахування) приходить",
-    "задачами T010-T012."
+    "Рецепт «частоти й розподіли» (`T018`) живе в `encrypted-ixs` трьома",
+    "контурами, і тут розгортаються їхні визначення обчислень. Виклик",
+    "`frequencies_init` поки не належить жодному прогону — він доводить, що",
+    "ланцюг «черга обчислень → вузли → callback» замикається на цьому",
+    "репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить",
+    "у `T024`, згортка батчів і розкриття — у `T025`-`T026`."
   ],
   "instructions": [
     {
-      "name": "initProbeSumCompDef",
+      "name": "frequenciesInit",
+      "docs": [
+        "Створює порожній накопичувач частот.",
+        "",
+        "Прогону ця інструкція поки не належить: `Run`, перевірка згоди й",
+        "депозит приходять у `T024`, згортка батчів і розкриття — у",
+        "`T025`-`T026`. Вона стоїть тут із тієї ж причини, з якої тут раніше",
+        "стояв каркасний `probe_sum`: доводить, що ланцюг «програма → черга",
+        "обчислень → MPC-вузли → callback» замикається на цьому репозиторії.",
+        "Різниця в тому, що тепер це справжній рецепт із каталогу, а не",
+        "заглушка, яка додає два числа."
+      ],
       "discriminator": [
-        136,
-        111,
-        60,
+        123,
+        84,
+        5,
+        59,
+        85,
+        227,
+        151,
+        19
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "frequenciesInitCallback",
+      "discriminator": [
+        31,
+        140,
+        237,
+        214,
+        12,
+        89,
+        178,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesInitOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initFrequenciesFoldCompDef",
+      "docs": [
+        "Визначення для `frequencies_fold` — згортки батча записів."
+      ],
+      "discriminator": [
+        110,
+        173,
+        96,
+        122,
+        135,
+        73,
+        248,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mxeAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount",
+          "writable": true
+        },
+        {
+          "name": "addressLookupTable",
+          "writable": true
+        },
+        {
+          "name": "lutProgram",
+          "address": "AddressLookupTab1e1111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initFrequenciesInitCompDef",
+      "docs": [
+        "Розгортання визначення обчислення для `frequencies_init`.",
+        "",
+        "Визначень три, бо в Arcium кожен контур — окремий акаунт, і без нього",
+        "обчислення не поставити в чергу. Розгортаються один раз на мережу."
+      ],
+      "discriminator": [
+        24,
+        212,
+        59,
+        31,
+        215,
+        115,
         51,
-        201,
-        55,
-        94,
-        168
+        47
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mxeAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount",
+          "writable": true
+        },
+        {
+          "name": "addressLookupTable",
+          "writable": true
+        },
+        {
+          "name": "lutProgram",
+          "address": "AddressLookupTab1e1111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initFrequenciesRevealCompDef",
+      "docs": [
+        "Визначення для `frequencies_reveal` — розкриття звіту покупцю."
+      ],
+      "discriminator": [
+        200,
+        153,
+        93,
+        20,
+        151,
+        150,
+        143,
+        184
       ],
       "accounts": [
         {
@@ -131,190 +398,6 @@ export type Genovault = {
         {
           "name": "feeBps",
           "type": "u16"
-        }
-      ]
-    },
-    {
-      "name": "probeSum",
-      "discriminator": [
-        252,
-        193,
-        129,
-        70,
-        170,
-        159,
-        193,
-        162
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "signPdaAccount",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  65,
-                  114,
-                  99,
-                  105,
-                  117,
-                  109,
-                  83,
-                  105,
-                  103,
-                  110,
-                  101,
-                  114,
-                  65,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "mxeAccount"
-        },
-        {
-          "name": "mempoolAccount",
-          "writable": true
-        },
-        {
-          "name": "executingPool",
-          "writable": true
-        },
-        {
-          "name": "computationAccount",
-          "writable": true
-        },
-        {
-          "name": "compDefAccount"
-        },
-        {
-          "name": "clusterAccount",
-          "writable": true
-        },
-        {
-          "name": "poolAccount",
-          "writable": true,
-          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
-        },
-        {
-          "name": "clockAccount",
-          "writable": true,
-          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "arciumProgram",
-          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
-        }
-      ],
-      "args": [
-        {
-          "name": "computationOffset",
-          "type": "u64"
-        },
-        {
-          "name": "ciphertext0",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "ciphertext1",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "pubkey",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "nonce",
-          "type": "u128"
-        }
-      ]
-    },
-    {
-      "name": "probeSumCallback",
-      "discriminator": [
-        172,
-        80,
-        153,
-        26,
-        214,
-        199,
-        160,
-        94
-      ],
-      "accounts": [
-        {
-          "name": "arciumProgram",
-          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
-        },
-        {
-          "name": "compDefAccount"
-        },
-        {
-          "name": "mxeAccount"
-        },
-        {
-          "name": "computationAccount"
-        },
-        {
-          "name": "clusterAccount"
-        },
-        {
-          "name": "instructionsSysvar",
-          "address": "Sysvar1nstructions1111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "output",
-          "type": {
-            "defined": {
-              "name": "signedComputationOutputs",
-              "generics": [
-                {
-                  "kind": "type",
-                  "type": {
-                    "defined": {
-                      "name": "probeSumOutput"
-                    }
-                  }
-                }
-              ]
-            }
-          }
         }
       ]
     },
@@ -845,6 +928,19 @@ export type Genovault = {
   ],
   "events": [
     {
+      "name": "accumulatorCreated",
+      "discriminator": [
+        247,
+        191,
+        106,
+        20,
+        140,
+        47,
+        244,
+        214
+      ]
+    },
+    {
       "name": "consentRevoked",
       "discriminator": [
         56,
@@ -933,19 +1029,6 @@ export type Genovault = {
         140,
         112,
         162
-      ]
-    },
-    {
-      "name": "probeSumEvent",
-      "discriminator": [
-        162,
-        21,
-        78,
-        104,
-        28,
-        236,
-        248,
-        171
       ]
     }
   ],
@@ -1117,6 +1200,43 @@ export type Genovault = {
     }
   ],
   "types": [
+    {
+      "name": "accumulatorCreated",
+      "docs": [
+        "Порожній накопичувач, зашифрований ключем MXE.",
+        "",
+        "Розшифрувати його не може ніхто, крім кластера: подія існує, щоб клієнт мав",
+        "що передати першій згортці, а не щоб хтось прочитав вміст."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nonce",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                24
+              ]
+            }
+          }
+        ]
+      }
+    },
     {
       "name": "activation",
       "type": {
@@ -1874,6 +1994,32 @@ export type Genovault = {
       }
     },
     {
+      "name": "frequenciesInitOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "mxeEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "leaderChoice",
       "docs": [
         "The computation chosen by a node to be executed when the node is leader."
@@ -2054,6 +2200,41 @@ export type Genovault = {
               "defined": {
                 "name": "epoch"
               }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "mxeEncryptedStruct",
+      "generics": [
+        {
+          "kind": "const",
+          "name": "len",
+          "type": "usize"
+        }
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nonce",
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                {
+                  "generic": "len"
+                }
+              ]
             }
           }
         ]
@@ -2369,58 +2550,6 @@ export type Genovault = {
       }
     },
     {
-      "name": "probeSumEvent",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "result",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "nonce",
-            "type": {
-              "array": [
-                "u8",
-                16
-              ]
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "probeSumOutput",
-      "docs": [
-        "The output of the callback instruction. Provided as a struct with ordered fields",
-        "as anchor does not support tuples and tuple structs yet."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "field0",
-            "type": {
-              "defined": {
-                "name": "sharedEncryptedStruct",
-                "generics": [
-                  {
-                    "kind": "const",
-                    "value": "1"
-                  }
-                ]
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
       "name": "registerDatasetArgs",
       "type": {
         "kind": "struct",
@@ -2509,50 +2638,6 @@ export type Genovault = {
                 "vec": "bool"
               }
             ]
-          }
-        ]
-      }
-    },
-    {
-      "name": "sharedEncryptedStruct",
-      "generics": [
-        {
-          "kind": "const",
-          "name": "len",
-          "type": "usize"
-        }
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "encryptionKey",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "nonce",
-            "type": "u128"
-          },
-          {
-            "name": "ciphertexts",
-            "type": {
-              "array": [
-                {
-                  "array": [
-                    "u8",
-                    32
-                  ]
-                },
-                {
-                  "generic": "len"
-                }
-              ]
-            }
           }
         ]
       }
@@ -2691,24 +2776,291 @@ export const IDL: Genovault = {
   "docs": [
     "Програма GenoVault.",
     "",
-    "Каркасний прохід через MPC (`probe_sum`) лишається тут доти, доки не",
-    "з'явиться справжній рецепт у `T018`: він доводить, що ланцюг",
-    "«черга обчислень → вузли → callback» замикається на нашому репозиторії.",
-    "Решта стану продукту (датасети, згоди, прогони, нарахування) приходить",
-    "задачами T010-T012."
+    "Рецепт «частоти й розподіли» (`T018`) живе в `encrypted-ixs` трьома",
+    "контурами, і тут розгортаються їхні визначення обчислень. Виклик",
+    "`frequencies_init` поки не належить жодному прогону — він доводить, що",
+    "ланцюг «черга обчислень → вузли → callback» замикається на цьому",
+    "репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить",
+    "у `T024`, згортка батчів і розкриття — у `T025`-`T026`."
   ],
   "instructions": [
     {
-      "name": "initProbeSumCompDef",
+      "name": "frequenciesInit",
+      "docs": [
+        "Створює порожній накопичувач частот.",
+        "",
+        "Прогону ця інструкція поки не належить: `Run`, перевірка згоди й",
+        "депозит приходять у `T024`, згортка батчів і розкриття — у",
+        "`T025`-`T026`. Вона стоїть тут із тієї ж причини, з якої тут раніше",
+        "стояв каркасний `probe_sum`: доводить, що ланцюг «програма → черга",
+        "обчислень → MPC-вузли → callback» замикається на цьому репозиторії.",
+        "Різниця в тому, що тепер це справжній рецепт із каталогу, а не",
+        "заглушка, яка додає два числа."
+      ],
       "discriminator": [
-        136,
-        111,
-        60,
+        123,
+        84,
+        5,
+        59,
+        85,
+        227,
+        151,
+        19
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "frequenciesInitCallback",
+      "discriminator": [
+        31,
+        140,
+        237,
+        214,
+        12,
+        89,
+        178,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesInitOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initFrequenciesFoldCompDef",
+      "docs": [
+        "Визначення для `frequencies_fold` — згортки батча записів."
+      ],
+      "discriminator": [
+        110,
+        173,
+        96,
+        122,
+        135,
+        73,
+        248,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mxeAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount",
+          "writable": true
+        },
+        {
+          "name": "addressLookupTable",
+          "writable": true
+        },
+        {
+          "name": "lutProgram",
+          "address": "AddressLookupTab1e1111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initFrequenciesInitCompDef",
+      "docs": [
+        "Розгортання визначення обчислення для `frequencies_init`.",
+        "",
+        "Визначень три, бо в Arcium кожен контур — окремий акаунт, і без нього",
+        "обчислення не поставити в чергу. Розгортаються один раз на мережу."
+      ],
+      "discriminator": [
+        24,
+        212,
+        59,
+        31,
+        215,
+        115,
         51,
-        201,
-        55,
-        94,
-        168
+        47
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mxeAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount",
+          "writable": true
+        },
+        {
+          "name": "addressLookupTable",
+          "writable": true
+        },
+        {
+          "name": "lutProgram",
+          "address": "AddressLookupTab1e1111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initFrequenciesRevealCompDef",
+      "docs": [
+        "Визначення для `frequencies_reveal` — розкриття звіту покупцю."
+      ],
+      "discriminator": [
+        200,
+        153,
+        93,
+        20,
+        151,
+        150,
+        143,
+        184
       ],
       "accounts": [
         {
@@ -2804,190 +3156,6 @@ export const IDL: Genovault = {
         {
           "name": "feeBps",
           "type": "u16"
-        }
-      ]
-    },
-    {
-      "name": "probeSum",
-      "discriminator": [
-        252,
-        193,
-        129,
-        70,
-        170,
-        159,
-        193,
-        162
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "signPdaAccount",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  65,
-                  114,
-                  99,
-                  105,
-                  117,
-                  109,
-                  83,
-                  105,
-                  103,
-                  110,
-                  101,
-                  114,
-                  65,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "mxeAccount"
-        },
-        {
-          "name": "mempoolAccount",
-          "writable": true
-        },
-        {
-          "name": "executingPool",
-          "writable": true
-        },
-        {
-          "name": "computationAccount",
-          "writable": true
-        },
-        {
-          "name": "compDefAccount"
-        },
-        {
-          "name": "clusterAccount",
-          "writable": true
-        },
-        {
-          "name": "poolAccount",
-          "writable": true,
-          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
-        },
-        {
-          "name": "clockAccount",
-          "writable": true,
-          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "arciumProgram",
-          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
-        }
-      ],
-      "args": [
-        {
-          "name": "computationOffset",
-          "type": "u64"
-        },
-        {
-          "name": "ciphertext0",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "ciphertext1",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "pubkey",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "nonce",
-          "type": "u128"
-        }
-      ]
-    },
-    {
-      "name": "probeSumCallback",
-      "discriminator": [
-        172,
-        80,
-        153,
-        26,
-        214,
-        199,
-        160,
-        94
-      ],
-      "accounts": [
-        {
-          "name": "arciumProgram",
-          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
-        },
-        {
-          "name": "compDefAccount"
-        },
-        {
-          "name": "mxeAccount"
-        },
-        {
-          "name": "computationAccount"
-        },
-        {
-          "name": "clusterAccount"
-        },
-        {
-          "name": "instructionsSysvar",
-          "address": "Sysvar1nstructions1111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "output",
-          "type": {
-            "defined": {
-              "name": "signedComputationOutputs",
-              "generics": [
-                {
-                  "kind": "type",
-                  "type": {
-                    "defined": {
-                      "name": "probeSumOutput"
-                    }
-                  }
-                }
-              ]
-            }
-          }
         }
       ]
     },
@@ -3518,6 +3686,19 @@ export const IDL: Genovault = {
   ],
   "events": [
     {
+      "name": "accumulatorCreated",
+      "discriminator": [
+        247,
+        191,
+        106,
+        20,
+        140,
+        47,
+        244,
+        214
+      ]
+    },
+    {
       "name": "consentRevoked",
       "discriminator": [
         56,
@@ -3606,19 +3787,6 @@ export const IDL: Genovault = {
         140,
         112,
         162
-      ]
-    },
-    {
-      "name": "probeSumEvent",
-      "discriminator": [
-        162,
-        21,
-        78,
-        104,
-        28,
-        236,
-        248,
-        171
       ]
     }
   ],
@@ -3790,6 +3958,43 @@ export const IDL: Genovault = {
     }
   ],
   "types": [
+    {
+      "name": "accumulatorCreated",
+      "docs": [
+        "Порожній накопичувач, зашифрований ключем MXE.",
+        "",
+        "Розшифрувати його не може ніхто, крім кластера: подія існує, щоб клієнт мав",
+        "що передати першій згортці, а не щоб хтось прочитав вміст."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nonce",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                24
+              ]
+            }
+          }
+        ]
+      }
+    },
     {
       "name": "activation",
       "type": {
@@ -4547,6 +4752,32 @@ export const IDL: Genovault = {
       }
     },
     {
+      "name": "frequenciesInitOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "mxeEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "leaderChoice",
       "docs": [
         "The computation chosen by a node to be executed when the node is leader."
@@ -4727,6 +4958,41 @@ export const IDL: Genovault = {
               "defined": {
                 "name": "epoch"
               }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "mxeEncryptedStruct",
+      "generics": [
+        {
+          "kind": "const",
+          "name": "len",
+          "type": "usize"
+        }
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nonce",
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                {
+                  "generic": "len"
+                }
+              ]
             }
           }
         ]
@@ -5042,58 +5308,6 @@ export const IDL: Genovault = {
       }
     },
     {
-      "name": "probeSumEvent",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "result",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "nonce",
-            "type": {
-              "array": [
-                "u8",
-                16
-              ]
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "probeSumOutput",
-      "docs": [
-        "The output of the callback instruction. Provided as a struct with ordered fields",
-        "as anchor does not support tuples and tuple structs yet."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "field0",
-            "type": {
-              "defined": {
-                "name": "sharedEncryptedStruct",
-                "generics": [
-                  {
-                    "kind": "const",
-                    "value": "1"
-                  }
-                ]
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
       "name": "registerDatasetArgs",
       "type": {
         "kind": "struct",
@@ -5182,50 +5396,6 @@ export const IDL: Genovault = {
                 "vec": "bool"
               }
             ]
-          }
-        ]
-      }
-    },
-    {
-      "name": "sharedEncryptedStruct",
-      "generics": [
-        {
-          "kind": "const",
-          "name": "len",
-          "type": "usize"
-        }
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "encryptionKey",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "nonce",
-            "type": "u128"
-          },
-          {
-            "name": "ciphertexts",
-            "type": {
-              "array": [
-                {
-                  "array": [
-                    "u8",
-                    32
-                  ]
-                },
-                {
-                  "generic": "len"
-                }
-              ]
-            }
           }
         ]
       }

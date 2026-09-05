@@ -9,17 +9,21 @@ pub use errors::GenoVaultError;
 pub use instructions::*;
 pub use state::*;
 
-const COMP_DEF_OFFSET_PROBE_SUM: u32 = comp_def_offset("probe_sum");
+// Зсуви решти двох контурів (`frequencies_fold`, `frequencies_reveal`) з'являться
+// разом зі своїми чергами й callback'ами у `T025`: константа без користувача —
+// це попередження в кожній збірці, а не заготовка.
+const COMP_DEF_OFFSET_FREQUENCIES_INIT: u32 = comp_def_offset("frequencies_init");
 
 declare_id!("9G5ri75FHhrD5V4ujTwvmv5ULCSRTcu4x4mvzKk6tNEb");
 
 /// Програма GenoVault.
 ///
-/// Каркасний прохід через MPC (`probe_sum`) лишається тут доти, доки не
-/// з'явиться справжній рецепт у `T018`: він доводить, що ланцюг
-/// «черга обчислень → вузли → callback» замикається на нашому репозиторії.
-/// Решта стану продукту (датасети, згоди, прогони, нарахування) приходить
-/// задачами T010-T012.
+/// Рецепт «частоти й розподіли» (`T018`) живе в `encrypted-ixs` трьома
+/// контурами, і тут розгортаються їхні визначення обчислень. Виклик
+/// `frequencies_init` поки не належить жодному прогону — він доводить, що
+/// ланцюг «черга обчислень → вузли → callback» замикається на цьому
+/// репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить
+/// у `T024`, згортка батчів і розкриття — у `T025`-`T026`.
 #[arcium_program]
 pub mod genovault {
     use super::*;
@@ -74,33 +78,48 @@ pub mod genovault {
         instructions::consent::revoke(ctx)
     }
 
-    pub fn init_probe_sum_comp_def(ctx: Context<InitProbeSumCompDef>) -> Result<()> {
+    /// Розгортання визначення обчислення для `frequencies_init`.
+    ///
+    /// Визначень три, бо в Arcium кожен контур — окремий акаунт, і без нього
+    /// обчислення не поставити в чергу. Розгортаються один раз на мережу.
+    pub fn init_frequencies_init_comp_def(ctx: Context<InitFrequenciesInitCompDef>) -> Result<()> {
         init_computation_def(ctx.accounts, None)?;
         Ok(())
     }
 
-    pub fn probe_sum(
-        ctx: Context<ProbeSum>,
-        computation_offset: u64,
-        ciphertext_0: [u8; 32],
-        ciphertext_1: [u8; 32],
-        pubkey: [u8; 32],
-        nonce: u128,
+    /// Визначення для `frequencies_fold` — згортки батча записів.
+    pub fn init_frequencies_fold_comp_def(ctx: Context<InitFrequenciesFoldCompDef>) -> Result<()> {
+        init_computation_def(ctx.accounts, None)?;
+        Ok(())
+    }
+
+    /// Визначення для `frequencies_reveal` — розкриття звіту покупцю.
+    pub fn init_frequencies_reveal_comp_def(
+        ctx: Context<InitFrequenciesRevealCompDef>,
     ) -> Result<()> {
+        init_computation_def(ctx.accounts, None)?;
+        Ok(())
+    }
+
+    /// Створює порожній накопичувач частот.
+    ///
+    /// Прогону ця інструкція поки не належить: `Run`, перевірка згоди й
+    /// депозит приходять у `T024`, згортка батчів і розкриття — у
+    /// `T025`-`T026`. Вона стоїть тут із тієї ж причини, з якої тут раніше
+    /// стояв каркасний `probe_sum`: доводить, що ланцюг «програма → черга
+    /// обчислень → MPC-вузли → callback» замикається на цьому репозиторії.
+    /// Різниця в тому, що тепер це справжній рецепт із каталогу, а не
+    /// заглушка, яка додає два числа.
+    pub fn frequencies_init(ctx: Context<FrequenciesInit>, computation_offset: u64) -> Result<()> {
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
-        let args = ArgBuilder::new()
-            .x25519_pubkey(pubkey)
-            .plaintext_u128(nonce)
-            .encrypted_u8(ciphertext_0)
-            .encrypted_u8(ciphertext_1)
-            .build();
-
+        // Аргументів немає: порожній накопичувач залежить тільки від форми
+        // рецепта, а її знає сам контур.
         queue_computation(
             ctx.accounts,
             computation_offset,
-            args,
-            vec![ProbeSumCallback::callback_ix(
+            ArgBuilder::new().build(),
+            vec![FrequenciesInitCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
                 &[],
@@ -112,33 +131,33 @@ pub mod genovault {
         Ok(())
     }
 
-    #[arcium_callback(encrypted_ix = "probe_sum")]
-    pub fn probe_sum_callback(
-        ctx: Context<ProbeSumCallback>,
-        output: SignedComputationOutputs<ProbeSumOutput>,
+    #[arcium_callback(encrypted_ix = "frequencies_init")]
+    pub fn frequencies_init_callback(
+        ctx: Context<FrequenciesInitCallback>,
+        output: SignedComputationOutputs<FrequenciesInitOutput>,
     ) -> Result<()> {
         // Підпис кластера перевіряється до того, як результат кудись піде:
-        // без цього будь-хто міг би підсунути свій результат замість MPC.
+        // без цього будь-хто міг би підсунути свій накопичувач замість MPC.
         let verified = match output.verify_output(
             &ctx.accounts.cluster_account,
             &ctx.accounts.computation_account,
         ) {
-            Ok(ProbeSumOutput { field_0 }) => field_0,
+            Ok(FrequenciesInitOutput { field_0 }) => field_0,
             Err(_) => return Err(GenoVaultError::AbortedComputation.into()),
         };
 
-        emit!(ProbeSumEvent {
-            result: verified.ciphertexts[0],
+        emit!(AccumulatorCreated {
             nonce: verified.nonce.to_le_bytes(),
+            ciphertexts: verified.ciphertexts,
         });
         Ok(())
     }
 }
 
-#[queue_computation_accounts("probe_sum", payer)]
+#[queue_computation_accounts("frequencies_init", payer)]
 #[derive(Accounts)]
 #[instruction(computation_offset: u64)]
-pub struct ProbeSum<'info> {
+pub struct FrequenciesInit<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(
@@ -161,7 +180,7 @@ pub struct ProbeSum<'info> {
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account))]
     /// CHECK: перевіряє програма Arcium.
     pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_PROBE_SUM))]
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_FREQUENCIES_INIT))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(mut, address = derive_cluster_pda!(mxe_account))]
     pub cluster_account: Box<Account<'info, Cluster>>,
@@ -173,11 +192,11 @@ pub struct ProbeSum<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[callback_accounts("probe_sum")]
+#[callback_accounts("frequencies_init")]
 #[derive(Accounts)]
-pub struct ProbeSumCallback<'info> {
+pub struct FrequenciesInitCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_PROBE_SUM))]
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_FREQUENCIES_INIT))]
     pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
@@ -190,9 +209,9 @@ pub struct ProbeSumCallback<'info> {
     pub instructions_sysvar: UncheckedAccount<'info>,
 }
 
-#[init_computation_definition_accounts("probe_sum", payer)]
+#[init_computation_definition_accounts("frequencies_init", payer)]
 #[derive(Accounts)]
-pub struct InitProbeSumCompDef<'info> {
+pub struct InitFrequenciesInitCompDef<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(mut, address = derive_mxe_pda!())]
@@ -210,8 +229,52 @@ pub struct InitProbeSumCompDef<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[init_computation_definition_accounts("frequencies_fold", payer)]
+#[derive(Accounts)]
+pub struct InitFrequenciesFoldCompDef<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    #[account(mut)]
+    /// CHECK: перевіряє програма Arcium; тут акаунт ще не ініціалізований.
+    pub comp_def_account: UncheckedAccount<'info>,
+    #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
+    /// CHECK: перевіряє програма Arcium.
+    pub address_lookup_table: UncheckedAccount<'info>,
+    #[account(address = LUT_PROGRAM_ID)]
+    /// CHECK: програма таблиць пошуку адрес.
+    pub lut_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+    pub system_program: Program<'info, System>,
+}
+
+#[init_computation_definition_accounts("frequencies_reveal", payer)]
+#[derive(Accounts)]
+pub struct InitFrequenciesRevealCompDef<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    #[account(mut)]
+    /// CHECK: перевіряє програма Arcium; тут акаунт ще не ініціалізований.
+    pub comp_def_account: UncheckedAccount<'info>,
+    #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
+    /// CHECK: перевіряє програма Arcium.
+    pub address_lookup_table: UncheckedAccount<'info>,
+    #[account(address = LUT_PROGRAM_ID)]
+    /// CHECK: програма таблиць пошуку адрес.
+    pub lut_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Порожній накопичувач, зашифрований ключем MXE.
+///
+/// Розшифрувати його не може ніхто, крім кластера: подія існує, щоб клієнт мав
+/// що передати першій згортці, а не щоб хтось прочитав вміст.
 #[event]
-pub struct ProbeSumEvent {
-    pub result: [u8; 32],
+pub struct AccumulatorCreated {
     pub nonce: [u8; 16],
+    pub ciphertexts: [[u8; 32]; 24],
 }
