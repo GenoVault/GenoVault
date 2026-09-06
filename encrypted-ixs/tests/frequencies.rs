@@ -14,13 +14,14 @@
 use arcis::{testing::*, *};
 use encrypted_ixs::circuits::{
     Frequencies, Record, Report, AGE_BINS, AGE_THRESHOLDS, BATCH, FILTER_ANY, MARKERS, MIN_COHORT,
+    MIN_CONTRIBUTION,
 };
 
 /// Скільки польових елементів займає накопичувач після пакування.
 ///
 /// Рахується з форми `Frequencies`, а не пишеться числом: коли в накопичувач
 /// додасться поле, тест на межу транзакції має поїхати разом із ним.
-const ACC_FIELDS: usize = 3 + AGE_BINS + 2 * MARKERS;
+const ACC_FIELDS: usize = 4 + AGE_BINS + 2 * MARKERS;
 
 /// Ключ покупця. Справжнім бути не мусить — рецепт ним лише шифрує вихід.
 fn buyer_key() -> ArcisX25519Pubkey {
@@ -83,14 +84,24 @@ fn fold(
     ))
 }
 
-/// Розкриття повертає звіт покупцю і оголошену кількість записів.
-fn reveal(accumulator: Enc<Mxe, Pack<Frequencies>>) -> (Frequencies, u32, u32) {
-    let (encrypted, disclosed): (Enc<Shared, Pack<Report>>, u32) =
+/// Закриває поточний датасет: новий накопичувач, оголошений внесок і прапорець
+/// «внесок нижчий за поріг».
+fn close(accumulator: Enc<Mxe, Pack<Frequencies>>) -> (Enc<Mxe, Pack<Frequencies>>, u32, u32) {
+    get_instruction("frequencies_close_dataset").eval(accumulator)
+}
+
+/// Розкриття повертає звіт покупцю, оголошену кількість записів пулу і
+/// прапорець незакритого датасету.
+fn reveal(accumulator: Enc<Mxe, Pack<Frequencies>>) -> (Frequencies, u32, u32, u32) {
+    let (encrypted, disclosed, unclosed): (Enc<Shared, Pack<Report>>, u32, u32) =
         get_instruction("frequencies_reveal").eval((accumulator, buyer_key()));
     let report = encrypted.to_arcis().unpack();
     (
         Frequencies {
             included: report.included,
+            // Внесок поточного датасету у звіт не потрапляє: він адресований
+            // ланцюгу, а не покупцю. Після `close` він і так нуль.
+            dataset_included: 0,
             male: report.male,
             affected: report.affected,
             age_at_least: report.age_at_least,
@@ -99,7 +110,21 @@ fn reveal(accumulator: Enc<Mxe, Pack<Frequencies>>) -> (Frequencies, u32, u32) {
         },
         report.suppressed,
         disclosed,
+        unclosed,
     )
+}
+
+/// Прогін одного датасету від згортки до звіту — рівно той порядок викликів,
+/// яким його жене API: `fold`… → `close_dataset` → `reveal`.
+///
+/// Тести змісту звіту ходять сюди, а не в голий `reveal`, і тому кожен із них
+/// заразом тримає сторожа порядку: розкриття із незакритим датасетом тут
+/// падає, а не проходить тихо.
+fn close_and_reveal(accumulator: Enc<Mxe, Pack<Frequencies>>) -> (Frequencies, u32, u32) {
+    let (closed, _contribution, _below_floor) = close(accumulator);
+    let (report, suppressed, disclosed, unclosed) = reveal(closed);
+    assert_eq!(unclosed, 0, "після close_dataset незакритих датасетів немає");
+    (report, suppressed, disclosed)
 }
 
 /// Когорта з `count` однакових записів — достатньо велика, щоб пройти `MIN_COHORT`.
@@ -123,7 +148,7 @@ fn genotype_counts(included: u32, sum: u32, square_sum: u32) -> (u32, u32, u32) 
 
 #[test]
 fn empty_accumulator_is_all_zeros() {
-    let (report, suppressed, disclosed) = reveal(empty_accumulator());
+    let (report, suppressed, disclosed) = close_and_reveal(empty_accumulator());
 
     assert_eq!(report.included, 0);
     assert_eq!(disclosed, 0);
@@ -141,7 +166,7 @@ fn counts_every_record_when_no_filter_narrows() {
         FILTER_ANY,
         FILTER_ANY,
     );
-    let (report, suppressed, disclosed) = reveal(acc);
+    let (report, suppressed, disclosed) = close_and_reveal(acc);
 
     assert_eq!(suppressed, 0);
     assert_eq!(report.included, MIN_COHORT);
@@ -164,7 +189,7 @@ fn padding_beyond_live_is_not_counted() {
         FILTER_ANY,
         FILTER_ANY,
     );
-    let (report, _, _) = reveal(acc);
+    let (report, _, _) = close_and_reveal(acc);
 
     assert_eq!(report.included, MIN_COHORT);
     assert_eq!(report.male, MIN_COHORT, "жодної «жінки віку 0» з хвоста батча");
@@ -176,7 +201,7 @@ fn age_filter_excludes_records_outside_the_range() {
     records.extend(cohort(5, 1, 80, 0, &[1]));
 
     let acc = fold(empty_accumulator(), &records, 40, 50, FILTER_ANY, FILTER_ANY);
-    let (report, suppressed, _) = reveal(acc);
+    let (report, suppressed, _) = close_and_reveal(acc);
 
     assert_eq!(suppressed, 0);
     assert_eq!(report.included, MIN_COHORT, "п'ятеро 80-річних поза діапазоном");
@@ -190,7 +215,7 @@ fn sex_and_affected_filters_narrow_the_cohort() {
     records.extend(cohort(7, 1, 50, 0, &[2]));
 
     let acc = fold(empty_accumulator(), &records, 0, u8::MAX, 1, 1);
-    let (report, _, _) = reveal(acc);
+    let (report, _, _) = close_and_reveal(acc);
 
     assert_eq!(report.included, MIN_COHORT);
     assert_eq!(report.male, MIN_COHORT);
@@ -212,7 +237,7 @@ fn genotype_distribution_is_exact_from_two_sums() {
         FILTER_ANY,
         FILTER_ANY,
     );
-    let (report, _, _) = reveal(acc);
+    let (report, _, _) = close_and_reveal(acc);
 
     assert_eq!(report.included, 23);
     assert_eq!(report.allele_sum[0], 11 + 2 * 5);
@@ -242,7 +267,7 @@ fn age_thresholds_are_cumulative() {
         FILTER_ANY,
         FILTER_ANY,
     );
-    let (report, _, _) = reveal(acc);
+    let (report, _, _) = close_and_reveal(acc);
 
     assert_eq!(report.included, 13);
     // Пороги: 20, 30, 40, 50, 60, 70, 80, 90.
@@ -271,7 +296,7 @@ fn folds_accumulate_across_batches() {
         FILTER_ANY,
     );
     let acc = fold(acc, &second, 0, u8::MAX, FILTER_ANY, FILTER_ANY);
-    let (report, _, disclosed) = reveal(acc);
+    let (report, _, disclosed) = close_and_reveal(acc);
 
     assert_eq!(report.included, 20);
     assert_eq!(disclosed, 20);
@@ -292,7 +317,7 @@ fn cohort_below_the_threshold_discloses_nothing() {
         FILTER_ANY,
         FILTER_ANY,
     );
-    let (report, suppressed, disclosed) = reveal(acc);
+    let (report, suppressed, disclosed) = close_and_reveal(acc);
 
     assert_eq!(suppressed, 1, "дев'ятеро — це менше за поріг");
     assert_eq!(report.included, 0, "розмір когорти теж не оголошується");
@@ -312,7 +337,7 @@ fn threshold_is_reached_exactly_at_min_cohort() {
     let below = cohort(MIN_COHORT as usize - 1, 0, 30, 0, &[1]);
     let exact = cohort(MIN_COHORT as usize, 0, 30, 0, &[1]);
 
-    let (_, suppressed_below, _) = reveal(fold(
+    let (_, suppressed_below, _) = close_and_reveal(fold(
         empty_accumulator(),
         &below,
         0,
@@ -320,7 +345,7 @@ fn threshold_is_reached_exactly_at_min_cohort() {
         FILTER_ANY,
         FILTER_ANY,
     ));
-    let (report_exact, suppressed_exact, disclosed_exact) = reveal(fold(
+    let (report_exact, suppressed_exact, disclosed_exact) = close_and_reveal(fold(
         empty_accumulator(),
         &exact,
         0,
@@ -348,7 +373,7 @@ fn padded_markers_report_zero() {
         FILTER_ANY,
         FILTER_ANY,
     );
-    let (report, _, _) = reveal(acc);
+    let (report, _, _) = close_and_reveal(acc);
 
     for marker in 0..3 {
         assert_eq!(report.allele_sum[marker], 2 * MIN_COHORT);
@@ -357,6 +382,185 @@ fn padded_markers_report_zero() {
         assert_eq!(report.allele_sum[marker], 0, "маркер {marker} поза датасетом");
         assert_eq!(report.allele_square_sum[marker], 0);
     }
+}
+
+#[test]
+fn contribution_counts_only_the_current_dataset() {
+    // Два датасети в одному прогоні. Внесок кожного оголошується на своєму
+    // `close_dataset`, а підсумок пулу — один на всіх.
+    let first = cohort(12, 1, 35, 1, &[1, 2]);
+    let second = cohort(15, 0, 65, 0, &[2, 1]);
+
+    let acc = fold(
+        empty_accumulator(),
+        &first,
+        0,
+        u8::MAX,
+        FILTER_ANY,
+        FILTER_ANY,
+    );
+    let (acc, first_contribution, first_below) = close(acc);
+    let acc = fold(acc, &second, 0, u8::MAX, FILTER_ANY, FILTER_ANY);
+    let (acc, second_contribution, second_below) = close(acc);
+
+    let (report, suppressed, disclosed, unclosed) = reveal(acc);
+
+    assert_eq!(first_contribution, 12);
+    assert_eq!(second_contribution, 15);
+    assert_eq!(first_below, 0);
+    assert_eq!(second_below, 0);
+    assert_eq!(unclosed, 0);
+    assert_eq!(suppressed, 0);
+    assert_eq!(report.included, 27, "підсумок пулу — сума двох датасетів");
+    assert_eq!(disclosed, 27);
+    assert_eq!(
+        first_contribution + second_contribution,
+        disclosed,
+        "коли жоден внесок не придушений, вектор сходиться з підсумком пулу"
+    );
+}
+
+#[test]
+fn contribution_is_measured_after_filters_not_by_dataset_size() {
+    // Датасет на 20 записів, під фільтр підпадають 11. Внеском іде 11 — і саме
+    // це `FR-018a`: число рахує MPC, а не власник при реєстрації.
+    let mut records = cohort(11, 1, 45, 1, &[1]);
+    records.extend(cohort(9, 0, 45, 1, &[1]));
+
+    let acc = fold(empty_accumulator(), &records, 0, u8::MAX, 1, FILTER_ANY);
+    let (_, contribution, below) = close(acc);
+
+    assert_eq!(contribution, 11);
+    assert_eq!(below, 0);
+}
+
+#[test]
+fn contribution_below_the_floor_is_not_disclosed() {
+    // Дев'ять записів від першого власника — менше за поріг, тож внеском іде
+    // нуль і прапорець. Але записи лишаються в пулі: відкотити їх з
+    // накопичувача нічим, і саме тому покупець за них платить (ціна рахується
+    // з `records_included`), а не отримує задарма.
+    let small = cohort(MIN_CONTRIBUTION as usize - 1, 1, 40, 1, &[2]);
+    let large = cohort(12, 1, 40, 1, &[2]);
+
+    let acc = fold(empty_accumulator(), &small, 0, u8::MAX, FILTER_ANY, FILTER_ANY);
+    let (acc, small_contribution, small_below) = close(acc);
+    let acc = fold(acc, &large, 0, u8::MAX, FILTER_ANY, FILTER_ANY);
+    let (acc, large_contribution, large_below) = close(acc);
+
+    let (report, suppressed, disclosed, _) = reveal(acc);
+
+    assert_eq!(small_contribution, 0, "внесок нижчий за поріг не називається");
+    assert_eq!(small_below, 1, "але прапорець каже, що він був ненульовим");
+    assert_eq!(large_contribution, 12);
+    assert_eq!(large_below, 0);
+
+    assert_eq!(suppressed, 0, "пул із 21 запису поріг когорти проходить");
+    assert_eq!(report.included, 21, "придушені записи все одно у звіті покупця");
+    assert_eq!(disclosed, 21);
+    assert!(
+        small_contribution + large_contribution < disclosed,
+        "різниця між платою і сумою часток — це і є ціна придушення"
+    );
+}
+
+#[test]
+fn contribution_floor_is_reached_exactly_at_min_contribution() {
+    // Межа з обох боків. Помилка на одиницю тут коштує або витоку про людину,
+    // або неоплаченого датасету на кожному другому прогоні.
+    let below = cohort(MIN_CONTRIBUTION as usize - 1, 0, 30, 0, &[1]);
+    let exact = cohort(MIN_CONTRIBUTION as usize, 0, 30, 0, &[1]);
+
+    let (_, below_contribution, below_flag) = close(fold(
+        empty_accumulator(),
+        &below,
+        0,
+        u8::MAX,
+        FILTER_ANY,
+        FILTER_ANY,
+    ));
+    let (_, exact_contribution, exact_flag) = close(fold(
+        empty_accumulator(),
+        &exact,
+        0,
+        u8::MAX,
+        FILTER_ANY,
+        FILTER_ANY,
+    ));
+
+    assert_eq!(below_contribution, 0);
+    assert_eq!(below_flag, 1);
+    assert_eq!(exact_contribution, MIN_CONTRIBUTION);
+    assert_eq!(exact_flag, 0);
+}
+
+#[test]
+fn closing_resets_the_counter_for_the_next_dataset() {
+    // Найдорожча помилка цієї конструкції — лічильник, який не обнулився:
+    // другий датасет отримав би плату за записи першого. Тест ганяє два
+    // однакові датасети й вимагає однакових внесків, а не наростаючих.
+    let records = cohort(11, 1, 50, 1, &[1]);
+
+    let acc = fold(
+        empty_accumulator(),
+        &records,
+        0,
+        u8::MAX,
+        FILTER_ANY,
+        FILTER_ANY,
+    );
+    let (acc, first, _) = close(acc);
+    let acc = fold(acc, &records, 0, u8::MAX, FILTER_ANY, FILTER_ANY);
+    let (acc, second, _) = close(acc);
+
+    assert_eq!(first, 11);
+    assert_eq!(second, 11, "другий внесок не тягне за собою перший");
+    assert_eq!(reveal(acc).2, 22, "а пул рахує обидва");
+}
+
+#[test]
+fn closing_an_empty_dataset_discloses_zero_without_touching_the_pool() {
+    // Датасет, жоден запис якого не пройшов фільтр, закривається так само, як
+    // будь-який інший: пул від цього не змінюється.
+    let records = cohort(12, 1, 40, 1, &[1]);
+
+    let acc = fold(
+        empty_accumulator(),
+        &records,
+        0,
+        u8::MAX,
+        FILTER_ANY,
+        FILTER_ANY,
+    );
+    let (acc, paid, _) = close(acc);
+    let (acc, empty, empty_flag) = close(acc);
+
+    assert_eq!(paid, 12);
+    assert_eq!(empty, 0);
+    assert_eq!(empty_flag, 1, "нуль теж нижчий за поріг");
+    assert_eq!(reveal(acc).2, 12, "порожнє закриття нічого не додало й не з'їло");
+}
+
+#[test]
+fn reveal_flags_a_dataset_left_unclosed() {
+    // Пропущений `close_dataset` не видно ні по звіту, ні по підсумку: записи
+    // на місці, покупець платить, а внеску на них ніхто не оголосив, і частка
+    // тихо розтечеться між рештою власників. Саме тому рецепт називає це
+    // окремим виходом, а програма на ньому відхиляє розкриття (`T026`).
+    let records = cohort(12, 1, 40, 1, &[1]);
+    let acc = fold(
+        empty_accumulator(),
+        &records,
+        0,
+        u8::MAX,
+        FILTER_ANY,
+        FILTER_ANY,
+    );
+
+    let (_, _, disclosed, unclosed) = reveal(acc);
+
+    assert_eq!(disclosed, 12, "записи в пулі, тобто оплачені");
+    assert_eq!(unclosed, 1, "але внеску на них не оголошено");
 }
 
 #[test]
@@ -372,5 +576,19 @@ fn accumulator_fits_one_solana_transaction() {
     assert!(
         on_chain < 1232,
         "накопичувач {ACC_FIELDS} полів → {on_chain} байтів, у транзакцію не влазить"
+    );
+
+    // Лічильник поточного датасету (`T019`) сів у той самий 24-й шифротекст, у
+    // якому вже було вільне місце, — тобто коштував нуль байтів у транзакції.
+    assert_eq!(packed, 24, "пакування накопичувача змінилось");
+
+    // А вектор внесків на весь пул, як просив первісний текст `T019`, коштував
+    // би вісім шифротекстів зверху. Це число і є причиною, з якої внесок
+    // оголошується на `close_dataset`, а вектор збирається ончейн.
+    let with_pool_vector = 16 + (ACC_FIELDS + 50).div_ceil(6) * 32;
+    assert_eq!(with_pool_vector, 1040);
+    assert!(
+        with_pool_vector + 64 + 32 + 7 * 32 > 1232,
+        "вектор на 50 датасетів мав би влізти разом із підписом і адресами callback'а"
     );
 }

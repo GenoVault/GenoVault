@@ -9,17 +9,18 @@ pub use errors::GenoVaultError;
 pub use instructions::*;
 pub use state::*;
 
-// Зсуви решти двох контурів (`frequencies_fold`, `frequencies_reveal`) з'являться
-// разом зі своїми чергами й callback'ами у `T025`: константа без користувача —
-// це попередження в кожній збірці, а не заготовка.
+// Зсуви решти трьох контурів (`frequencies_fold`, `frequencies_close_dataset`,
+// `frequencies_reveal`) з'являться разом зі своїми чергами й callback'ами у
+// `T025`-`T026`: константа без користувача — це попередження в кожній збірці,
+// а не заготовка.
 const COMP_DEF_OFFSET_FREQUENCIES_INIT: u32 = comp_def_offset("frequencies_init");
 
 declare_id!("9G5ri75FHhrD5V4ujTwvmv5ULCSRTcu4x4mvzKk6tNEb");
 
 /// Програма GenoVault.
 ///
-/// Рецепт «частоти й розподіли» (`T018`) живе в `encrypted-ixs` трьома
-/// контурами, і тут розгортаються їхні визначення обчислень. Виклик
+/// Рецепт «частоти й розподіли» (`T018`, `T019`) живе в `encrypted-ixs`
+/// чотирма контурами, і тут розгортаються їхні визначення обчислень. Виклик
 /// `frequencies_init` поки не належить жодному прогону — він доводить, що
 /// ланцюг «черга обчислень → вузли → callback» замикається на цьому
 /// репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить
@@ -80,8 +81,8 @@ pub mod genovault {
 
     /// Розгортання визначення обчислення для `frequencies_init`.
     ///
-    /// Визначень три, бо в Arcium кожен контур — окремий акаунт, і без нього
-    /// обчислення не поставити в чергу. Розгортаються один раз на мережу.
+    /// Визначень чотири, бо в Arcium кожен контур — окремий акаунт, і без
+    /// нього обчислення не поставити в чергу. Розгортаються один раз на мережу.
     pub fn init_frequencies_init_comp_def(ctx: Context<InitFrequenciesInitCompDef>) -> Result<()> {
         init_computation_def(ctx.accounts, None)?;
         Ok(())
@@ -89,6 +90,14 @@ pub mod genovault {
 
     /// Визначення для `frequencies_fold` — згортки батча записів.
     pub fn init_frequencies_fold_comp_def(ctx: Context<InitFrequenciesFoldCompDef>) -> Result<()> {
+        init_computation_def(ctx.accounts, None)?;
+        Ok(())
+    }
+
+    /// Визначення для `frequencies_close_dataset` — оголошення внеску датасету.
+    pub fn init_frequencies_close_dataset_comp_def(
+        ctx: Context<InitFrequenciesCloseDatasetCompDef>,
+    ) -> Result<()> {
         init_computation_def(ctx.accounts, None)?;
         Ok(())
     }
@@ -232,6 +241,26 @@ pub struct InitFrequenciesInitCompDef<'info> {
 #[init_computation_definition_accounts("frequencies_fold", payer)]
 #[derive(Accounts)]
 pub struct InitFrequenciesFoldCompDef<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    #[account(mut)]
+    /// CHECK: перевіряє програма Arcium; тут акаунт ще не ініціалізований.
+    pub comp_def_account: UncheckedAccount<'info>,
+    #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
+    /// CHECK: перевіряє програма Arcium.
+    pub address_lookup_table: UncheckedAccount<'info>,
+    #[account(address = LUT_PROGRAM_ID)]
+    /// CHECK: програма таблиць пошуку адрес.
+    pub lut_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+    pub system_program: Program<'info, System>,
+}
+
+#[init_computation_definition_accounts("frequencies_close_dataset", payer)]
+#[derive(Accounts)]
+pub struct InitFrequenciesCloseDatasetCompDef<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(mut, address = derive_mxe_pda!())]

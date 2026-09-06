@@ -18,8 +18,8 @@ export type Genovault = {
   "docs": [
     "Програма GenoVault.",
     "",
-    "Рецепт «частоти й розподіли» (`T018`) живе в `encrypted-ixs` трьома",
-    "контурами, і тут розгортаються їхні визначення обчислень. Виклик",
+    "Рецепт «частоти й розподіли» (`T018`, `T019`) живе в `encrypted-ixs`",
+    "чотирма контурами, і тут розгортаються їхні визначення обчислень. Виклик",
     "`frequencies_init` поки не належить жодному прогону — він доводить, що",
     "ланцюг «черга обчислень → вузли → callback» замикається на цьому",
     "репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить",
@@ -191,6 +191,54 @@ export type Genovault = {
       ]
     },
     {
+      "name": "initFrequenciesCloseDatasetCompDef",
+      "docs": [
+        "Визначення для `frequencies_close_dataset` — оголошення внеску датасету."
+      ],
+      "discriminator": [
+        99,
+        139,
+        207,
+        152,
+        85,
+        92,
+        20,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mxeAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount",
+          "writable": true
+        },
+        {
+          "name": "addressLookupTable",
+          "writable": true
+        },
+        {
+          "name": "lutProgram",
+          "address": "AddressLookupTab1e1111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initFrequenciesFoldCompDef",
       "docs": [
         "Визначення для `frequencies_fold` — згортки батча записів."
@@ -243,8 +291,8 @@ export type Genovault = {
       "docs": [
         "Розгортання визначення обчислення для `frequencies_init`.",
         "",
-        "Визначень три, бо в Arcium кожен контур — окремий акаунт, і без нього",
-        "обчислення не поставити в чергу. Розгортаються один раз на мережу."
+        "Визначень чотири, бо в Arcium кожен контур — окремий акаунт, і без",
+        "нього обчислення не поставити в чергу. Розгортаються один раз на мережу."
       ],
       "discriminator": [
         24,
@@ -2776,8 +2824,8 @@ export const IDL: Genovault = {
   "docs": [
     "Програма GenoVault.",
     "",
-    "Рецепт «частоти й розподіли» (`T018`) живе в `encrypted-ixs` трьома",
-    "контурами, і тут розгортаються їхні визначення обчислень. Виклик",
+    "Рецепт «частоти й розподіли» (`T018`, `T019`) живе в `encrypted-ixs`",
+    "чотирма контурами, і тут розгортаються їхні визначення обчислень. Виклик",
     "`frequencies_init` поки не належить жодному прогону — він доводить, що",
     "ланцюг «черга обчислень → вузли → callback» замикається на цьому",
     "репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить",
@@ -2949,6 +2997,54 @@ export const IDL: Genovault = {
       ]
     },
     {
+      "name": "initFrequenciesCloseDatasetCompDef",
+      "docs": [
+        "Визначення для `frequencies_close_dataset` — оголошення внеску датасету."
+      ],
+      "discriminator": [
+        99,
+        139,
+        207,
+        152,
+        85,
+        92,
+        20,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mxeAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount",
+          "writable": true
+        },
+        {
+          "name": "addressLookupTable",
+          "writable": true
+        },
+        {
+          "name": "lutProgram",
+          "address": "AddressLookupTab1e1111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initFrequenciesFoldCompDef",
       "docs": [
         "Визначення для `frequencies_fold` — згортки батча записів."
@@ -3001,8 +3097,8 @@ export const IDL: Genovault = {
       "docs": [
         "Розгортання визначення обчислення для `frequencies_init`.",
         "",
-        "Визначень три, бо в Arcium кожен контур — окремий акаунт, і без нього",
-        "обчислення не поставити в чергу. Розгортаються один раз на мережу."
+        "Визначень чотири, бо в Arcium кожен контур — окремий акаунт, і без",
+        "нього обчислення не поставити в чергу. Розгортаються один раз на мережу."
       ],
       "discriminator": [
         24,
