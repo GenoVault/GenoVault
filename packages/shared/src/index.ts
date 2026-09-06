@@ -1,5 +1,22 @@
 export { decodeBase58 } from './base58.ts'
 export { contentHash } from './content-hash.ts'
+export type {
+  DatasetField,
+  DatasetMetadata,
+  DatasetProvenance,
+  DatasetStatistics,
+  RegisterDatasetRequest,
+} from './dataset-metadata.ts'
+export {
+  DATASET_SOURCES,
+  datasetFieldSchema,
+  datasetMetadataSchema,
+  datasetProvenanceSchema,
+  datasetStatisticsSchema,
+  MAX_MARKERS,
+  MIN_COHORT,
+  registerDatasetRequestSchema,
+} from './dataset-metadata.ts'
 export type { EnvelopeHeader, Frame } from './envelope.ts'
 export {
   DatasetEnvelopeError,
