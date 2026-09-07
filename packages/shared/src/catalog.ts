@@ -11,6 +11,7 @@ import {
   pricePer1kSchema,
   recordCountSchema,
   solanaAddressSchema,
+  u64StringSchema,
 } from './primitives.ts'
 
 /**
@@ -27,13 +28,9 @@ import {
  */
 
 /**
- * Ціни й кількості їдуть рядками, не числами.
- *
- * `pricePer1k` — u64, а `JSON.parse` зводить числа до `double` і мовчки
- * округлює все, що більше за 2^53. Читач, який хоче арифметики, бере `BigInt`
- * від рядка; читач, який хоче показати, показує рядок.
+ * Ціни й кількості їдуть рядками, не числами — див. `u64StringSchema`.
  */
-const u64Schema = z.string().regex(/^\d+$/, 'очікувалось ціле число рядком')
+const u64Schema = u64StringSchema
 
 /**
  * Картка датасету в переліку.

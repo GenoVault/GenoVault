@@ -104,3 +104,15 @@ export const contentHashSchema = z
   .transform((value) => value as ContentHash)
 
 export type ContentHash = Brand<string, 'ContentHash'>
+
+/**
+ * Ціле u64 рядком — так суми переживають JSON.
+ *
+ * `JSON.parse` зводить числа до `double` і мовчки округлює все, що більше за
+ * 2^53, а ціни й нарахування — це u64. Читач, який хоче арифметики, бере
+ * `BigInt` від рядка; читач, який хоче показати, показує рядок.
+ *
+ * Схема живе тут, а не в модулі відповідей, бо стосується не каталогу і не
+ * квоти, а того, як число взагалі перетинає межу.
+ */
+export const u64StringSchema = z.string().regex(/^\d+$/, 'очікувалось ціле число рядком')

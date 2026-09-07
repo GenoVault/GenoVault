@@ -12,6 +12,9 @@ const STATUS_BY_CODE: Record<ApiErrorCode, ContentfulStatusCode> = {
   // 403 відрізняє «тобі не можна» від «запит поламаний» (FR-008).
   CONSENT_VIOLATION: 403,
   INSUFFICIENT_ESCROW: 409,
+  // 503, а не 500: відповідь залежить від чужого вузла, а не від нашого коду.
+  // Клієнт має право повторити запит, і саме це каже 503.
+  UPSTREAM_UNAVAILABLE: 503,
 }
 
 export function fail(

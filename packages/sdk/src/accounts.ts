@@ -149,3 +149,30 @@ export async function fetchPlatformConfig(
   const raw = await program.account.platformConfig.fetchNullable(address)
   return raw === null ? null : decodePlatformConfig(raw)
 }
+
+/**
+ * Читання пачкою — один `getMultipleAccounts` замість `n` запитів.
+ *
+ * Прогін вміщає до 50 датасетів (`MAX_RUN_DATASETS`), і квота на такий пул
+ * читанням по одному коштувала б 50 обходів мережі. Anchor сам ріже список на
+ * порції, які приймає RPC, тож викликачу не треба знати цю межу.
+ *
+ * Порядок відповіді збігається з порядком запиту, і `null` на місці
+ * відсутнього акаунта лишається — саме за ним видно, який датасет ще не
+ * зареєстровано.
+ */
+export async function fetchDatasets(
+  program: GenoVaultProgram,
+  addresses: PublicKey[],
+): Promise<(DatasetAccount | null)[]> {
+  const raw = await program.account.dataset.fetchMultiple(addresses)
+  return raw.map((account) => (account === null ? null : decodeDataset(account)))
+}
+
+export async function fetchConsents(
+  program: GenoVaultProgram,
+  addresses: PublicKey[],
+): Promise<(ConsentAccount | null)[]> {
+  const raw = await program.account.consent.fetchMultiple(addresses)
+  return raw.map((account) => (account === null ? null : decodeConsent(account)))
+}

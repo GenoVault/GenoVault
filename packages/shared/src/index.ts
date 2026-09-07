@@ -19,6 +19,30 @@ export {
   declaredStatisticsSchema,
   verificationBadgeViewSchema,
 } from './catalog.ts'
+export type {
+  BuyerCategoryName,
+  ConsentRequest,
+  ConsentState,
+  ConsentViolation,
+  UseTypeName,
+} from './consent.ts'
+export {
+  BUYER_CATEGORIES,
+  BUYER_CATEGORY_ALL,
+  BUYER_CATEGORY_NAMES,
+  buyerCategoryBit,
+  buyerCategorySchema,
+  CONSENT_VIOLATIONS,
+  checkConsent,
+  effectiveUses,
+  namedCategories,
+  namedUses,
+  USE_TYPE_ALL,
+  USE_TYPE_NAMES,
+  USE_TYPES,
+  useTypeBit,
+  useTypeSchema,
+} from './consent.ts'
 export { contentHash } from './content-hash.ts'
 export type {
   DatasetField,
@@ -77,4 +101,38 @@ export {
   SOLANA_ADDRESS_BYTES,
   solanaAddressSchema,
   tokenAmountSchema,
+  u64StringSchema,
 } from './primitives.ts'
+export type {
+  QuoteBlocker,
+  QuoteIneligibleReason,
+  QuoteLine,
+  RunDatasetRef,
+  RunQuote,
+  RunQuoteRequest,
+} from './quote.ts'
+export {
+  datasetUpperBound,
+  MAX_RUN_DATASETS,
+  poolUpperBound,
+  QUOTE_BLOCKERS,
+  QUOTE_INELIGIBLE_REASONS,
+  QuoteOverflowError,
+  quoteLineSchema,
+  RECORDS_PER_PRICE_UNIT,
+  runDatasetRefSchema,
+  runQuoteRequestSchema,
+  runQuoteSchema,
+} from './quote.ts'
+export type { FrequenciesParams, Recipe } from './recipes.ts'
+export {
+  AGE_MAX,
+  AGE_MIN,
+  encodeFrequenciesFilters,
+  FILTER_ANY,
+  FREQUENCIES_RECIPE_ID,
+  findRecipe,
+  frequenciesParamsSchema,
+  RECIPES,
+  recipeIdSchema,
+} from './recipes.ts'

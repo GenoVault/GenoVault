@@ -10,7 +10,9 @@ export {
   decodeDataset,
   decodePlatformConfig,
   fetchConsent,
+  fetchConsents,
   fetchDataset,
+  fetchDatasets,
   fetchPlatformConfig,
 } from './accounts.ts'
 export { bytesToHash, fromBn, fromBnOption, hashToBytes, toBn, U64_MAX } from './convert.ts'

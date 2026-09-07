@@ -1,8 +1,14 @@
 import { BN } from '@anchor-lang/core'
 import { Connection, Keypair, PublicKey } from '@solana/web3.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ZodError } from 'zod'
-import { decodeConsent, decodeDataset, decodePlatformConfig } from '../src/accounts.ts'
+import {
+  decodeConsent,
+  decodeDataset,
+  decodePlatformConfig,
+  fetchConsents,
+  fetchDatasets,
+} from '../src/accounts.ts'
 import { bytesToHash, fromBnOption, hashToBytes, toBn, U64_MAX } from '../src/convert.ts'
 import { createProgram } from '../src/program.ts'
 
@@ -33,6 +39,18 @@ const DATASET_FIELDS = {
   status: { active: {} },
   verifiedBadge: null,
   bump: 254,
+}
+
+const CONSENT_FIELDS = {
+  dataset: OWNER,
+  version: 1,
+  allowedUses: 0b0011,
+  forbiddenUses: 0b0100,
+  buyerCategories: 0b0001,
+  expiresAt: null,
+  revokedAt: null,
+  prevVersion: null,
+  bump: 253,
 }
 
 describe('декодування акаунтів', () => {
@@ -168,5 +186,55 @@ describe('перетворення на межі з Anchor', () => {
     expect(fromBnOption(new BN('1700000000'))).toBe(1_700_000_000n)
     expect(() => fromBnOption('1700000000')).toThrow(TypeError)
     expect(() => fromBnOption(1_700_000_000)).toThrow(TypeError)
+  })
+})
+
+describe('читання пачкою', () => {
+  /**
+   * Мережа тут підставна, і перевіряється не вона.
+   *
+   * Пакетне читання може зіпсувати рівно дві речі, і обидві мовчазні: збити
+   * порядок і загубити `null`. Перше віддало б ціни не тим датасетам, друге
+   * перетворило б незареєстрований датасет на сусідній.
+   */
+  it('зберігає порядок і `null` на місці відсутнього акаунта', async () => {
+    const encoded = await program.coder.accounts.encode('dataset', DATASET_FIELDS)
+    const decoded = program.coder.accounts.decode('dataset', encoded)
+
+    const fetchMultiple = vi
+      .spyOn(program.account.dataset, 'fetchMultiple')
+      .mockResolvedValue([decoded, null, decoded])
+
+    const accounts = await fetchDatasets(program, [OWNER, OWNER, OWNER])
+
+    expect(accounts).toHaveLength(3)
+    expect(accounts[0]?.datasetId).toBe('cohort-alpha')
+    expect(accounts[1]).toBeNull()
+    expect(accounts[2]?.pricePer1k).toBe(250_000n)
+    // Один обхід мережі на будь-який розмір пулу — заради цього все й робилось.
+    expect(fetchMultiple).toHaveBeenCalledTimes(1)
+
+    fetchMultiple.mockRestore()
+  })
+
+  it('порожній список не звертається до мережі даремно', async () => {
+    const fetchMultiple = vi.spyOn(program.account.consent, 'fetchMultiple').mockResolvedValue([])
+
+    expect(await fetchConsents(program, [])).toEqual([])
+    fetchMultiple.mockRestore()
+  })
+
+  it('згоди декодуються так само, як поодинці', async () => {
+    const encoded = await program.coder.accounts.encode('consent', CONSENT_FIELDS)
+    const decoded = program.coder.accounts.decode('consent', encoded)
+
+    const fetchMultiple = vi
+      .spyOn(program.account.consent, 'fetchMultiple')
+      .mockResolvedValue([decoded])
+
+    const [consent] = await fetchConsents(program, [OWNER])
+
+    expect(consent).toEqual(decodeConsent(decoded))
+    fetchMultiple.mockRestore()
   })
 })

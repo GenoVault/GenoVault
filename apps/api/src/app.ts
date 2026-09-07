@@ -4,10 +4,11 @@ import { ZodError } from 'zod'
 import { fail } from './errors.ts'
 import type { AuthVariables } from './middleware/auth.ts'
 import { datasetRoutes } from './routes/datasets.ts'
+import { runRoutes } from './routes/runs.ts'
 import { sessionRoutes } from './routes/session.ts'
 import type { TokenVerifier } from './services/auth.ts'
 import type { CatalogStore } from './services/catalog.ts'
-import type { ChainReader, RegistrationBuilder } from './services/chain.ts'
+import type { ChainReader, QuoteChainReader, RegistrationBuilder } from './services/chain.ts'
 import type { StorageDriver } from './services/storage.ts'
 
 export interface AppDeps {
@@ -27,6 +28,12 @@ export interface AppDeps {
   storage?: StorageDriver | undefined
   buildRegistration?: RegistrationBuilder | undefined
   readChain?: ChainReader | undefined
+  /**
+   * Пакетний читач для квоти. Окремо від `readChain`, бо це інша форма
+   * питання: картка питає про один датасет і переживає відсутню мережу,
+   * квота питає про пул і без мережі не існує (`T023`).
+   */
+  readQuoteChain?: QuoteChainReader | undefined
   baseUrl?: string | undefined
   maxCiphertextBytes?: number | undefined
 }
@@ -47,6 +54,14 @@ export function createApp(deps: AppDeps = {}) {
       readChain: deps.readChain,
       baseUrl: deps.baseUrl,
       maxCiphertextBytes: deps.maxCiphertextBytes,
+    }),
+  )
+  app.route(
+    '/',
+    runRoutes({
+      verify: deps.verifyAccessToken,
+      catalog: deps.catalog,
+      readQuoteChain: deps.readQuoteChain,
     }),
   )
 

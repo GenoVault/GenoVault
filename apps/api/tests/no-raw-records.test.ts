@@ -1,11 +1,14 @@
 import { Buffer } from 'node:buffer'
 import {
+  BUYER_CATEGORIES,
   contentHash,
   LIMB_BYTES,
   NONCE_BYTES,
+  pricePer1kSchema,
   SCALAR_FIELD_COUNT,
   serializeEnvelope,
   solanaAddressSchema,
+  USE_TYPES,
   X25519_KEY_BYTES,
 } from '@genovault/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -136,6 +139,27 @@ beforeEach(async () => {
     storage: memoryStorage(),
     buildRegistration: createRegistrationBuilder('http://127.0.0.1:8899'),
     readChain: vi.fn(async () => ({ state: 'unregistered' }) as const),
+    readQuoteChain: vi.fn(async (refs: readonly { datasetId: string }[]) => ({
+      feeBps: 700,
+      mint: solanaAddressSchema.parse('SysvarC1ock11111111111111111111111111111111'),
+      paused: false,
+      now: 1_735_689_600n,
+      datasets: refs.map(() => ({
+        datasetAddress: OWNER,
+        dataset: {
+          status: 'active' as const,
+          recordCountClaimed: BigInt(RECORDS),
+          pricePer1k: pricePer1kSchema.parse(1_500_000n),
+        },
+        consent: {
+          allowedUses: USE_TYPES.oncology,
+          forbiddenUses: 0,
+          buyerCategories: BUYER_CATEGORIES.academic,
+          expiresAt: null,
+          revoked: false,
+        },
+      })),
+    })),
     baseUrl: 'http://127.0.0.1:8879',
   })
 
@@ -241,6 +265,38 @@ function probes(): { label: string; route: string; run: () => Promise<Response> 
           method: 'PUT',
           headers: auth,
           body: ciphertext.slice(0, 40),
+        }),
+    },
+    {
+      label: 'квота на прогін',
+      route: 'POST /runs/quote',
+      run: async () =>
+        app.request('/runs/quote', {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            recipeId: 1,
+            useType: 'oncology',
+            buyerCategory: 'academic',
+            datasets: [{ owner: OWNER, datasetId: DATASET_ID }],
+            params: {},
+          }),
+        }),
+    },
+    {
+      label: 'квота з невідомим рецептом',
+      route: 'POST /runs/quote',
+      run: async () =>
+        app.request('/runs/quote', {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            recipeId: 7,
+            useType: 'oncology',
+            buyerCategory: 'academic',
+            datasets: [{ owner: OWNER, datasetId: DATASET_ID }],
+            params: {},
+          }),
         }),
     },
     {

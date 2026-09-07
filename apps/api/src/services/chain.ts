@@ -4,17 +4,23 @@ import {
   createProgram,
   datasetAddress,
   fetchConsent,
+  fetchConsents,
   fetchDataset,
+  fetchDatasets,
+  fetchPlatformConfig,
+  platformConfigAddress,
   registerDatasetIx,
 } from '@genovault/sdk'
 import type {
   ChainView,
+  ConsentState,
   ContentHash,
   DatasetId,
   PricePer1k,
+  RunDatasetRef,
   SolanaAddress,
 } from '@genovault/shared'
-import { chainViewSchema, solanaAddressSchema } from '@genovault/shared'
+import { chainViewSchema, pricePer1kSchema, solanaAddressSchema } from '@genovault/shared'
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js'
 
 /**
@@ -186,6 +192,152 @@ export function createChainReader(rpcUrl: string): ChainReader {
       // Текст помилки назовні не йде: він регулярно містить адресу RPC, а це
       // деталь розгортання. Фронту досить знати, що зараз не вийшло.
       return chainViewSchema.parse({ state: 'unavailable' })
+    }
+  }
+}
+
+/**
+ * Стан мережі, потрібний квоті (`T023`).
+ *
+ * Читається пачкою, а не по датасету: пул вміщає до 50 датасетів, і 50 обходів
+ * мережі на одну відповідь зробили б квоту повільнішою за сам прогін. Виходить
+ * чотири запити на будь-який розмір пулу — датасети, згоди, конфігурація і час
+ * ланцюга, — і три перші не залежать від довжини списку.
+ */
+
+/** Чому квота не має чисел. Розрізняється, бо це різні відповіді клієнту. */
+export type ChainFailureReason =
+  /** Вузол не відповів. Клієнт має право повторити. */
+  | 'unavailable'
+  /** Програма в мережі є, але `PlatformConfig` немає — це наше розгортання. */
+  | 'not-initialized'
+
+export class ChainStateError extends Error {
+  override readonly name = 'ChainStateError'
+  readonly reason: ChainFailureReason
+
+  constructor(reason: ChainFailureReason, message: string) {
+    super(message)
+    this.reason = reason
+  }
+}
+
+export interface QuoteDatasetState {
+  datasetAddress: SolanaAddress
+  /** `null` — датасет ще не зареєстровано в мережі. */
+  dataset: {
+    status: 'active' | 'retired'
+    recordCountClaimed: bigint
+    pricePer1k: PricePer1k
+  } | null
+  /** `null` — згоди немає: або датасету немає, або власник її ще не задав. */
+  consent: ConsentState | null
+}
+
+export interface QuoteChainState {
+  feeBps: number
+  mint: SolanaAddress
+  paused: boolean
+  /**
+   * Час ланцюга в секундах Unix.
+   *
+   * Строк згоди перевіряється саме ним, а не годинником сервера (`FR-005`):
+   * відхиляти прогін буде програма, і в неї є рівно цей час. Годинник, що
+   * спішить на хвилину, дав би відмову там, де ланцюг пропустив би.
+   */
+  now: bigint
+  datasets: QuoteDatasetState[]
+}
+
+export type QuoteChainReader = (refs: readonly RunDatasetRef[]) => Promise<QuoteChainState>
+
+export function createQuoteChainReader(rpcUrl: string): QuoteChainReader {
+  const connection = new Connection(rpcUrl)
+  const program = createProgram({ connection })
+
+  return async (refs) => {
+    const addresses = refs.map(
+      (ref) => datasetAddress(new PublicKey(ref.owner), ref.datasetId, program.programId).address,
+    )
+
+    let datasets: Awaited<ReturnType<typeof fetchDatasets>>
+    let config: Awaited<ReturnType<typeof fetchPlatformConfig>>
+    let blockTime: number | null
+    try {
+      const slot = await connection.getSlot()
+      ;[datasets, config, blockTime] = await Promise.all([
+        fetchDatasets(program, addresses),
+        fetchPlatformConfig(program, platformConfigAddress(program.programId).address),
+        connection.getBlockTime(slot),
+      ])
+    } catch {
+      // Текст помилки назовні не йде: він регулярно містить адресу RPC, а це
+      // деталь розгортання.
+      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+    }
+
+    if (blockTime === null) {
+      throw new ChainStateError('unavailable', 'час ланцюга недоступний')
+    }
+    if (config === null) {
+      throw new ChainStateError('not-initialized', 'конфігурації платформи немає в мережі')
+    }
+
+    // Адреса згоди деривується з номера чинної версії, тож ланцюг версій
+    // обходити не треба. Датасет без згоди в пачку не потрапляє — інакше
+    // довелося б класти в неї заглушку й розбирати її на тому боці.
+    const consentIndex = new Map<number, number>()
+    const consentAddresses: PublicKey[] = []
+    datasets.forEach((dataset, index) => {
+      if (dataset === null || dataset.consentVersion === 0) return
+      const address = addresses[index]
+      if (address === undefined) return
+      consentIndex.set(index, consentAddresses.length)
+      consentAddresses.push(
+        consentAddress(address, dataset.consentVersion, program.programId).address,
+      )
+    })
+
+    let consents: Awaited<ReturnType<typeof fetchConsents>> = []
+    if (consentAddresses.length > 0) {
+      try {
+        consents = await fetchConsents(program, consentAddresses)
+      } catch {
+        throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+      }
+    }
+
+    return {
+      feeBps: config.feeBps,
+      mint: solanaAddressSchema.parse(config.mint.toBase58()),
+      paused: config.paused,
+      now: BigInt(blockTime),
+      datasets: datasets.map((dataset, index) => {
+        const slot = consentIndex.get(index)
+        const consent = slot === undefined ? null : (consents[slot] ?? null)
+
+        return {
+          datasetAddress: solanaAddressSchema.parse(addresses[index]?.toBase58()),
+          dataset:
+            dataset === null
+              ? null
+              : {
+                  status: dataset.status,
+                  recordCountClaimed: dataset.recordCountClaimed,
+                  pricePer1k: pricePer1kSchema.parse(dataset.pricePer1k),
+                },
+          consent:
+            consent === null
+              ? null
+              : {
+                  allowedUses: consent.allowedUses,
+                  forbiddenUses: consent.forbiddenUses,
+                  buyerCategories: consent.buyerCategories,
+                  expiresAt: consent.expiresAt,
+                  revoked: consent.revokedAt !== null,
+                },
+        }
+      }),
     }
   }
 }
