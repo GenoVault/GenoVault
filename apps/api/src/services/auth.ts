@@ -36,9 +36,16 @@ const SIGNATURE_BYTES = 64
  */
 export class AuthError extends Error {
   override readonly name = 'AuthError'
+  readonly reason: string
 
-  constructor(readonly reason: string) {
+  // Поле присвоюється в тілі, а не оголошується параметром-властивістю:
+  // `node --experimental-strip-types` знімає типи, але коду не породжує, тож
+  // `constructor(readonly reason: string)` валить процес ще на завантаженні
+  // модуля — а саме так запускаються `dev` і `start`. Ані vitest, ані `tsc`
+  // цього не бачать: обидва такий синтаксис розуміють.
+  constructor(reason: string) {
     super(reason)
+    this.reason = reason
   }
 }
 

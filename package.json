@@ -14,7 +14,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "idl:check": "node scripts/sync-idl.mjs --check",
-    "gate": "pnpm idl:check && pnpm lint && pnpm typecheck && pnpm test"
+    "gate": "pnpm idl:check && pnpm strip:check && pnpm lint && pnpm typecheck && pnpm test",
+    "strip:check": "node --disable-warning=ExperimentalWarning scripts/check-strip-types.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",
