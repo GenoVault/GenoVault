@@ -1,17 +1,24 @@
 import {
   contentHash,
+  type DatasetCard,
   type DatasetId,
   datasetIdSchema,
+  datasetQuerySchema,
   inspectEnvelope,
   registerDatasetRequestSchema,
   type SolanaAddress,
+  solanaAddressSchema,
 } from '@genovault/shared'
 import { Hono } from 'hono'
 import { fail } from '../errors.ts'
 import { type AuthVariables, requireAuth } from '../middleware/auth.ts'
 import type { TokenVerifier } from '../services/auth.ts'
 import { type CatalogStore, type DatasetRecord, now } from '../services/catalog.ts'
-import type { RegistrationBuilder } from '../services/chain.ts'
+import {
+  type ChainReader,
+  deriveDatasetAddress,
+  type RegistrationBuilder,
+} from '../services/chain.ts'
 import { type StorageDriver, storeCiphertext } from '../services/storage.ts'
 
 /**
@@ -30,16 +37,23 @@ import { type StorageDriver, storeCiphertext } from '../services/storage.ts'
  * і який у нього відбиток.
  */
 
+/**
+ * Скрізь `| undefined` явно.
+ *
+ * Під `exactOptionalPropertyTypes` «поля немає» і «поле є, але порожнє» —
+ * різні типи, а `createApp` передає саме друге. Без цього кожне поле довелось
+ * би проносити умовним спредом, і проводка перетворюється на десять рядків,
+ * у яких легко загубити одне.
+ */
 export interface DatasetRoutesDeps {
-  // `| undefined` явно: під `exactOptionalPropertyTypes` «поля немає» і «поле
-  // є, але порожнє» — різні типи, а `createApp` передає саме друге.
   verify?: TokenVerifier | undefined
-  catalog?: CatalogStore
-  storage?: StorageDriver
-  buildRegistration?: RegistrationBuilder
+  catalog?: CatalogStore | undefined
+  storage?: StorageDriver | undefined
+  buildRegistration?: RegistrationBuilder | undefined
+  readChain?: ChainReader | undefined
   /** Звідки збирається `uploadUrl` у відповіді. */
-  baseUrl?: string
-  maxCiphertextBytes?: number
+  baseUrl?: string | undefined
+  maxCiphertextBytes?: number | undefined
 }
 
 /**
@@ -58,6 +72,7 @@ interface DatasetServices {
   catalog: CatalogStore
   storage: StorageDriver
   buildRegistration: RegistrationBuilder
+  readChain: ChainReader
   baseUrl: string
   maxCiphertextBytes: number
 }
@@ -70,14 +85,20 @@ interface DatasetServices {
  * обидві відповіді кажуть клієнту виправити те, що ціле.
  */
 function configure(deps: DatasetRoutesDeps): DatasetServices | undefined {
-  const { catalog, storage, buildRegistration } = deps
-  if (catalog === undefined || storage === undefined || buildRegistration === undefined) {
+  const { catalog, storage, buildRegistration, readChain } = deps
+  if (
+    catalog === undefined ||
+    storage === undefined ||
+    buildRegistration === undefined ||
+    readChain === undefined
+  ) {
     return undefined
   }
   return {
     catalog,
     storage,
     buildRegistration,
+    readChain,
     baseUrl: deps.baseUrl ?? DEFAULT_BASE_URL,
     maxCiphertextBytes: deps.maxCiphertextBytes ?? DEFAULT_MAX_CIPHERTEXT_BYTES,
   }
@@ -247,6 +268,97 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
     })
   })
 
+  /**
+   * Перелік каталогу (`FR-002`).
+   *
+   * Датасети без байтів у переліку не видно нікому, крім їхнього ж власника:
+   * картка з `content_hash`, за яким нічого не лежить, — це обіцянка вмісту, а
+   * не вміст, і покупець, який замовить по ній прогін, отримає відмову вже
+   * після оплати. Свої ж власник має бачити — інакше він не знає, що аплоад
+   * обірвався.
+   *
+   * Стану ланцюга тут немає навмисно: читання мережі на кожен із двадцяти
+   * рядків зробило б `SC-011` («перший екран каталогу < 2 с») недосяжним за
+   * побудовою. Згода й бейдж живуть у картці окремого датасету.
+   */
+  routes.get('/datasets', requireAuth(deps.verify), async (c) => {
+    if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+
+    const query = datasetQuerySchema.parse(
+      Object.fromEntries(new URL(c.req.url).searchParams.entries()),
+    )
+    const actor = c.get('actor')
+    const self = await services.catalog.ownerOf(actor.userId)
+
+    // `owner=me` — це не адреса, а «мої». Сесія без прив'язаної адреси нічим
+    // не володіє, і перелік для неї порожній, а не «усі датасети».
+    const requested = query.owner === 'me' ? self : query.owner
+    if (query.owner === 'me' && self === undefined) {
+      return c.json({ items: [], total: 0, limit: query.limit, offset: query.offset })
+    }
+
+    const page = await services.catalog.listDatasets({
+      ...(requested === undefined ? {} : { owner: requested }),
+      ...(query.source === undefined ? {} : { source: query.source }),
+      ...(query.minRecords === undefined ? {} : { minRecords: query.minRecords }),
+      ...(query.maxPricePer1k === undefined ? {} : { maxPricePer1k: query.maxPricePer1k }),
+      ...(query.q === undefined ? {} : { q: query.q.toLowerCase() }),
+      includePending: requested !== undefined && requested === self,
+      limit: query.limit,
+      offset: query.offset,
+    })
+
+    return c.json({
+      items: page.items.map(toCard),
+      total: page.total,
+      limit: query.limit,
+      offset: query.offset,
+    })
+  })
+
+  /**
+   * Картка окремого датасету (`FR-002`, `FR-024`).
+   *
+   * Адреса власника стоїть у шляху, бо ідентифікатор унікальний лише в межах
+   * власника: seeds PDA — `["dataset", owner, dataset_id]`. Саме заради цього
+   * `dataset_id` іде в деривацію як є, з межею в 32 символи, — щоб адресу
+   * датасету можна було відновити з URL каталогу без жодного запиту до мережі.
+   * URL без власника вимагав би зворотного індексу «ідентифікатор → власник»,
+   * тобто ще одного місця, де правда може розійтися з ланцюгом.
+   */
+  routes.get('/datasets/:owner/:id', requireAuth(deps.verify), async (c) => {
+    if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+
+    const owner = solanaAddressSchema.parse(c.req.param('owner'))
+    const datasetId = datasetIdSchema.parse(c.req.param('id'))
+
+    const record = await services.catalog.getDataset(owner, datasetId)
+    const actor = c.get('actor')
+    const self = await services.catalog.ownerOf(actor.userId)
+
+    // Незавантажений датасет видно тільки власнику — тією ж відповіддю, що й
+    // неіснуючий, бо інакше 404 і 403 разом дають перелік чужих чернеток.
+    if (record === undefined || (record.status !== 'stored' && record.owner !== self)) {
+      return fail(c, 'NOT_FOUND', 'датасет не знайдено')
+    }
+
+    const chain = await services.readChain(record.owner, record.datasetId)
+
+    return c.json({
+      ...toCard(record),
+      schema: record.metadata.schema,
+      statistics:
+        record.metadata.statistics === undefined
+          ? null
+          : // Походження чисел їде разом із числами: їх заявив власник, і жодна
+            // перевірка їх не чіпала. MPC рахує інше й під гарантією.
+            { ...record.metadata.statistics, declaredBy: 'owner', verified: false },
+      provenance: record.metadata.provenance,
+      contentHash: record.contentHash,
+      ciphertextStored: record.status === 'stored',
+      chain,
+    })
+  })
   return routes
 }
 
@@ -264,6 +376,30 @@ async function resolveOwnDataset(
 ): Promise<DatasetRecord | undefined> {
   const owner: SolanaAddress | undefined = await catalog.ownerOf(userId)
   return owner === undefined ? undefined : catalog.getDataset(owner, datasetId)
+}
+
+/**
+ * Рядок каталогу → картка.
+ *
+ * Перетворення в одному місці, бо перелік і окремий датасет мають показувати
+ * те саме: розбіжність між ними читалася б як зміна датасету між екранами.
+ * Ціна їде рядком — `JSON.parse` зводить числа до `double` і мовчки округлює
+ * усе, що більше за 2^53, а `price_per_1k` це u64.
+ */
+function toCard(record: DatasetRecord): DatasetCard {
+  return {
+    datasetId: record.datasetId,
+    owner: record.owner,
+    datasetAddress: deriveDatasetAddress(record.owner, record.datasetId),
+    title: record.metadata.title,
+    description: record.metadata.description,
+    recordCount: record.metadata.recordCount,
+    markerCount: record.metadata.markerCount,
+    source: record.metadata.provenance.source,
+    pricePer1k: record.pricePer1k.toString(),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }
 }
 
 function uploadUrl(baseUrl: string, datasetId: DatasetId): string {

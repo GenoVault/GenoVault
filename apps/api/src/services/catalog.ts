@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import {
   contentHashSchema,
   type DatasetId,
+  type DatasetMetadata,
   datasetIdSchema,
   datasetMetadataSchema,
   pricePer1kSchema,
@@ -76,6 +77,78 @@ export interface CatalogStore {
   ownerOf(userId: string): Promise<SolanaAddress | undefined>
   getDataset(owner: SolanaAddress, datasetId: DatasetId): Promise<DatasetRecord | undefined>
   putDataset(record: DatasetRecord): Promise<void>
+  listDatasets(filter: DatasetFilter): Promise<DatasetPage>
+}
+
+/**
+ * Відбір для переліку.
+ *
+ * `includePending` окремим полем, а не виведеним із `owner`: рішення «чиї
+ * незавантажені датасети видно» ухвалює маршрут, який знає сесію, а сховище
+ * лише виконує. Драйвер, який сам вирішує, кому що показувати, — це друге
+ * місце з правилами доступу, і рано чи пізно вони розійдуться з першим.
+ */
+export interface DatasetFilter {
+  owner?: SolanaAddress
+  source?: DatasetMetadata['provenance']['source']
+  minRecords?: number
+  maxPricePer1k?: bigint
+  /** Підрядок у назві або описі, вже зведений до нижнього регістру. */
+  q?: string
+  includePending: boolean
+  limit: number
+  offset: number
+}
+
+export interface DatasetPage {
+  items: DatasetRecord[]
+  /** Скільки рядків задовольняє відбір — до застосування `limit`/`offset`. */
+  total: number
+}
+
+/**
+ * Відбір і сортування — спільні для обох драйверів.
+ *
+ * Живуть тут, а не в кожному драйвері, з тієї ж причини, з якої обидва
+ * перевіряються одним списком тверджень: два незалежні `filter` розійшлися б
+ * у дрібниці — регістрі пошуку, порядку за однакової дати — і помітити це
+ * було б нічим. Драйвер `postgres` (`T004`) цю функцію не використає, і саме
+ * тому її поведінка мусить бути описана тестами, а не кодом.
+ */
+export function selectDatasets(records: DatasetRecord[], filter: DatasetFilter): DatasetPage {
+  const matched = records
+    .filter((record) => {
+      if (!filter.includePending && record.status !== 'stored') return false
+      if (filter.owner !== undefined && record.owner !== filter.owner) return false
+      if (filter.source !== undefined && record.metadata.provenance.source !== filter.source) {
+        return false
+      }
+      if (filter.minRecords !== undefined && record.metadata.recordCount < filter.minRecords) {
+        return false
+      }
+      if (filter.maxPricePer1k !== undefined && record.pricePer1k > filter.maxPricePer1k) {
+        return false
+      }
+      if (filter.q !== undefined) {
+        const haystack = `${record.metadata.title}
+${record.metadata.description}`.toLowerCase()
+        if (!haystack.includes(filter.q)) return false
+      }
+      return true
+    })
+    // Найновіші перші. Ідентифікатор другим ключем не для краси: за однакової
+    // мітки часу порядок інакше залежить від драйвера, і посторінковість
+    // починає губити або двоїти рядки між сусідніми сторінками.
+    .sort((left, right) =>
+      left.createdAt === right.createdAt
+        ? left.datasetId.localeCompare(right.datasetId)
+        : right.createdAt.localeCompare(left.createdAt),
+    )
+
+  return {
+    items: matched.slice(filter.offset, filter.offset + filter.limit),
+    total: matched.length,
+  }
 }
 
 /**
@@ -157,6 +230,10 @@ export function memoryCatalog(): CatalogStore {
 
     async putDataset(record) {
       datasets.set(datasetKey(record.owner, record.datasetId), datasetRecordSchema.parse(record))
+    },
+
+    async listDatasets(filter) {
+      return selectDatasets([...datasets.values()], filter)
     },
   }
 }
@@ -256,6 +333,54 @@ export function fsCatalog(root: string): CatalogStore {
         throw new CatalogError(`не вдалося записати рядок каталогу: ${describe(error)}`)
       }
     },
+
+    /**
+     * Читає всі рядки й відбирає в пам'яті.
+     *
+     * Для драйвера, який існує до появи Postgres, це чесна ціна: каталог на
+     * цьому етапі — десятки датасетів, а не мільйони. Переносити відбір у
+     * файлову систему означало б будувати індекси, які `T004` викине.
+     */
+    async listDatasets(filter) {
+      const owners =
+        filter.owner === undefined ? await subdirectories(pathFor('datasets')) : [filter.owner]
+
+      const records: DatasetRecord[] = []
+      for (const owner of owners) {
+        for (const file of await jsonFiles(join(base, 'datasets', owner))) {
+          const stored = await readJson(join(base, 'datasets', owner, file))
+          if (stored === undefined) continue
+          const parsed = datasetRecordSchema.safeParse(stored)
+          if (!parsed.success) {
+            throw new CatalogError(`рядок каталогу ${owner}/${file} не проходить власну схему`)
+          }
+          records.push(parsed.data)
+        }
+      }
+
+      return selectDatasets(records, filter)
+    },
+  }
+}
+
+async function subdirectories(path: string): Promise<string[]> {
+  try {
+    const entries = await readdir(path, { withFileTypes: true })
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  } catch {
+    // Порожній каталог — це не збій: до першої реєстрації теки просто немає.
+    return []
+  }
+}
+
+async function jsonFiles(path: string): Promise<string[]> {
+  try {
+    const entries = await readdir(path, { withFileTypes: true })
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map((entry) => entry.name)
+  } catch {
+    return []
   }
 }
 

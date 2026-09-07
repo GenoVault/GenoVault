@@ -1,15 +1,22 @@
 import {
   apiErrorSchema,
+  type ChainView,
+  chainViewSchema,
   contentHash,
+  DATASET_LIST_LIMIT_MAX,
+  type DatasetId,
+  datasetDetailSchema,
   datasetIdSchema,
+  datasetListSchema,
   LIMB_BYTES,
   NONCE_BYTES,
   SCALAR_FIELD_COUNT,
+  type SolanaAddress,
   serializeEnvelope,
   solanaAddressSchema,
   X25519_KEY_BYTES,
 } from '@genovault/shared'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createApp } from '../src/app.ts'
 import { AuthError, type TokenVerifier } from '../src/services/auth.ts'
@@ -134,6 +141,41 @@ const verify: TokenVerifier = async (token) => {
   return { userId: USER, sessionId: 'sid-1', expiresAt: new Date(Date.now() + 60_000) }
 }
 
+/**
+ * Стан ланцюга підставний, і це єдиний спосіб перевірити картку тут.
+ *
+ * Живий `createChainReader` вимагав би піднятого валідатора з розгорнутою
+ * програмою — тобто перетворив би юніт-тест маршруту на інтеграційний, який
+ * мовчки зеленіє через `state: 'unavailable'`, коли валідатора немає. Що
+ * читач справді читає з мережі, доводить не цей файл.
+ */
+const CHAIN_REGISTERED = {
+  state: 'registered',
+  status: 'active',
+  version: 1,
+  contentHash: 'a'.repeat(64),
+  recordCountClaimed: String(RECORDS),
+  pricePer1k: '1500000',
+  consent: {
+    version: 1,
+    allowedUses: 3,
+    forbiddenUses: 0,
+    buyerCategories: 1,
+    expiresAt: null,
+    revoked: false,
+  },
+  verifiedBadge: {
+    verifier: OWNER,
+    verifiedAt: '1735689600',
+    kind: 'operator-attested',
+  },
+}
+
+const readChain = vi.fn(
+  async (_owner: SolanaAddress, _datasetId: DatasetId): Promise<ChainView> =>
+    chainViewSchema.parse(CHAIN_REGISTERED),
+)
+
 let catalog: CatalogStore
 let storage: ReturnType<typeof memoryStorage>
 let app: ReturnType<typeof createApp>
@@ -141,6 +183,10 @@ let app: ReturnType<typeof createApp>
 beforeEach(() => {
   catalog = memoryCatalog()
   storage = memoryStorage()
+  // `mockReset`, не `mockClear`: черга `mockResolvedValueOnce` переживає
+  // `clear` і протікає в наступний тест.
+  readChain.mockReset()
+  readChain.mockImplementation(async () => chainViewSchema.parse(CHAIN_REGISTERED))
   app = createApp({
     verifyAccessToken: verify,
     catalog,
@@ -148,6 +194,7 @@ beforeEach(() => {
     // Справжній збирач, а не заглушка: побудова інструкції з повністю заданими
     // акаунтами не робить мережевих викликів, і саме це тут варто довести.
     buildRegistration: createRegistrationBuilder('http://127.0.0.1:8899'),
+    readChain,
     baseUrl: 'http://127.0.0.1:8879',
   })
 })
@@ -192,6 +239,16 @@ async function put(bytes: Uint8Array, token = 'good', id = DATASET_ID): Promise<
     method: 'PUT',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/octet-stream' },
     body: bytes,
+  })
+}
+
+async function list(query = '', token = 'good'): Promise<Response> {
+  return app.request(`/datasets${query}`, { headers: { authorization: `Bearer ${token}` } })
+}
+
+async function detailOf(owner = OWNER, id = DATASET_ID, token = 'good'): Promise<Response> {
+  return app.request(`/datasets/${owner}/${id}`, {
+    headers: { authorization: `Bearer ${token}` },
   })
 }
 
@@ -372,6 +429,7 @@ describe('PUT /datasets/:id/ciphertext', () => {
       catalog,
       storage,
       buildRegistration: createRegistrationBuilder('http://127.0.0.1:8899'),
+      readChain,
       maxCiphertextBytes: 16,
     })
 
@@ -412,5 +470,219 @@ describe('PUT /datasets/:id/ciphertext', () => {
   it('відхиляє ідентифікатор, що не проходить схему', async () => {
     const response = await put(envelope(), 'good', 'ID_З_ВЕЛИКИХ' as typeof DATASET_ID)
     expect(response.status).toBe(400)
+  })
+})
+
+describe('GET /datasets', () => {
+  /** Три датасети двох власників: два залиті, один без байтів. */
+  async function seed(): Promise<void> {
+    const alpha = envelope()
+    await post(await body(alpha))
+    await put(alpha)
+
+    const beta = envelope(40, MARKERS, 3)
+    await post({
+      ...(await body(beta)),
+      datasetId: 'cohort-beta',
+      pricePer1k: '9000000',
+      metadata: metadata({
+        title: 'Когорта бета',
+        description: 'Біобанк, старша вибірка.',
+        recordCount: 40,
+        provenance: { source: 'biobank', collectedFrom: '2023-01-01', collectedTo: '2023-12-31' },
+      }),
+    })
+    await put(beta, 'good', datasetIdSchema.parse('cohort-beta'))
+
+    // Без `put`: заявлений, але байтів немає.
+    await post({ ...(await body(envelope(20, MARKERS, 7))), datasetId: 'cohort-draft' })
+  }
+
+  it('вимагає сесії', async () => {
+    expect((await app.request('/datasets')).status).toBe(401)
+  })
+
+  it('віддає лише залиті датасети', async () => {
+    await seed()
+    const page = datasetListSchema.parse(await (await list()).json())
+
+    expect(page.total).toBe(2)
+    expect(page.items.map((item) => item.datasetId).sort()).toEqual([DATASET_ID, 'cohort-beta'])
+  })
+
+  it('ховає чужі незавантажені датасети від покупця', async () => {
+    // Картка з `content_hash`, за яким нічого не лежить, — це обіцянка вмісту,
+    // а не вміст: покупець, що замовить по ній прогін, отримає відмову вже
+    // після оплати.
+    await seed()
+    const page = datasetListSchema.parse(await (await list('', 'other')).json())
+    expect(page.items.map((item) => item.datasetId)).not.toContain('cohort-draft')
+  })
+
+  it('показує власнику його ж незавантажені через owner=me', async () => {
+    // Інакше власник не дізнається, що аплоад обірвався.
+    await seed()
+    const page = datasetListSchema.parse(await (await list('?owner=me')).json())
+    expect(page.items.map((item) => item.datasetId)).toContain('cohort-draft')
+  })
+
+  it('віддає порожньо на owner=me для сесії без прив’язаної адреси', async () => {
+    await seed()
+    const page = datasetListSchema.parse(await (await list('?owner=me', 'other')).json())
+    expect(page).toMatchObject({ items: [], total: 0 })
+  })
+
+  it('не показує чужих незавантажених навіть на прямий запит адреси', async () => {
+    await seed()
+    const page = datasetListSchema.parse(await (await list(`?owner=${OWNER}`, 'other')).json())
+    expect(page.items.map((item) => item.datasetId).sort()).toEqual([DATASET_ID, 'cohort-beta'])
+  })
+
+  describe('відбір', () => {
+    beforeEach(seed)
+
+    it('за походженням', async () => {
+      const page = datasetListSchema.parse(await (await list('?source=biobank')).json())
+      expect(page.items.map((item) => item.datasetId)).toEqual(['cohort-beta'])
+    })
+
+    it('за мінімальною кількістю записів', async () => {
+      const page = datasetListSchema.parse(await (await list('?minRecords=20')).json())
+      expect(page.items.map((item) => item.datasetId)).toEqual(['cohort-beta'])
+    })
+
+    it('за стелею ціни', async () => {
+      const page = datasetListSchema.parse(await (await list('?maxPricePer1k=2000000')).json())
+      expect(page.items.map((item) => item.datasetId)).toEqual([DATASET_ID])
+    })
+
+    it('за підрядком без урахування регістру', async () => {
+      const page = datasetListSchema.parse(await (await list('?q=БІОБАНК')).json())
+      expect(page.items.map((item) => item.datasetId)).toEqual(['cohort-beta'])
+    })
+
+    it('відхиляє невідомий параметр', async () => {
+      // strictObject: параметр, якого схема не називає, — це або друкарська
+      // помилка, або спроба намацати відбір, якого немає.
+      expect((await list('?secret=1')).status).toBe(400)
+    })
+
+    it('відхиляє межу, більшу за стелю', async () => {
+      expect((await list(`?limit=${DATASET_LIST_LIMIT_MAX + 1}`)).status).toBe(400)
+    })
+  })
+
+  it('гортає сторінками, не гублячи й не двоячи рядків', async () => {
+    await seed()
+    const first = datasetListSchema.parse(await (await list('?limit=1&offset=0')).json())
+    const second = datasetListSchema.parse(await (await list('?limit=1&offset=1')).json())
+
+    expect(first.total).toBe(2)
+    expect(first.items).toHaveLength(1)
+    expect(first.items[0]?.datasetId).not.toBe(second.items[0]?.datasetId)
+  })
+
+  it('не несе в картці ані схеми, ані статистики, ані стану ланцюга', async () => {
+    // Перелік читається пачками, і читання мережі на кожен рядок зробило б
+    // `SC-011` недосяжним за побудовою.
+    await seed()
+    const page = datasetListSchema.parse(await (await list()).json())
+    expect(page.items[0]).not.toHaveProperty('statistics')
+    expect(page.items[0]).not.toHaveProperty('chain')
+    expect(readChain).not.toHaveBeenCalled()
+  })
+
+  it('віддає ціну рядком, а не числом', async () => {
+    // u64 не вміщається в `double`, а `JSON.parse` округлює мовчки.
+    await seed()
+    const raw: unknown = JSON.parse(await (await list()).text())
+    const items = z.object({ items: z.array(z.object({ pricePer1k: z.unknown() })) }).parse(raw)
+    expect(typeof items.items[0]?.pricePer1k).toBe('string')
+  })
+})
+
+describe('GET /datasets/:owner/:id', () => {
+  beforeEach(async () => {
+    const bytes = envelope()
+    await post(await body(bytes))
+    await put(bytes)
+  })
+
+  it('вимагає сесії', async () => {
+    expect((await app.request(`/datasets/${OWNER}/${DATASET_ID}`)).status).toBe(401)
+  })
+
+  it('віддає опис, схему, статистику й стан ланцюга', async () => {
+    const detail = datasetDetailSchema.parse(await (await detailOf()).json())
+
+    expect(detail.datasetId).toBe(DATASET_ID)
+    expect(detail.schema).toHaveLength(1)
+    expect(detail.ciphertextStored).toBe(true)
+    expect(detail.chain.state).toBe('registered')
+  })
+
+  it('позначає статистику як заявлену власником і неперевірену', async () => {
+    // Покупець, що читає `alleleFrequencies` як факт про когорту, помиляється,
+    // і зрозуміти це він має з картки, а не постфактум (`FR-024a` за духом).
+    const detail = datasetDetailSchema.parse(await (await detailOf()).json())
+    expect(detail.statistics).toMatchObject({ declaredBy: 'owner', verified: false })
+  })
+
+  it('називає бейдж тим, чим він є', async () => {
+    const detail = datasetDetailSchema.parse(await (await detailOf()).json())
+    if (detail.chain.state !== 'registered') throw new Error('очікувався зареєстрований датасет')
+    expect(detail.chain.verifiedBadge?.kind).toBe('operator-attested')
+  })
+
+  it('віддає картку й тоді, коли RPC недоступний', async () => {
+    // Каталог має відкритися без мережі — просто без тієї частини, яку без неї
+    // не дізнатись. 500 тут сказав би «датасету немає».
+    readChain.mockResolvedValueOnce({ state: 'unavailable' })
+    const detail = datasetDetailSchema.parse(await (await detailOf()).json())
+    expect(detail.chain.state).toBe('unavailable')
+    expect(detail.title).toBe('Когорта альфа')
+  })
+
+  it('розрізняє «RPC мовчить» і «датасет не зареєстровано»', async () => {
+    readChain.mockResolvedValueOnce({ state: 'unregistered' })
+    const detail = datasetDetailSchema.parse(await (await detailOf()).json())
+    expect(detail.chain.state).toBe('unregistered')
+  })
+
+  it('віддає «не знайдено» на невідомий датасет', async () => {
+    const response = await app.request(`/datasets/${OWNER}/cohort-missing`, {
+      headers: { authorization: 'Bearer good' },
+    })
+    expect(response.status).toBe(404)
+  })
+
+  it('ховає чужий незавантажений датасет тією ж відповіддю, що й неіснуючий', async () => {
+    // Інакше 404 і 403 разом дають перелік чужих чернеток.
+    await post({ ...(await body(envelope(20, MARKERS, 7))), datasetId: 'cohort-draft' })
+
+    const asOwner = await app.request(`/datasets/${OWNER}/cohort-draft`, {
+      headers: { authorization: 'Bearer good' },
+    })
+    const asStranger = await app.request(`/datasets/${OWNER}/cohort-draft`, {
+      headers: { authorization: 'Bearer other' },
+    })
+
+    expect(asOwner.status).toBe(200)
+    expect(asStranger.status).toBe(404)
+  })
+
+  it('відхиляє адресу власника, що декодується не в 32 байти', async () => {
+    const response = await app.request(`/datasets/abc/${DATASET_ID}`, {
+      headers: { authorization: 'Bearer good' },
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('не плутається з маршрутом завантаження', async () => {
+    // `PUT /datasets/:id/ciphertext` і `GET /datasets/:owner/:id` — обидва на
+    // трьох сегментах. Розводить їх метод, і це варто тримати перевіреним.
+    const bytes = envelope()
+    expect((await put(bytes)).status).toBe(200)
+    expect((await detailOf()).status).toBe(200)
   })
 })

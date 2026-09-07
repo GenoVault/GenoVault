@@ -1,4 +1,24 @@
 export { decodeBase58 } from './base58.ts'
+export type {
+  ChainView,
+  DatasetCard,
+  DatasetDetail,
+  DatasetList,
+  DatasetQuery,
+  DeclaredStatistics,
+} from './catalog.ts'
+export {
+  chainViewSchema,
+  consentViewSchema,
+  DATASET_LIST_LIMIT_DEFAULT,
+  DATASET_LIST_LIMIT_MAX,
+  datasetCardSchema,
+  datasetDetailSchema,
+  datasetListSchema,
+  datasetQuerySchema,
+  declaredStatisticsSchema,
+  verificationBadgeViewSchema,
+} from './catalog.ts'
 export { contentHash } from './content-hash.ts'
 export type {
   DatasetField,

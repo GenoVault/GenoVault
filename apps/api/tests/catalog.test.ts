@@ -13,6 +13,7 @@ import {
   fsCatalog,
   memoryCatalog,
   now,
+  selectDatasets,
 } from '../src/services/catalog.ts'
 
 // Бренди, а не рядки: те саме звуження, крізь яке значення проходять у бою.
@@ -122,6 +123,34 @@ describe.each([
       store.putDataset(record({ contentHash: 'коротко' as DatasetRecord['contentHash'] })),
     ).rejects.toThrow(ZodError)
   })
+  it('перелічує покладене й фільтрує за власником', async () => {
+    // Перелік у fs-драйвері обходить теки на диску, у memory — Map. Обидва
+    // мають дати те саме, інакше `T021` поводиться по-різному в тестах і в
+    // розробці, а помітити це нічим.
+    await store.putDataset(record())
+    await store.putDataset(
+      record({ owner: OTHER_OWNER, datasetId: datasetIdSchema.parse('cohort-beta') }),
+    )
+
+    const all = await store.listDatasets({ includePending: true, limit: 10, offset: 0 })
+    expect(all.total).toBe(2)
+
+    const mine = await store.listDatasets({
+      owner: OWNER,
+      includePending: true,
+      limit: 10,
+      offset: 0,
+    })
+    expect(mine.items.map((item) => item.datasetId)).toEqual(['cohort-alpha'])
+  })
+
+  it('віддає порожній перелік, поки нічого не покладено', async () => {
+    // У fs-драйвері теки просто немає — це не збій, а перший запуск.
+    expect(await store.listDatasets({ includePending: true, limit: 10, offset: 0 })).toEqual({
+      items: [],
+      total: 0,
+    })
+  })
 })
 
 describe('fsCatalog', () => {
@@ -167,5 +196,95 @@ describe('catalogConfigFromEnv', () => {
 
   it('бере memory на явну вимогу', () => {
     expect(createCatalog(catalogConfigFromEnv({ CATALOG_DRIVER: 'memory' })).kind).toBe('memory')
+  })
+})
+
+/**
+ * Порядок і посторінковість перевіряються тут, а не крізь HTTP.
+ *
+ * `createdAt` має роздільність у мілісекунду, і три послідовні реєстрації
+ * через маршрут регулярно потрапляють в одну й ту саму мітку. Тест, який
+ * покладається на те, що не потрапили, зеленіє випадково.
+ */
+describe('selectDatasets', () => {
+  const base = { includePending: true, limit: 10, offset: 0 }
+
+  function at(datasetId: string, createdAt: string, over: Partial<DatasetRecord> = {}) {
+    return record({
+      datasetId: datasetIdSchema.parse(datasetId),
+      createdAt,
+      updatedAt: createdAt,
+      ...over,
+    })
+  }
+
+  it('віддає найновіші першими', () => {
+    const page = selectDatasets(
+      [
+        at('cohort-alpha', '2026-09-01T00:00:00.000Z'),
+        at('cohort-gamma', '2026-09-03T00:00:00.000Z'),
+        at('cohort-beta', '2026-09-02T00:00:00.000Z'),
+      ],
+      base,
+    )
+    expect(page.items.map((item) => item.datasetId)).toEqual([
+      'cohort-gamma',
+      'cohort-beta',
+      'cohort-alpha',
+    ])
+  })
+
+  it('за однакової мітки часу впорядковує за ідентифікатором', () => {
+    // Без другого ключа порядок залежить від драйвера, і посторінковість
+    // починає губити або двоїти рядки між сусідніми сторінками.
+    const same = '2026-09-07T12:00:00.000Z'
+    const page = selectDatasets([at('cohort-beta', same), at('cohort-alpha', same)], base)
+    expect(page.items.map((item) => item.datasetId)).toEqual(['cohort-alpha', 'cohort-beta'])
+  })
+
+  it('ріже сторінку, але рахує total до різання', () => {
+    const records = ['a', 'b', 'c', 'd'].map((letter, index) =>
+      at(`cohort-${letter}${letter}${letter}`, `2026-09-0${index + 1}T00:00:00.000Z`),
+    )
+    const page = selectDatasets(records, { ...base, limit: 2, offset: 1 })
+
+    expect(page.total).toBe(4)
+    expect(page.items.map((item) => item.datasetId)).toEqual(['cohort-ccc', 'cohort-bbb'])
+  })
+
+  it('без includePending лишає тільки залиті', () => {
+    const records = [
+      at('cohort-alpha', '2026-09-01T00:00:00.000Z', { status: 'stored' }),
+      at('cohort-beta', '2026-09-02T00:00:00.000Z', { status: 'pending' }),
+    ]
+    const page = selectDatasets(records, { ...base, includePending: false })
+    expect(page.items.map((item) => item.datasetId)).toEqual(['cohort-alpha'])
+  })
+
+  it('стеля ціни включна', () => {
+    const records = [
+      at('cohort-alpha', '2026-09-01T00:00:00.000Z', {
+        pricePer1k: 1_000n as DatasetRecord['pricePer1k'],
+      }),
+      at('cohort-beta', '2026-09-02T00:00:00.000Z', {
+        pricePer1k: 1_001n as DatasetRecord['pricePer1k'],
+      }),
+    ]
+    const page = selectDatasets(records, {
+      ...base,
+      maxPricePer1k: 1_000n,
+    })
+    expect(page.items.map((item) => item.datasetId)).toEqual(['cohort-alpha'])
+  })
+
+  it('пошук іде і назвою, і описом', () => {
+    const records = [
+      at('cohort-alpha', '2026-09-01T00:00:00.000Z'),
+      at('cohort-beta', '2026-09-02T00:00:00.000Z', {
+        metadata: { ...record().metadata, description: 'Рідкісні хвороби, дитяча вибірка.' },
+      }),
+    ]
+    expect(selectDatasets(records, { ...base, q: 'рідкісні' }).items).toHaveLength(1)
+    expect(selectDatasets(records, { ...base, q: 'когорта альфа' }).items).toHaveLength(2)
   })
 })

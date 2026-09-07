@@ -3,7 +3,7 @@ import { pino } from 'pino'
 import { createApp } from './app.ts'
 import { authConfigFromEnv, createTokenVerifier } from './services/auth.ts'
 import { catalogConfigFromEnv, createCatalog } from './services/catalog.ts'
-import { createRegistrationBuilder } from './services/chain.ts'
+import { createChainReader, createRegistrationBuilder } from './services/chain.ts'
 import { createStorage, storageConfigFromEnv } from './services/storage.ts'
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' })
@@ -28,6 +28,7 @@ const app = createApp({
   catalog: createCatalog(catalog),
   storage: createStorage(storage),
   buildRegistration: createRegistrationBuilder(rpcUrl),
+  readChain: createChainReader(rpcUrl),
   baseUrl: process.env.API_BASE_URL ?? `http://127.0.0.1:${port}`,
   ...(process.env.API_MAX_CIPHERTEXT_BYTES === undefined
     ? {}

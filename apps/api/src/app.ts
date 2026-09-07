@@ -7,7 +7,7 @@ import { datasetRoutes } from './routes/datasets.ts'
 import { sessionRoutes } from './routes/session.ts'
 import type { TokenVerifier } from './services/auth.ts'
 import type { CatalogStore } from './services/catalog.ts'
-import type { RegistrationBuilder } from './services/chain.ts'
+import type { ChainReader, RegistrationBuilder } from './services/chain.ts'
 import type { StorageDriver } from './services/storage.ts'
 
 export interface AppDeps {
@@ -23,11 +23,12 @@ export interface AppDeps {
    * `/health` і 404 від них не залежать, — а маршрут, якому нікуди писати,
    * відповідає 500, а не вдає, що працює.
    */
-  catalog?: CatalogStore
-  storage?: StorageDriver
-  buildRegistration?: RegistrationBuilder
-  baseUrl?: string
-  maxCiphertextBytes?: number
+  catalog?: CatalogStore | undefined
+  storage?: StorageDriver | undefined
+  buildRegistration?: RegistrationBuilder | undefined
+  readChain?: ChainReader | undefined
+  baseUrl?: string | undefined
+  maxCiphertextBytes?: number | undefined
 }
 
 export function createApp(deps: AppDeps = {}) {
@@ -40,15 +41,12 @@ export function createApp(deps: AppDeps = {}) {
     '/',
     datasetRoutes({
       verify: deps.verifyAccessToken,
-      ...(deps.catalog === undefined ? {} : { catalog: deps.catalog }),
-      ...(deps.storage === undefined ? {} : { storage: deps.storage }),
-      ...(deps.buildRegistration === undefined
-        ? {}
-        : { buildRegistration: deps.buildRegistration }),
-      ...(deps.baseUrl === undefined ? {} : { baseUrl: deps.baseUrl }),
-      ...(deps.maxCiphertextBytes === undefined
-        ? {}
-        : { maxCiphertextBytes: deps.maxCiphertextBytes }),
+      catalog: deps.catalog,
+      storage: deps.storage,
+      buildRegistration: deps.buildRegistration,
+      readChain: deps.readChain,
+      baseUrl: deps.baseUrl,
+      maxCiphertextBytes: deps.maxCiphertextBytes,
     }),
   )
 
