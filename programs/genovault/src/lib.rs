@@ -79,6 +79,24 @@ pub mod genovault {
         instructions::consent::revoke(ctx)
     }
 
+    /// Сейф платформи — токен-акаунт під депозити (`FR-016`). Одноразово,
+    /// після `initialize`.
+    pub fn initialize_vault(ctx: Context<InitializeVault>) -> Result<()> {
+        instructions::request_run::create_vault(ctx)
+    }
+
+    /// Замовлення прогону (`FR-013`, `FR-015a`, `FR-016`).
+    ///
+    /// Склад пулу їде в `remaining_accounts` парами «датасет + чинна згода».
+    /// Одна транзакція, бо момент замовлення має бути точкою: `FR-007` каже,
+    /// що відкликання діє на прогони, замовлені **після** нього.
+    pub fn request_run<'info>(
+        ctx: Context<'info, RequestRun<'info>>,
+        args: RequestRunArgs,
+    ) -> Result<()> {
+        instructions::request_run::request(ctx, args)
+    }
+
     /// Розгортання визначення обчислення для `frequencies_init`.
     ///
     /// Визначень чотири, бо в Arcium кожен контур — окремий акаунт, і без

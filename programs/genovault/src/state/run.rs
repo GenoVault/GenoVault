@@ -193,6 +193,37 @@ impl Run {
     }
 }
 
+/// Ціна оголошується за 1000 записів (`FR-015`).
+pub const RECORDS_PER_PRICE_UNIT: u64 = 1_000;
+
+/// Верхня оцінка вартості одного датасету в прогоні (`FR-015a`).
+///
+/// Рахує **програма**, а не клієнт: число, яке передав би покупець, він же й
+/// занизив би, а перевірити його все одно можна лише цим самим множенням.
+/// Тому клієнт передає тільки стелю, вище якої не згоден (`max_escrow`).
+///
+/// # Чому вгору
+///
+/// Заокруглення вниз зробило б безкоштовним будь-який датасет, менший за
+/// тисячу записів: 9 записів за ціною 1 000 це 9/1000 → 0. Заокруглення вгору
+/// монотонне, тож `cost(p, r) ≤ cost(p, claimed)` для будь-якого `r ≤ claimed`
+/// — саме на цьому тримається `FR-015a` («не перевищує її після»), і саме так
+/// рахує квота в `packages/shared/src/quote.ts`.
+///
+/// Проміжок рахується в `u128`: `price` і `record_count` кожен до `u64::MAX`,
+/// і їхній добуток у `u64` не вміщається за побудовою. Переповнення тут — це
+/// відмова, а не обрізка: обрізане число покупець заблокував би як депозит,
+/// поки програма рахувала б інше.
+pub fn dataset_cost(price_per_1k: u64, record_count: u64) -> Result<u64> {
+    let scaled = (price_per_1k as u128)
+        .checked_mul(record_count as u128)
+        .and_then(|product| product.checked_add(RECORDS_PER_PRICE_UNIT as u128 - 1))
+        .ok_or(GenoVaultError::RunEscrowOverflow)?
+        / RECORDS_PER_PRICE_UNIT as u128;
+
+    u64::try_from(scaled).map_err(|_| GenoVaultError::RunEscrowOverflow.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +404,48 @@ mod tests {
             expected(GenoVaultError::RunTooManyDatasets)
         );
         assert!(Run::validate_datasets(&too_many[..MAX_RUN_DATASETS]).is_ok());
+    }
+
+    #[test]
+    fn a_dataset_under_a_thousand_records_is_not_free() {
+        // Заокруглення вниз зробило б безкоштовним будь-який датасет, менший за
+        // тисячу записів — а `FR-009` прямо каже, що окрема особа реєструє
+        // датасет на одну людину.
+        assert_eq!(dataset_cost(1_000, 1).unwrap(), 1);
+        assert_eq!(dataset_cost(1_000, 9).unwrap(), 9);
+        assert_eq!(dataset_cost(1_000, 999).unwrap(), 999);
+        assert_eq!(dataset_cost(1_000, 1_000).unwrap(), 1_000);
+    }
+
+    #[test]
+    fn the_bound_never_shrinks_when_records_grow() {
+        // На цій монотонності тримається `FR-015a`: фактичний внесок ніколи не
+        // більший за заявлений, тож і його вартість не більша за межу.
+        let claimed = 10_000u64;
+        let bound = dataset_cost(25_000_000, claimed).unwrap();
+        for records in [0u64, 1, 9, 999, 5_000, claimed] {
+            assert!(
+                dataset_cost(25_000_000, records).unwrap() <= bound,
+                "вартість {records} записів має вкладатись у межу"
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_costs_nothing() {
+        assert_eq!(dataset_cost(25_000_000, 0).unwrap(), 0);
+        assert_eq!(dataset_cost(0, 10_000).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_price_that_does_not_fit_is_refused_not_truncated() {
+        // Обрізане число покупець заблокував би як депозит, поки програма
+        // рахувала б інше.
+        assert_eq!(
+            code(dataset_cost(u64::MAX, 100_000).map(|_| ())),
+            expected(GenoVaultError::RunEscrowOverflow)
+        );
+        // Рівно на межі — ще проходить: u64::MAX за тисячу записів це u64::MAX.
+        assert_eq!(dataset_cost(u64::MAX, 1_000).unwrap(), u64::MAX);
     }
 }

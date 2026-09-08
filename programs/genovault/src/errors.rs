@@ -73,4 +73,20 @@ pub enum GenoVaultError {
     RunSettlementOverflow,
     #[msg("Нараховано не всім датасетам прогону")]
     RunSettlementIncomplete,
+    #[msg("Платформу поставлено на паузу — нові прогони не приймаються")]
+    PlatformPaused,
+    #[msg("Такого рецепта немає в каталозі")]
+    UnknownRecipe,
+    #[msg("Склад прогону передано неповними парами «датасет + згода»")]
+    RunAccountsMalformed,
+    #[msg("Власник ще не задав згоди для цього датасету")]
+    ConsentMissing,
+    #[msg("Передана згода належить іншому датасету")]
+    ConsentDatasetMismatch,
+    #[msg("Передана згода не є чинною версією")]
+    ConsentVersionStale,
+    #[msg("Вартість прогону не вміщається в u64")]
+    RunEscrowOverflow,
+    #[msg("Вартість прогону перевищує названу покупцем межу")]
+    RunEscrowAboveMax,
 }

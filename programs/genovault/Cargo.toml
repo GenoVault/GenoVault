@@ -19,7 +19,7 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build", "arcium-anchor/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "arcium-anchor/idl-build"]
 
 [dependencies]
 # Точна рівність, а не діапазон: arcium-anchor 0.14.1 залежить від
@@ -28,12 +28,24 @@ anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
 arcium-client = { version = "=0.14.1", default-features = false }
 arcium-macros = "=0.14.1"
 arcium-anchor = "=0.14.1"
+# Депозит і нарахування йдуть у Token-2022 (`FR-021`). Точна рівність із
+# `anchor-lang`: розходження версій цих двох крейтів дає помилки в макросах
+# акаунтів, які читаються як помилки в нашому коді.
+anchor-spl = { version = "=1.0.2", features = ["token_2022"] }
 
 [dev-dependencies]
 # Стенд для тестів програми. `litesvm` тут не працює — падає з E0027 на
 # сучасному Anchor (відоме). Mollusk бере вже зібраний .so, тому перевіряє
 # рівно те, що поїде в мережу, разом із перевірками акаунтів від Anchor.
 mollusk-svm = "=0.15.1"
+# Token-2022 у стенді: депозит без нього нічим перевірити, а тест, який
+# перевіряє все, крім переказу, зеленіє на найдорожчій частині інструкції.
+mollusk-svm-programs-token = "=0.15.1"
+# Розкладки мінта й токен-акаунта беремо з крейта, а не пишемо байтами руками:
+# 82 і 165 байтів із COption всередині — рівно те місце, де тест мовчки
+# розходиться з реальністю.
+spl-token-interface = "=2.0.0"
+solana-program-option = "=3.1.0"
 solana-account = "4.3"
 solana-sdk-ids = "3.1"
 
