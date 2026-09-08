@@ -17,7 +17,10 @@ use anchor_lang::{InstructionData, ToAccountMetas};
 use genovault::instructions::consent::SetConsentArgs;
 use genovault::instructions::dataset::RegisterDatasetArgs;
 use genovault::instructions::request_run::{RequestRunArgs, RECIPE_FREQUENCIES};
-use genovault::state::{buyer_category, use_type, Dataset, PlatformConfig, Run, RunStatus};
+use genovault::state::{
+    buyer_category, use_type, Dataset, FrequenciesParams, PlatformConfig, Run, RunStatus,
+    FILTER_ANY,
+};
 use genovault::GenoVaultError;
 use mollusk_svm::result::{InstructionResult, ProgramResult};
 use mollusk_svm::Mollusk;
@@ -37,6 +40,17 @@ const DECIMALS: u8 = 6;
 const BUYER_FUNDS: u64 = 10_000_000_000;
 const FEE_BPS: u16 = 700;
 const NONCE: u64 = 42;
+
+/// Диспетчер, якого називає покупець при замовленні (`T025`).
+const DISPATCHER: Pubkey = Pubkey::new_from_array([9u8; 32]);
+
+/// Запит покупця: доросла когорта, стать і ураженість — будь-які.
+const FREQUENCIES_PARAMS: FrequenciesParams = FrequenciesParams {
+    min_age: 18,
+    max_age: 90,
+    sex_filter: FILTER_ANY,
+    affected_filter: FILTER_ANY,
+};
 
 fn vault_pda() -> (Pubkey, u8) {
     Pubkey::find_program_address(&[PlatformConfig::VAULT_SEED], &genovault::ID)
@@ -185,6 +199,8 @@ fn args() -> RequestRunArgs {
         use_type: use_type::ONCOLOGY,
         buyer_category: buyer_category::ACADEMIC,
         max_escrow: COST * 2,
+        dispatcher: DISPATCHER,
+        recipe_params: FREQUENCIES_PARAMS.encode(),
     }
 }
 

@@ -4,9 +4,11 @@
 mod config;
 mod consent;
 mod dataset;
+mod dispatch;
 mod run;
 
 pub use config::*;
 pub use consent::*;
 pub use dataset::*;
+pub use dispatch::*;
 pub use run::*;

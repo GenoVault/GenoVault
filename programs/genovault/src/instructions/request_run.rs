@@ -5,7 +5,8 @@ use anchor_spl::token_interface::{
 
 use crate::errors::GenoVaultError;
 use crate::state::{
-    dataset_cost, Consent, Dataset, PlatformConfig, Run, RunStatus, MAX_RUN_DATASETS,
+    dataset_cost, Consent, Dataset, FrequenciesParams, PlatformConfig, Run, RunStatus,
+    MAX_RUN_DATASETS, RECIPE_PARAMS_LEN,
 };
 
 /// Замовлення прогону (`FR-013`, `FR-015a`, `FR-016`) — `T024`.
@@ -46,6 +47,17 @@ pub struct RequestRunArgs {
     pub buyer_category: u32,
     /// Стеля, вище якої покупець не згоден. Зазвичай — число з квоти.
     pub max_escrow: u64,
+    /// Кому покупець доручає довести прогін до кінця (`T025`).
+    ///
+    /// Публікація в MPC — це сотні транзакцій на прогін, і підписувати їх у
+    /// вкладці браузера неможливо. Але й брати це повноваження собі платформа
+    /// не має права: воно приходить звідси, від покупця, разом із замовленням.
+    /// Диспетчер не рухає грошей і не міняє умов — він або доводить прогін до
+    /// кінця, або ні.
+    pub dispatcher: Pubkey,
+    /// Параметри рецепта: для «частот» — вікові межі й фільтри статі та
+    /// ураженості. Перевіряються тут, бо після оплати вже пізно.
+    pub recipe_params: [u8; RECIPE_PARAMS_LEN],
 }
 
 /// Каталог рецептів на боці програми (`FR-011a`).
@@ -105,8 +117,10 @@ pub struct RequestRun<'info> {
 pub struct RunRequested {
     pub run: Pubkey,
     pub buyer: Pubkey,
+    pub dispatcher: Pubkey,
     pub nonce: u64,
     pub recipe_id: u16,
+    pub recipe_params: [u8; RECIPE_PARAMS_LEN],
     pub use_type: u32,
     pub buyer_category: u32,
     pub datasets: Vec<Pubkey>,
@@ -128,6 +142,11 @@ pub fn request<'info>(
         KNOWN_RECIPES.contains(&args.recipe_id),
         GenoVaultError::UnknownRecipe
     );
+    // Параметри перевіряються **до** переказу: перевернуті вікові межі дають
+    // когорту з нуля записів, і покупець дізнався б про свою помилку вже
+    // заплативши. Рецепт поки один, тож і розбір один; із `T044` тут стане
+    // розгалуження за `recipe_id`.
+    FrequenciesParams::decode(&args.recipe_params)?;
 
     let infos = ctx.remaining_accounts;
     // Непарна кількість означає, що клієнт загубив згоду або датасет. Далі це
@@ -214,8 +233,10 @@ pub fn request<'info>(
 
     ctx.accounts.run.set_inner(Run {
         buyer,
+        dispatcher: args.dispatcher,
         nonce: args.nonce,
         recipe_id: args.recipe_id,
+        recipe_params: args.recipe_params,
         use_type: args.use_type,
         buyer_category: args.buyer_category,
         datasets: datasets.clone(),
@@ -227,6 +248,9 @@ pub fn request<'info>(
         settled_amount: 0,
         status: RunStatus::Accepted,
         result_hash: None,
+        dataset_cursor: 0,
+        folded_batches: 0,
+        folded_hash: [0u8; 32],
         created_at: now,
         bump: ctx.bumps.run,
     });
@@ -234,8 +258,10 @@ pub fn request<'info>(
     emit!(RunRequested {
         run: run_key,
         buyer,
+        dispatcher: args.dispatcher,
         nonce: args.nonce,
         recipe_id: args.recipe_id,
+        recipe_params: args.recipe_params,
         use_type: args.use_type,
         buyer_category: args.buyer_category,
         datasets,

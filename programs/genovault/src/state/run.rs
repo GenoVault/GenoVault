@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
+use solana_sha256_hasher::hashv;
 
 use crate::errors::GenoVaultError;
+use crate::state::{FILTER_ANY, RECIPE_BATCH};
 
 /// Скільки датасетів може бути в одному прогоні.
 ///
@@ -8,6 +10,74 @@ use crate::errors::GenoVaultError;
 /// межа зробила б критерій недосяжним без правки структури, а більша — платила
 /// б rent за місце, якого ніхто не обіцяв.
 pub const MAX_RUN_DATASETS: usize = 50;
+
+/// Скільки байтів відведено під параметри рецепта в `Run`.
+///
+/// Рецепт «частоти» використовує чотири: `min_age`, `max_age`, `sex_filter`,
+/// `affected_filter`. Решта зарезервована під рецепти `T044`-`T045`, і саме
+/// тому вона перевіряється на нулі: байт, який сьогодні нічого не означає, а
+/// завтра означатиме, не має права приїхати заповненим від клієнта вже
+/// сьогодні.
+pub const RECIPE_PARAMS_LEN: usize = 32;
+
+/// Параметри рецепта «частоти й розподіли» у розкладці `Run::recipe_params`.
+///
+/// Порядок дублює сигнатуру `frequencies_fold` у `encrypted-ixs`: публікація
+/// віддає ці чотири числа в чергу обчислень плоскими `u8`, і зсув на одиницю
+/// поміняв би фільтр статі на фільтр ураженості, нічого не зламавши.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FrequenciesParams {
+    pub min_age: u8,
+    pub max_age: u8,
+    /// 0 — жіноча, 1 — чоловіча, `FILTER_ANY` — будь-яка.
+    pub sex_filter: u8,
+    /// 0 — неуражені, 1 — уражені, `FILTER_ANY` — будь-хто.
+    pub affected_filter: u8,
+}
+
+impl FrequenciesParams {
+    /// Читає параметри й відхиляє те, чого рецепт не зрозуміє.
+    ///
+    /// Перевіряється тут, при замовленні, а не при публікації: `min_age > max_age`
+    /// дає когорту з нуля записів, і покупець дізнався б про свою помилку вже
+    /// після того, як заплатив за прогін. Значення фільтра поза словником
+    /// гірше — рецепт порівнює на рівність, тож `sex_filter = 7` тихо
+    /// відкинув би всіх, і це виглядало б як порожній датасет.
+    pub fn decode(raw: &[u8; RECIPE_PARAMS_LEN]) -> Result<Self> {
+        let params = Self {
+            min_age: raw[0],
+            max_age: raw[1],
+            sex_filter: raw[2],
+            affected_filter: raw[3],
+        };
+        require!(
+            params.min_age <= params.max_age,
+            GenoVaultError::RecipeParamsInvalid
+        );
+        require!(
+            params.sex_filter <= FILTER_ANY,
+            GenoVaultError::RecipeParamsInvalid
+        );
+        require!(
+            params.affected_filter <= FILTER_ANY,
+            GenoVaultError::RecipeParamsInvalid
+        );
+        require!(
+            raw[4..].iter().all(|byte| *byte == 0),
+            GenoVaultError::RecipeParamsInvalid
+        );
+        Ok(params)
+    }
+
+    pub fn encode(self) -> [u8; RECIPE_PARAMS_LEN] {
+        let mut raw = [0u8; RECIPE_PARAMS_LEN];
+        raw[0] = self.min_age;
+        raw[1] = self.max_age;
+        raw[2] = self.sex_filter;
+        raw[3] = self.affected_filter;
+        raw
+    }
+}
 
 /// Статуси прогону (`FR-013`) — рівно ті п'ять, що названі у SPEC.
 ///
@@ -45,9 +115,25 @@ impl RunStatus {
 #[derive(InitSpace)]
 pub struct Run {
     pub buyer: Pubkey,
+    /// Хто має право подавати шифротекст і ставити обчислення в чергу
+    /// (`T025`). Називає його **покупець** при замовленні: 313 підписів на
+    /// прогін у вкладці браузера — не продукт, а повноваження, взяте
+    /// платформою собі, — не те, що покупець комусь давав. Диспетчер не
+    /// рухає грошей, не міняє згоди й не змінює складу прогону: усе, що він
+    /// може, — довести цей прогін до кінця або не довести.
+    pub dispatcher: Pubkey,
     /// Обраний покупцем; він же в seeds, тож два прогони не сплутати.
     pub nonce: u64,
     pub recipe_id: u16,
+    /// Параметри рецепта, заявлені при замовленні: для «частот» це вікові межі
+    /// й фільтри статі та ураженості.
+    ///
+    /// Лежать тут, а не в аргументах публікації, бо запит покупця — частина
+    /// умов прогону. Власник звіряє їх зі своєю згодою (`FR-006`), незалежний
+    /// звіряч журналу — з тим, що пішло в MPC (`FR-025`), і ні перше, ні друге
+    /// неможливе, якщо диспетчер може підставити інший фільтр після
+    /// замовлення.
+    pub recipe_params: [u8; RECIPE_PARAMS_LEN],
     /// Тип використання і категорія покупця, заявлені при замовленні: саме
     /// вони перевірялись проти згоди кожного датасету.
     pub use_type: u32,
@@ -67,6 +153,23 @@ pub struct Run {
     pub status: RunStatus,
     /// Відбиток результату; з'являється, коли повернувся callback MPC.
     pub result_hash: Option<[u8; 32]>,
+    /// Який датасет пулу згортається зараз. Рухає його тільки закриття
+    /// датасету в MPC — саме тому ончейн-порядок не може розійтись із тим, у
+    /// якому рахував рецепт.
+    pub dataset_cursor: u32,
+    /// Скільки батчів згорнуто за весь прогін.
+    pub folded_batches: u32,
+    /// Ланцюжок відбитків усього, що пішло в MPC (`T025`).
+    ///
+    /// Програма не бачить сховища й не може звірити байти з
+    /// `Dataset.content_hash`: потокового sha256 через транзакції не існує, а
+    /// цілий конверт на 21 МБ у одну не влазить. Тому ланцюг не перевіряє —
+    /// він **свідчить**: кожна згортка вплітає сюди датасет, кількість живих
+    /// записів і самі байти батча. Третя сторона бере шифротекст зі сховища
+    /// (він публічний), ріже його тим самим батчем і рахує той самий ланцюжок.
+    /// Розбіжність означає, що згорнули не той датасет, — і це видно без
+    /// доступу до нашого коду (`FR-025`).
+    pub folded_hash: [u8; 32],
     pub created_at: i64,
     pub bump: u8,
 }
@@ -95,6 +198,59 @@ impl Run {
             );
         }
         Ok(())
+    }
+
+    /// Датасет, який згортається зараз.
+    pub fn current_dataset(&self) -> Result<Pubkey> {
+        self.datasets
+            .get(self.dataset_cursor as usize)
+            .copied()
+            .ok_or_else(|| GenoVaultError::RunPoolExhausted.into())
+    }
+
+    pub fn pool_exhausted(&self) -> bool {
+        self.dataset_cursor >= self.dataset_count()
+    }
+
+    /// Вплітає згорнутий батч у ланцюжок відбитків.
+    ///
+    /// У відбиток іде не тільки шифротекст: датасет і `live` теж. Без датасету
+    /// той самий батч зарахувався б будь-якому учаснику пулу; без `live` —
+    /// диспетчер оголосив би тридцять два живі записи там, де їх один, і
+    /// когорта виросла б на добиті нулі, які рецепт мав відкинути. Обидва
+    /// числа третя сторона відновлює з конверта датасету сама, тож ланцюжок
+    /// лишається перевірним без нашої допомоги (`FR-025`).
+    pub fn record_fold(&mut self, dataset: &Pubkey, live: u8, batch: &[u8]) -> Result<()> {
+        require!(
+            self.status == RunStatus::Running,
+            GenoVaultError::RunNotRunning
+        );
+        require!(
+            live >= 1 && (live as usize) <= RECIPE_BATCH,
+            GenoVaultError::BatchLiveOutOfRange
+        );
+
+        self.folded_hash = hashv(&[&self.folded_hash, dataset.as_ref(), &[live], batch]).to_bytes();
+        self.folded_batches = self
+            .folded_batches
+            .checked_add(1)
+            .ok_or(GenoVaultError::RunFoldOverflow)?;
+        Ok(())
+    }
+
+    /// Датасет закрито в MPC — далі згортається наступний.
+    ///
+    /// Курсор рухає рівно це, і рівно з callback'а: якби його рухала
+    /// публікація, ончейн-порядок розійшовся б із порядком, у якому рахував
+    /// рецепт, — і внесок оголосився б не тому датасету.
+    pub fn close_current_dataset(&mut self) -> Result<Pubkey> {
+        require!(
+            self.status == RunStatus::Running,
+            GenoVaultError::RunNotRunning
+        );
+        let dataset = self.current_dataset()?;
+        self.dataset_cursor += 1;
+        Ok(dataset)
     }
 
     /// `accepted → running`: обчислення пішло в Arcium.
@@ -244,8 +400,10 @@ mod tests {
     fn run(datasets: usize) -> Run {
         Run {
             buyer: Pubkey::default(),
+            dispatcher: Pubkey::default(),
             nonce: 1,
             recipe_id: 1,
+            recipe_params: [0u8; RECIPE_PARAMS_LEN],
             use_type: 1,
             buyer_category: 1,
             datasets: (0..datasets).map(|_| Pubkey::new_unique()).collect(),
@@ -255,6 +413,9 @@ mod tests {
             settled_amount: 0,
             status: RunStatus::Accepted,
             result_hash: None,
+            dataset_cursor: 0,
+            folded_batches: 0,
+            folded_hash: [0u8; 32],
             created_at: 0,
             bump: 255,
         }
@@ -376,6 +537,135 @@ mod tests {
                 expected(GenoVaultError::RunNotRunning)
             );
         }
+    }
+
+    #[test]
+    fn the_chain_of_folds_names_the_dataset_and_the_live_count() {
+        // Ланцюжок мусить розрізняти три речі, які інакше дали б однаковий
+        // відбиток: ті самі байти в іншому датасеті, ті самі байти з іншим
+        // `live` і ті самі байти вдруге. Третя сторона перевіряє саме це.
+        let bytes = [7u8; 96];
+        let a = Pubkey::new_unique();
+        let b = Pubkey::new_unique();
+
+        let mut base = run(2);
+        base.start().unwrap();
+        base.record_fold(&a, 32, &bytes).unwrap();
+
+        let mut other_dataset = run(2);
+        other_dataset.start().unwrap();
+        other_dataset.record_fold(&b, 32, &bytes).unwrap();
+
+        let mut other_live = run(2);
+        other_live.start().unwrap();
+        other_live.record_fold(&a, 31, &bytes).unwrap();
+
+        let mut twice = run(2);
+        twice.start().unwrap();
+        twice.record_fold(&a, 32, &bytes).unwrap();
+        twice.record_fold(&a, 32, &bytes).unwrap();
+
+        assert_ne!(base.folded_hash, other_dataset.folded_hash);
+        assert_ne!(base.folded_hash, other_live.folded_hash);
+        assert_ne!(base.folded_hash, twice.folded_hash);
+        assert_ne!(base.folded_hash, [0u8; 32]);
+        assert_eq!(base.folded_batches, 1);
+        assert_eq!(twice.folded_batches, 2);
+    }
+
+    #[test]
+    fn an_empty_or_overfull_batch_is_refused() {
+        let mut r = run(1);
+        r.start().unwrap();
+        let dataset = r.current_dataset().unwrap();
+
+        // Порожній батч витратив би обчислення, нічого не додавши; батч,
+        // більший за контур, — обіцянка, яку рецепт не виконає.
+        assert_eq!(
+            code(r.record_fold(&dataset, 0, &[]).map(|_| ())),
+            expected(GenoVaultError::BatchLiveOutOfRange)
+        );
+        assert_eq!(
+            code(
+                r.record_fold(&dataset, RECIPE_BATCH as u8 + 1, &[])
+                    .map(|_| ())
+            ),
+            expected(GenoVaultError::BatchLiveOutOfRange)
+        );
+        assert!(r.record_fold(&dataset, RECIPE_BATCH as u8, &[]).is_ok());
+    }
+
+    #[test]
+    fn folding_belongs_to_a_running_run() {
+        let mut r = run(1);
+        let dataset = r.datasets[0];
+        assert_eq!(
+            code(r.record_fold(&dataset, 1, &[]).map(|_| ())),
+            expected(GenoVaultError::RunNotRunning),
+            "депозит заблоковано, але обчислення ще не опубліковане"
+        );
+    }
+
+    #[test]
+    fn the_cursor_walks_the_pool_once() {
+        let mut r = run(2);
+        r.start().unwrap();
+
+        let first = r.datasets[0];
+        let second = r.datasets[1];
+
+        assert_eq!(r.current_dataset().unwrap(), first);
+        assert_eq!(r.close_current_dataset().unwrap(), first);
+        assert_eq!(r.current_dataset().unwrap(), second);
+        assert!(!r.pool_exhausted());
+
+        assert_eq!(r.close_current_dataset().unwrap(), second);
+        assert!(r.pool_exhausted());
+        assert_eq!(
+            code(r.close_current_dataset().map(|_| ())),
+            expected(GenoVaultError::RunPoolExhausted),
+            "зайве закриття оголосило б внесок датасету, якого в прогоні немає"
+        );
+    }
+
+    #[test]
+    fn recipe_params_refuse_what_the_recipe_would_misread() {
+        let ok = FrequenciesParams {
+            min_age: 18,
+            max_age: 65,
+            sex_filter: FILTER_ANY,
+            affected_filter: 1,
+        };
+        assert_eq!(FrequenciesParams::decode(&ok.encode()).unwrap(), ok);
+
+        // Перевернуті межі дають порожню когорту, і покупець дізнався б про це
+        // після оплати.
+        let mut inverted = ok.encode();
+        inverted[0] = 66;
+        assert_eq!(
+            code(FrequenciesParams::decode(&inverted).map(|_| ())),
+            expected(GenoVaultError::RecipeParamsInvalid)
+        );
+
+        // Значення поза словником рецепт порівнює на рівність — воно тихо
+        // відкинуло б усіх, і це виглядало б як порожній датасет.
+        for index in [2usize, 3] {
+            let mut raw = ok.encode();
+            raw[index] = FILTER_ANY + 1;
+            assert_eq!(
+                code(FrequenciesParams::decode(&raw).map(|_| ())),
+                expected(GenoVaultError::RecipeParamsInvalid)
+            );
+        }
+
+        // Зарезервований байт, який приїхав заповненим, — це значення, якого
+        // сьогодні не існує, а завтра існуватиме.
+        let mut reserved = ok.encode();
+        reserved[RECIPE_PARAMS_LEN - 1] = 1;
+        assert_eq!(
+            code(FrequenciesParams::decode(&reserved).map(|_| ())),
+            expected(GenoVaultError::RecipeParamsInvalid)
+        );
     }
 
     #[test]

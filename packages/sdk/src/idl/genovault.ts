@@ -19,41 +19,150 @@ export type Genovault = {
     "Програма GenoVault.",
     "",
     "Рецепт «частоти й розподіли» (`T018`, `T019`) живе в `encrypted-ixs`",
-    "чотирма контурами, і тут розгортаються їхні визначення обчислень. Виклик",
-    "`frequencies_init` поки не належить жодному прогону — він доводить, що",
-    "ланцюг «черга обчислень → вузли → callback» замикається на цьому",
-    "репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить",
-    "у `T024`, згортка батчів і розкриття — у `T025`-`T026`."
+    "чотирма контурами, і тут розгортаються їхні визначення обчислень. Прогін",
+    "проходить їх по черзі: `dispatch_init` створює накопичувач, `dispatch_fold`",
+    "згортає батчі з буферного акаунта, `dispatch_close_dataset` оголошує внесок",
+    "кожного датасету пулу (`T025`). Розкриття звіту покупцю й розподіл плати —",
+    "`T026`."
   ],
   "instructions": [
     {
-      "name": "frequenciesInit",
+      "name": "closeBatchBuffer",
       "docs": [
-        "Створює порожній накопичувач частот.",
-        "",
-        "Прогону ця інструкція поки не належить: `Run`, перевірка згоди й",
-        "депозит приходять у `T024`, згортка батчів і розкриття — у",
-        "`T025`-`T026`. Вона стоїть тут із тієї ж причини, з якої тут раніше",
-        "стояв каркасний `probe_sum`: доводить, що ланцюг «програма → черга",
-        "обчислень → MPC-вузли → callback» замикається на цьому репозиторії.",
-        "Різниця в тому, що тепер це справжній рецепт із каталогу, а не",
-        "заглушка, яка додає два числа."
+        "Повертає rent за буфер, коли пул вичерпано або прогін завершився."
       ],
       "discriminator": [
-        123,
-        84,
-        5,
         59,
-        85,
-        227,
-        151,
-        19
+        94,
+        58,
+        87,
+        100,
+        86,
+        9,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "dispatchCloseDataset",
+      "docs": [
+        "Публікація в Arcium: оголошення внеску поточного датасету (`FR-018a`)."
+      ],
+      "discriminator": [
+        117,
+        133,
+        215,
+        173,
+        221,
+        43,
+        61,
+        240
       ],
       "accounts": [
         {
           "name": "payer",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
         },
         {
           "name": "signPdaAccount",
@@ -136,6 +245,530 @@ export type Genovault = {
       ]
     },
     {
+      "name": "dispatchFold",
+      "docs": [
+        "Публікація в Arcium: згортка батча з буферного акаунта."
+      ],
+      "discriminator": [
+        23,
+        95,
+        246,
+        22,
+        242,
+        200,
+        20,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        },
+        {
+          "name": "live",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "dispatchInit",
+      "docs": [
+        "Публікація в Arcium: порожній накопичувач під цей прогін (`FR-010`).",
+        "",
+        "Нулі, зашифровані ключем MXE, може зробити тільки сам MXE — програма",
+        "цього ключа не має, і в цьому суть (`FR-004a`)."
+      ],
+      "discriminator": [
+        96,
+        178,
+        174,
+        61,
+        145,
+        114,
+        30,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "frequenciesCloseDatasetCallback",
+      "discriminator": [
+        157,
+        186,
+        184,
+        117,
+        243,
+        179,
+        214,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesCloseDatasetOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "frequenciesFoldCallback",
+      "discriminator": [
+        134,
+        49,
+        189,
+        24,
+        38,
+        50,
+        166,
+        233
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesFoldOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "frequenciesInitCallback",
       "discriminator": [
         31,
@@ -167,6 +800,52 @@ export type Genovault = {
         {
           "name": "instructionsSysvar",
           "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
         }
       ],
       "args": [
@@ -189,6 +868,82 @@ export type Genovault = {
           }
         }
       ]
+    },
+    {
+      "name": "growBatchBuffer",
+      "docs": [
+        "Дорощує буферний акаунт на один крок. Шість викликів на прогін: акаунт,",
+        "створений через CPI, не буває більшим за 10 КіБ, а батч — 70 656 байтів."
+      ],
+      "discriminator": [
+        76,
+        232,
+        217,
+        127,
+        199,
+        8,
+        111,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initFrequenciesCloseDatasetCompDef",
@@ -518,6 +1273,111 @@ export type Genovault = {
         },
         {
           "name": "tokenProgram"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "openRun",
+      "docs": [
+        "Відкриває прогін під публікацію: накопичувач і буферний акаунт (`T025`).",
+        "",
+        "Платить диспетчер, і rent за буфер (~0,49 SOL) повертається йому ж на",
+        "`close_batch_buffer`."
+      ],
+      "discriminator": [
+        252,
+        181,
+        149,
+        94,
+        46,
+        20,
+        82,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Буфер під один батч. Створюється на 10 КіБ і доростає окремими",
+            "інструкціями: акаунт, створений через CPI, не буває більшим за межу",
+            "приросту за одну інструкцію, а батч у неї не вміщається всемеро.",
+            "",
+            "Структурою його не описати: черга обчислень читає з нього сирі слова."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
         },
         {
           "name": "systemProgram",
@@ -1109,6 +1969,105 @@ export type Genovault = {
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "writeBatch",
+      "docs": [
+        "Кладе шматок шифротексту в буфер. Конверт їде в ланцюг транзакціями по",
+        "~950 байтів — інших у Solana не буває."
+      ],
+      "discriminator": [
+        241,
+        101,
+        221,
+        8,
+        160,
+        229,
+        116,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "offset",
+          "type": "u32"
+        },
+        {
+          "name": "bytes",
+          "type": "bytes"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1176,20 +2135,33 @@ export type Genovault = {
         246,
         189
       ]
+    },
+    {
+      "name": "runAccumulator",
+      "discriminator": [
+        117,
+        151,
+        93,
+        153,
+        172,
+        56,
+        93,
+        82
+      ]
     }
   ],
   "events": [
     {
-      "name": "accumulatorCreated",
+      "name": "batchFolded",
       "discriminator": [
-        247,
-        191,
-        106,
-        20,
-        140,
-        47,
-        244,
-        214
+        25,
+        15,
+        197,
+        37,
+        100,
+        2,
+        119,
+        137
       ]
     },
     {
@@ -1216,6 +2188,19 @@ export type Genovault = {
         150,
         13,
         187
+      ]
+    },
+    {
+      "name": "datasetContributionDeclared",
+      "discriminator": [
+        207,
+        89,
+        133,
+        7,
+        250,
+        169,
+        91,
+        59
       ]
     },
     {
@@ -1281,6 +2266,32 @@ export type Genovault = {
         140,
         112,
         162
+      ]
+    },
+    {
+      "name": "runComputationAborted",
+      "discriminator": [
+        222,
+        130,
+        122,
+        214,
+        32,
+        82,
+        37,
+        53
+      ]
+    },
+    {
+      "name": "runOpened",
+      "discriminator": [
+        160,
+        77,
+        88,
+        236,
+        193,
+        43,
+        178,
+        255
       ]
     },
     {
@@ -1515,46 +2526,89 @@ export type Genovault = {
       "code": 6040,
       "name": "runEscrowAboveMax",
       "msg": "Вартість прогону перевищує названу покупцем межу"
+    },
+    {
+      "code": 6041,
+      "name": "runNotDispatcher",
+      "msg": "Цю дію може виконати лише диспетчер прогону"
+    },
+    {
+      "code": 6042,
+      "name": "recipeParamsInvalid",
+      "msg": "Параметри рецепта не проходять перевірку"
+    },
+    {
+      "code": 6043,
+      "name": "accumulatorBusy",
+      "msg": "Попереднє обчислення прогону ще не повернулось"
+    },
+    {
+      "code": 6044,
+      "name": "accumulatorNotReady",
+      "msg": "Накопичувач прогону ще не створено"
+    },
+    {
+      "code": 6045,
+      "name": "accumulatorAlreadyReady",
+      "msg": "Накопичувач прогону вже створено"
+    },
+    {
+      "code": 6046,
+      "name": "accumulatorOffsetMismatch",
+      "msg": "Callback належить іншому обчисленню"
+    },
+    {
+      "code": 6047,
+      "name": "batchBufferMalformed",
+      "msg": "Буферний акаунт не має заголовка"
+    },
+    {
+      "code": 6048,
+      "name": "batchBufferForeignRun",
+      "msg": "Буферний акаунт належить іншому прогону"
+    },
+    {
+      "code": 6049,
+      "name": "batchBufferTooSmall",
+      "msg": "Буферний акаунт ще не дорощено до розміру батча"
+    },
+    {
+      "code": 6050,
+      "name": "batchBufferNotGrowing",
+      "msg": "Буферний акаунт уже такого розміру або більший"
+    },
+    {
+      "code": 6051,
+      "name": "batchWriteOutOfBounds",
+      "msg": "Запис виходить за межі буферного акаунта"
+    },
+    {
+      "code": 6052,
+      "name": "batchLiveOutOfRange",
+      "msg": "У батчі має бути від 1 до 32 живих записів"
+    },
+    {
+      "code": 6053,
+      "name": "runPoolExhausted",
+      "msg": "Усі датасети прогону вже закриті"
+    },
+    {
+      "code": 6054,
+      "name": "runPoolNotExhausted",
+      "msg": "У прогоні лишились незакриті датасети"
+    },
+    {
+      "code": 6055,
+      "name": "runFoldOverflow",
+      "msg": "Лічильник згорнутих батчів переповнився"
+    },
+    {
+      "code": 6056,
+      "name": "lamportsOverflow",
+      "msg": "Переповнення балансу при поверненні rent"
     }
   ],
   "types": [
-    {
-      "name": "accumulatorCreated",
-      "docs": [
-        "Порожній накопичувач, зашифрований ключем MXE.",
-        "",
-        "Розшифрувати його не може ніхто, крім кластера: подія існує, щоб клієнт мав",
-        "що передати першій згортці, а не щоб хтось прочитав вміст."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "nonce",
-            "type": {
-              "array": [
-                "u8",
-                16
-              ]
-            }
-          },
-          {
-            "name": "ciphertexts",
-            "type": {
-              "array": [
-                {
-                  "array": [
-                    "u8",
-                    32
-                  ]
-                },
-                24
-              ]
-            }
-          }
-        ]
-      }
-    },
     {
       "name": "activation",
       "type": {
@@ -1601,6 +2655,42 @@ export type Genovault = {
               "u8",
               64
             ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "batchFolded",
+      "docs": [
+        "Батч пішов у MPC. Несе рівно те, чим третя сторона звіряє журнал (`FR-025`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "live",
+            "type": "u8"
+          },
+          {
+            "name": "foldedBatches",
+            "type": "u32"
+          },
+          {
+            "name": "foldedHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -2140,6 +3230,37 @@ export type Genovault = {
       }
     },
     {
+      "name": "datasetContributionDeclared",
+      "docs": [
+        "Внесок датасету, оголошений усередині MPC (`FR-018a`).",
+        "",
+        "`below_floor` окремо від нульового внеску навмисно: «не дав жодного запису",
+        "під фільтр» і «дав, але замало, щоб про це говорити» — різні речі для",
+        "власника, який дивиться на свій екран нарахувань, і однакові для гаманця."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "recordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "belowFloor",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
       "name": "datasetPriceChanged",
       "type": {
         "kind": "struct",
@@ -2307,6 +3428,82 @@ export type Genovault = {
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesCloseDatasetOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "frequenciesCloseDatasetOutputStruct0"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesCloseDatasetOutputStruct0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "mxeEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "field1",
+            "type": "u32"
+          },
+          {
+            "name": "field2",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesFoldOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "mxeEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
           }
         ]
       }
@@ -2957,6 +4154,32 @@ export type Genovault = {
               "Стеля, вище якої покупець не згоден. Зазвичай — число з квоти."
             ],
             "type": "u64"
+          },
+          {
+            "name": "dispatcher",
+            "docs": [
+              "Кому покупець доручає довести прогін до кінця (`T025`).",
+              "",
+              "Публікація в MPC — це сотні транзакцій на прогін, і підписувати їх у",
+              "вкладці браузера неможливо. Але й брати це повноваження собі платформа",
+              "не має права: воно приходить звідси, від покупця, разом із замовленням.",
+              "Диспетчер не рухає грошей і не міняє умов — він або доводить прогін до",
+              "кінця, або ні."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "recipeParams",
+            "docs": [
+              "Параметри рецепта: для «частот» — вікові межі й фільтри статі та",
+              "ураженості. Перевіряються тут, бо після оплати вже пізно."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -2980,6 +4203,18 @@ export type Genovault = {
             "type": "pubkey"
           },
           {
+            "name": "dispatcher",
+            "docs": [
+              "Хто має право подавати шифротекст і ставити обчислення в чергу",
+              "(`T025`). Називає його **покупець** при замовленні: 313 підписів на",
+              "прогін у вкладці браузера — не продукт, а повноваження, взяте",
+              "платформою собі, — не те, що покупець комусь давав. Диспетчер не",
+              "рухає грошей, не міняє згоди й не змінює складу прогону: усе, що він",
+              "може, — довести цей прогін до кінця або не довести."
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "nonce",
             "docs": [
               "Обраний покупцем; він же в seeds, тож два прогони не сплутати."
@@ -2989,6 +4224,25 @@ export type Genovault = {
           {
             "name": "recipeId",
             "type": "u16"
+          },
+          {
+            "name": "recipeParams",
+            "docs": [
+              "Параметри рецепта, заявлені при замовленні: для «частот» це вікові межі",
+              "й фільтри статі та ураженості.",
+              "",
+              "Лежать тут, а не в аргументах публікації, бо запит покупця — частина",
+              "умов прогону. Власник звіряє їх зі своєю згодою (`FR-006`), незалежний",
+              "звіряч журналу — з тим, що пішло в MPC (`FR-025`), і ні перше, ні друге",
+              "неможливе, якщо диспетчер може підставити інший фільтр після",
+              "замовлення."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "useType",
@@ -3061,12 +4315,179 @@ export type Genovault = {
             }
           },
           {
+            "name": "datasetCursor",
+            "docs": [
+              "Який датасет пулу згортається зараз. Рухає його тільки закриття",
+              "датасету в MPC — саме тому ончейн-порядок не може розійтись із тим, у",
+              "якому рахував рецепт."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "foldedBatches",
+            "docs": [
+              "Скільки батчів згорнуто за весь прогін."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "foldedHash",
+            "docs": [
+              "Ланцюжок відбитків усього, що пішло в MPC (`T025`).",
+              "",
+              "Програма не бачить сховища й не може звірити байти з",
+              "`Dataset.content_hash`: потокового sha256 через транзакції не існує, а",
+              "цілий конверт на 21 МБ у одну не влазить. Тому ланцюг не перевіряє —",
+              "він **свідчить**: кожна згортка вплітає сюди датасет, кількість живих",
+              "записів і самі байти батча. Третя сторона бере шифротекст зі сховища",
+              "(він публічний), ріже його тим самим батчем і рахує той самий ланцюжок.",
+              "Розбіжність означає, що згорнули не той датасет, — і це видно без",
+              "доступу до нашого коду (`FR-025`)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "createdAt",
             "type": "i64"
           },
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runAccumulator",
+      "docs": [
+        "Накопичувач частот між згортками (`T025`).",
+        "",
+        "Seeds: `[\"acc\", run]`.",
+        "",
+        "# Чому окремий акаунт, а не поле в `Run`",
+        "",
+        "`Run` читає незалежний звіряч журналу (`FR-025`), і 784 байти непрозорого",
+        "шифротексту в ньому не доводять йому нічого — зате коштують rent кожному",
+        "прогону, включно з тими, що впали одразу після замовлення. Окремий акаунт",
+        "живе рівно від публікації обчислення до розкриття, а на закритті rent",
+        "повертається тому, хто його вніс.",
+        "",
+        "# Чому не аргументом від клієнта",
+        "",
+        "Підмінити накопичувач неможливо — він під ключем MXE, — але **повторити**",
+        "старий можна: згорнути той самий батч двічі або підсунути накопичувач",
+        "іншого прогону. Черга обчислень цього не забороняє, а результат виглядав би",
+        "цілком валідним. Ланцюг мусить пам'ятати, який накопичувач чинний, інакше",
+        "«скільки записів увійшло» перестає бути фактом."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "docs": [
+              "Нонс шифру, що лежить у `ciphertexts`. Свіжий на кожну згортку: Rescue",
+              "працює в режимі CTR, і повторений нонс за того самого ключа MXE дав би",
+              "повторену гаму."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                24
+              ]
+            }
+          },
+          {
+            "name": "ready",
+            "docs": [
+              "Чи вже повернувся `frequencies_init`. До того згортати нема в що."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "pending",
+            "docs": [
+              "Акаунт обчислення, яке зараз у польоті.",
+              "",
+              "Адреса, а не зсув: callback приходить окремою транзакцією і зсуву в",
+              "аргументах не має — зате має сам акаунт обчислення, тож звірити є з чим.",
+              "",
+              "Без цього поля дві згортки могли б піти в чергу одночасно, прочитати той",
+              "самий накопичувач і повернутись по черзі — друга мовчки затерла б першу,",
+              "і батч зник би з когорти, не зникнувши з рахунку покупця."
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runComputationAborted",
+      "docs": [
+        "Обчислення повернулось невдачею — прогін переходить у `failed`.",
+        "",
+        "Не помилка транзакції: відкат лишив би накопичувач назавжди зайнятим, і",
+        "прогін застряг би в `running` без жодного способу повернути депозит.",
+        "`FR-016` каже повернути його повністю, а для цього потрібен саме кінцевий",
+        "статус."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "computation",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runOpened",
+      "docs": [
+        "Прогін готовий приймати шифротекст."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "accumulator",
+            "type": "pubkey"
+          },
+          {
+            "name": "buffer",
+            "type": "pubkey"
           }
         ]
       }
@@ -3092,12 +4513,25 @@ export type Genovault = {
             "type": "pubkey"
           },
           {
+            "name": "dispatcher",
+            "type": "pubkey"
+          },
+          {
             "name": "nonce",
             "type": "u64"
           },
           {
             "name": "recipeId",
             "type": "u16"
+          },
+          {
+            "name": "recipeParams",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "useType",
@@ -3373,41 +4807,150 @@ export const IDL: Genovault = {
     "Програма GenoVault.",
     "",
     "Рецепт «частоти й розподіли» (`T018`, `T019`) живе в `encrypted-ixs`",
-    "чотирма контурами, і тут розгортаються їхні визначення обчислень. Виклик",
-    "`frequencies_init` поки не належить жодному прогону — він доводить, що",
-    "ланцюг «черга обчислень → вузли → callback» замикається на цьому",
-    "репозиторії. Замовлення прогону з перевіркою згоди й депозитом приходить",
-    "у `T024`, згортка батчів і розкриття — у `T025`-`T026`."
+    "чотирма контурами, і тут розгортаються їхні визначення обчислень. Прогін",
+    "проходить їх по черзі: `dispatch_init` створює накопичувач, `dispatch_fold`",
+    "згортає батчі з буферного акаунта, `dispatch_close_dataset` оголошує внесок",
+    "кожного датасету пулу (`T025`). Розкриття звіту покупцю й розподіл плати —",
+    "`T026`."
   ],
   "instructions": [
     {
-      "name": "frequenciesInit",
+      "name": "closeBatchBuffer",
       "docs": [
-        "Створює порожній накопичувач частот.",
-        "",
-        "Прогону ця інструкція поки не належить: `Run`, перевірка згоди й",
-        "депозит приходять у `T024`, згортка батчів і розкриття — у",
-        "`T025`-`T026`. Вона стоїть тут із тієї ж причини, з якої тут раніше",
-        "стояв каркасний `probe_sum`: доводить, що ланцюг «програма → черга",
-        "обчислень → MPC-вузли → callback» замикається на цьому репозиторії.",
-        "Різниця в тому, що тепер це справжній рецепт із каталогу, а не",
-        "заглушка, яка додає два числа."
+        "Повертає rent за буфер, коли пул вичерпано або прогін завершився."
       ],
       "discriminator": [
-        123,
-        84,
-        5,
         59,
-        85,
-        227,
-        151,
-        19
+        94,
+        58,
+        87,
+        100,
+        86,
+        9,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "dispatchCloseDataset",
+      "docs": [
+        "Публікація в Arcium: оголошення внеску поточного датасету (`FR-018a`)."
+      ],
+      "discriminator": [
+        117,
+        133,
+        215,
+        173,
+        221,
+        43,
+        61,
+        240
       ],
       "accounts": [
         {
           "name": "payer",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
         },
         {
           "name": "signPdaAccount",
@@ -3490,6 +5033,530 @@ export const IDL: Genovault = {
       ]
     },
     {
+      "name": "dispatchFold",
+      "docs": [
+        "Публікація в Arcium: згортка батча з буферного акаунта."
+      ],
+      "discriminator": [
+        23,
+        95,
+        246,
+        22,
+        242,
+        200,
+        20,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        },
+        {
+          "name": "live",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "dispatchInit",
+      "docs": [
+        "Публікація в Arcium: порожній накопичувач під цей прогін (`FR-010`).",
+        "",
+        "Нулі, зашифровані ключем MXE, може зробити тільки сам MXE — програма",
+        "цього ключа не має, і в цьому суть (`FR-004a`)."
+      ],
+      "discriminator": [
+        96,
+        178,
+        174,
+        61,
+        145,
+        114,
+        30,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "frequenciesCloseDatasetCallback",
+      "discriminator": [
+        157,
+        186,
+        184,
+        117,
+        243,
+        179,
+        214,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesCloseDatasetOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "frequenciesFoldCallback",
+      "discriminator": [
+        134,
+        49,
+        189,
+        24,
+        38,
+        50,
+        166,
+        233
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesFoldOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "frequenciesInitCallback",
       "discriminator": [
         31,
@@ -3521,6 +5588,52 @@ export const IDL: Genovault = {
         {
           "name": "instructionsSysvar",
           "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
         }
       ],
       "args": [
@@ -3543,6 +5656,82 @@ export const IDL: Genovault = {
           }
         }
       ]
+    },
+    {
+      "name": "growBatchBuffer",
+      "docs": [
+        "Дорощує буферний акаунт на один крок. Шість викликів на прогін: акаунт,",
+        "створений через CPI, не буває більшим за 10 КіБ, а батч — 70 656 байтів."
+      ],
+      "discriminator": [
+        76,
+        232,
+        217,
+        127,
+        199,
+        8,
+        111,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initFrequenciesCloseDatasetCompDef",
@@ -3872,6 +6061,111 @@ export const IDL: Genovault = {
         },
         {
           "name": "tokenProgram"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "openRun",
+      "docs": [
+        "Відкриває прогін під публікацію: накопичувач і буферний акаунт (`T025`).",
+        "",
+        "Платить диспетчер, і rent за буфер (~0,49 SOL) повертається йому ж на",
+        "`close_batch_buffer`."
+      ],
+      "discriminator": [
+        252,
+        181,
+        149,
+        94,
+        46,
+        20,
+        82,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Буфер під один батч. Створюється на 10 КіБ і доростає окремими",
+            "інструкціями: акаунт, створений через CPI, не буває більшим за межу",
+            "приросту за одну інструкцію, а батч у неї не вміщається всемеро.",
+            "",
+            "Структурою його не описати: черга обчислень читає з нього сирі слова."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
         },
         {
           "name": "systemProgram",
@@ -4463,6 +6757,105 @@ export const IDL: Genovault = {
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "writeBatch",
+      "docs": [
+        "Кладе шматок шифротексту в буфер. Конверт їде в ланцюг транзакціями по",
+        "~950 байтів — інших у Solana не буває."
+      ],
+      "discriminator": [
+        241,
+        101,
+        221,
+        8,
+        160,
+        229,
+        116,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "offset",
+          "type": "u32"
+        },
+        {
+          "name": "bytes",
+          "type": "bytes"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -4530,20 +6923,33 @@ export const IDL: Genovault = {
         246,
         189
       ]
+    },
+    {
+      "name": "runAccumulator",
+      "discriminator": [
+        117,
+        151,
+        93,
+        153,
+        172,
+        56,
+        93,
+        82
+      ]
     }
   ],
   "events": [
     {
-      "name": "accumulatorCreated",
+      "name": "batchFolded",
       "discriminator": [
-        247,
-        191,
-        106,
-        20,
-        140,
-        47,
-        244,
-        214
+        25,
+        15,
+        197,
+        37,
+        100,
+        2,
+        119,
+        137
       ]
     },
     {
@@ -4570,6 +6976,19 @@ export const IDL: Genovault = {
         150,
         13,
         187
+      ]
+    },
+    {
+      "name": "datasetContributionDeclared",
+      "discriminator": [
+        207,
+        89,
+        133,
+        7,
+        250,
+        169,
+        91,
+        59
       ]
     },
     {
@@ -4635,6 +7054,32 @@ export const IDL: Genovault = {
         140,
         112,
         162
+      ]
+    },
+    {
+      "name": "runComputationAborted",
+      "discriminator": [
+        222,
+        130,
+        122,
+        214,
+        32,
+        82,
+        37,
+        53
+      ]
+    },
+    {
+      "name": "runOpened",
+      "discriminator": [
+        160,
+        77,
+        88,
+        236,
+        193,
+        43,
+        178,
+        255
       ]
     },
     {
@@ -4869,46 +7314,89 @@ export const IDL: Genovault = {
       "code": 6040,
       "name": "runEscrowAboveMax",
       "msg": "Вартість прогону перевищує названу покупцем межу"
+    },
+    {
+      "code": 6041,
+      "name": "runNotDispatcher",
+      "msg": "Цю дію може виконати лише диспетчер прогону"
+    },
+    {
+      "code": 6042,
+      "name": "recipeParamsInvalid",
+      "msg": "Параметри рецепта не проходять перевірку"
+    },
+    {
+      "code": 6043,
+      "name": "accumulatorBusy",
+      "msg": "Попереднє обчислення прогону ще не повернулось"
+    },
+    {
+      "code": 6044,
+      "name": "accumulatorNotReady",
+      "msg": "Накопичувач прогону ще не створено"
+    },
+    {
+      "code": 6045,
+      "name": "accumulatorAlreadyReady",
+      "msg": "Накопичувач прогону вже створено"
+    },
+    {
+      "code": 6046,
+      "name": "accumulatorOffsetMismatch",
+      "msg": "Callback належить іншому обчисленню"
+    },
+    {
+      "code": 6047,
+      "name": "batchBufferMalformed",
+      "msg": "Буферний акаунт не має заголовка"
+    },
+    {
+      "code": 6048,
+      "name": "batchBufferForeignRun",
+      "msg": "Буферний акаунт належить іншому прогону"
+    },
+    {
+      "code": 6049,
+      "name": "batchBufferTooSmall",
+      "msg": "Буферний акаунт ще не дорощено до розміру батча"
+    },
+    {
+      "code": 6050,
+      "name": "batchBufferNotGrowing",
+      "msg": "Буферний акаунт уже такого розміру або більший"
+    },
+    {
+      "code": 6051,
+      "name": "batchWriteOutOfBounds",
+      "msg": "Запис виходить за межі буферного акаунта"
+    },
+    {
+      "code": 6052,
+      "name": "batchLiveOutOfRange",
+      "msg": "У батчі має бути від 1 до 32 живих записів"
+    },
+    {
+      "code": 6053,
+      "name": "runPoolExhausted",
+      "msg": "Усі датасети прогону вже закриті"
+    },
+    {
+      "code": 6054,
+      "name": "runPoolNotExhausted",
+      "msg": "У прогоні лишились незакриті датасети"
+    },
+    {
+      "code": 6055,
+      "name": "runFoldOverflow",
+      "msg": "Лічильник згорнутих батчів переповнився"
+    },
+    {
+      "code": 6056,
+      "name": "lamportsOverflow",
+      "msg": "Переповнення балансу при поверненні rent"
     }
   ],
   "types": [
-    {
-      "name": "accumulatorCreated",
-      "docs": [
-        "Порожній накопичувач, зашифрований ключем MXE.",
-        "",
-        "Розшифрувати його не може ніхто, крім кластера: подія існує, щоб клієнт мав",
-        "що передати першій згортці, а не щоб хтось прочитав вміст."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "nonce",
-            "type": {
-              "array": [
-                "u8",
-                16
-              ]
-            }
-          },
-          {
-            "name": "ciphertexts",
-            "type": {
-              "array": [
-                {
-                  "array": [
-                    "u8",
-                    32
-                  ]
-                },
-                24
-              ]
-            }
-          }
-        ]
-      }
-    },
     {
       "name": "activation",
       "type": {
@@ -4955,6 +7443,42 @@ export const IDL: Genovault = {
               "u8",
               64
             ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "batchFolded",
+      "docs": [
+        "Батч пішов у MPC. Несе рівно те, чим третя сторона звіряє журнал (`FR-025`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "live",
+            "type": "u8"
+          },
+          {
+            "name": "foldedBatches",
+            "type": "u32"
+          },
+          {
+            "name": "foldedHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -5494,6 +8018,37 @@ export const IDL: Genovault = {
       }
     },
     {
+      "name": "datasetContributionDeclared",
+      "docs": [
+        "Внесок датасету, оголошений усередині MPC (`FR-018a`).",
+        "",
+        "`below_floor` окремо від нульового внеску навмисно: «не дав жодного запису",
+        "під фільтр» і «дав, але замало, щоб про це говорити» — різні речі для",
+        "власника, який дивиться на свій екран нарахувань, і однакові для гаманця."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "recordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "belowFloor",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
       "name": "datasetPriceChanged",
       "type": {
         "kind": "struct",
@@ -5661,6 +8216,82 @@ export const IDL: Genovault = {
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesCloseDatasetOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "frequenciesCloseDatasetOutputStruct0"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesCloseDatasetOutputStruct0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "mxeEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "field1",
+            "type": "u32"
+          },
+          {
+            "name": "field2",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesFoldOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "mxeEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
           }
         ]
       }
@@ -6311,6 +8942,32 @@ export const IDL: Genovault = {
               "Стеля, вище якої покупець не згоден. Зазвичай — число з квоти."
             ],
             "type": "u64"
+          },
+          {
+            "name": "dispatcher",
+            "docs": [
+              "Кому покупець доручає довести прогін до кінця (`T025`).",
+              "",
+              "Публікація в MPC — це сотні транзакцій на прогін, і підписувати їх у",
+              "вкладці браузера неможливо. Але й брати це повноваження собі платформа",
+              "не має права: воно приходить звідси, від покупця, разом із замовленням.",
+              "Диспетчер не рухає грошей і не міняє умов — він або доводить прогін до",
+              "кінця, або ні."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "recipeParams",
+            "docs": [
+              "Параметри рецепта: для «частот» — вікові межі й фільтри статі та",
+              "ураженості. Перевіряються тут, бо після оплати вже пізно."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -6334,6 +8991,18 @@ export const IDL: Genovault = {
             "type": "pubkey"
           },
           {
+            "name": "dispatcher",
+            "docs": [
+              "Хто має право подавати шифротекст і ставити обчислення в чергу",
+              "(`T025`). Називає його **покупець** при замовленні: 313 підписів на",
+              "прогін у вкладці браузера — не продукт, а повноваження, взяте",
+              "платформою собі, — не те, що покупець комусь давав. Диспетчер не",
+              "рухає грошей, не міняє згоди й не змінює складу прогону: усе, що він",
+              "може, — довести цей прогін до кінця або не довести."
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "nonce",
             "docs": [
               "Обраний покупцем; він же в seeds, тож два прогони не сплутати."
@@ -6343,6 +9012,25 @@ export const IDL: Genovault = {
           {
             "name": "recipeId",
             "type": "u16"
+          },
+          {
+            "name": "recipeParams",
+            "docs": [
+              "Параметри рецепта, заявлені при замовленні: для «частот» це вікові межі",
+              "й фільтри статі та ураженості.",
+              "",
+              "Лежать тут, а не в аргументах публікації, бо запит покупця — частина",
+              "умов прогону. Власник звіряє їх зі своєю згодою (`FR-006`), незалежний",
+              "звіряч журналу — з тим, що пішло в MPC (`FR-025`), і ні перше, ні друге",
+              "неможливе, якщо диспетчер може підставити інший фільтр після",
+              "замовлення."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "useType",
@@ -6415,12 +9103,179 @@ export const IDL: Genovault = {
             }
           },
           {
+            "name": "datasetCursor",
+            "docs": [
+              "Який датасет пулу згортається зараз. Рухає його тільки закриття",
+              "датасету в MPC — саме тому ончейн-порядок не може розійтись із тим, у",
+              "якому рахував рецепт."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "foldedBatches",
+            "docs": [
+              "Скільки батчів згорнуто за весь прогін."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "foldedHash",
+            "docs": [
+              "Ланцюжок відбитків усього, що пішло в MPC (`T025`).",
+              "",
+              "Програма не бачить сховища й не може звірити байти з",
+              "`Dataset.content_hash`: потокового sha256 через транзакції не існує, а",
+              "цілий конверт на 21 МБ у одну не влазить. Тому ланцюг не перевіряє —",
+              "він **свідчить**: кожна згортка вплітає сюди датасет, кількість живих",
+              "записів і самі байти батча. Третя сторона бере шифротекст зі сховища",
+              "(він публічний), ріже його тим самим батчем і рахує той самий ланцюжок.",
+              "Розбіжність означає, що згорнули не той датасет, — і це видно без",
+              "доступу до нашого коду (`FR-025`)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "createdAt",
             "type": "i64"
           },
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runAccumulator",
+      "docs": [
+        "Накопичувач частот між згортками (`T025`).",
+        "",
+        "Seeds: `[\"acc\", run]`.",
+        "",
+        "# Чому окремий акаунт, а не поле в `Run`",
+        "",
+        "`Run` читає незалежний звіряч журналу (`FR-025`), і 784 байти непрозорого",
+        "шифротексту в ньому не доводять йому нічого — зате коштують rent кожному",
+        "прогону, включно з тими, що впали одразу після замовлення. Окремий акаунт",
+        "живе рівно від публікації обчислення до розкриття, а на закритті rent",
+        "повертається тому, хто його вніс.",
+        "",
+        "# Чому не аргументом від клієнта",
+        "",
+        "Підмінити накопичувач неможливо — він під ключем MXE, — але **повторити**",
+        "старий можна: згорнути той самий батч двічі або підсунути накопичувач",
+        "іншого прогону. Черга обчислень цього не забороняє, а результат виглядав би",
+        "цілком валідним. Ланцюг мусить пам'ятати, який накопичувач чинний, інакше",
+        "«скільки записів увійшло» перестає бути фактом."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "docs": [
+              "Нонс шифру, що лежить у `ciphertexts`. Свіжий на кожну згортку: Rescue",
+              "працює в режимі CTR, і повторений нонс за того самого ключа MXE дав би",
+              "повторену гаму."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                24
+              ]
+            }
+          },
+          {
+            "name": "ready",
+            "docs": [
+              "Чи вже повернувся `frequencies_init`. До того згортати нема в що."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "pending",
+            "docs": [
+              "Акаунт обчислення, яке зараз у польоті.",
+              "",
+              "Адреса, а не зсув: callback приходить окремою транзакцією і зсуву в",
+              "аргументах не має — зате має сам акаунт обчислення, тож звірити є з чим.",
+              "",
+              "Без цього поля дві згортки могли б піти в чергу одночасно, прочитати той",
+              "самий накопичувач і повернутись по черзі — друга мовчки затерла б першу,",
+              "і батч зник би з когорти, не зникнувши з рахунку покупця."
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runComputationAborted",
+      "docs": [
+        "Обчислення повернулось невдачею — прогін переходить у `failed`.",
+        "",
+        "Не помилка транзакції: відкат лишив би накопичувач назавжди зайнятим, і",
+        "прогін застряг би в `running` без жодного способу повернути депозит.",
+        "`FR-016` каже повернути його повністю, а для цього потрібен саме кінцевий",
+        "статус."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "computation",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runOpened",
+      "docs": [
+        "Прогін готовий приймати шифротекст."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "accumulator",
+            "type": "pubkey"
+          },
+          {
+            "name": "buffer",
+            "type": "pubkey"
           }
         ]
       }
@@ -6446,12 +9301,25 @@ export const IDL: Genovault = {
             "type": "pubkey"
           },
           {
+            "name": "dispatcher",
+            "type": "pubkey"
+          },
+          {
             "name": "nonce",
             "type": "u64"
           },
           {
             "name": "recipeId",
             "type": "u16"
+          },
+          {
+            "name": "recipeParams",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "useType",

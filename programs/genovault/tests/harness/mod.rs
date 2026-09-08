@@ -12,8 +12,8 @@
 #![allow(dead_code)]
 
 use anchor_lang::prelude::*;
-use anchor_lang::AccountDeserialize;
-use genovault::state::{Consent, Dataset, PlatformConfig, Run};
+use anchor_lang::{AccountDeserialize, AccountSerialize};
+use genovault::state::{Consent, Dataset, PlatformConfig, Run, RunAccumulator, BATCH_BUFFER_SEED};
 use genovault::GenoVaultError;
 use mollusk_svm::result::{InstructionResult, ProgramResult};
 use mollusk_svm::Mollusk;
@@ -82,6 +82,31 @@ pub fn run_pda(buyer: &Pubkey, nonce: u64) -> Pubkey {
         &genovault::ID,
     )
     .0
+}
+
+pub fn accumulator_pda(run: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[RunAccumulator::SEED, run.as_ref()], &genovault::ID)
+}
+
+pub fn batch_buffer_pda(run: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[BATCH_BUFFER_SEED, run.as_ref()], &genovault::ID)
+}
+
+/// Готовий акаунт зі стану, який у житті створила б інша інструкція.
+///
+/// Пройти весь шлях від `request_run` було б чеснішим, але зробило б кожен тест
+/// публікації ще й тестом замовлення: 100 акаунтів пулу, мінт, сейф і переказ —
+/// усе заради двох полів, які тут перевіряються.
+pub fn stored<T: AccountSerialize>(value: &T, lamports: u64) -> Account {
+    let mut data = Vec::new();
+    value.try_serialize(&mut data).expect("акаунт має серіалізуватись");
+    Account {
+        lamports,
+        data,
+        owner: genovault::ID,
+        executable: false,
+        rent_epoch: 0,
+    }
 }
 
 // ── Читання результату ───────────────────────────────────────────────────────

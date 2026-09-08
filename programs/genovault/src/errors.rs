@@ -89,4 +89,36 @@ pub enum GenoVaultError {
     RunEscrowOverflow,
     #[msg("Вартість прогону перевищує названу покупцем межу")]
     RunEscrowAboveMax,
+    #[msg("Цю дію може виконати лише диспетчер прогону")]
+    RunNotDispatcher,
+    #[msg("Параметри рецепта не проходять перевірку")]
+    RecipeParamsInvalid,
+    #[msg("Попереднє обчислення прогону ще не повернулось")]
+    AccumulatorBusy,
+    #[msg("Накопичувач прогону ще не створено")]
+    AccumulatorNotReady,
+    #[msg("Накопичувач прогону вже створено")]
+    AccumulatorAlreadyReady,
+    #[msg("Callback належить іншому обчисленню")]
+    AccumulatorOffsetMismatch,
+    #[msg("Буферний акаунт не має заголовка")]
+    BatchBufferMalformed,
+    #[msg("Буферний акаунт належить іншому прогону")]
+    BatchBufferForeignRun,
+    #[msg("Буферний акаунт ще не дорощено до розміру батча")]
+    BatchBufferTooSmall,
+    #[msg("Буферний акаунт уже такого розміру або більший")]
+    BatchBufferNotGrowing,
+    #[msg("Запис виходить за межі буферного акаунта")]
+    BatchWriteOutOfBounds,
+    #[msg("У батчі має бути від 1 до 32 живих записів")]
+    BatchLiveOutOfRange,
+    #[msg("Усі датасети прогону вже закриті")]
+    RunPoolExhausted,
+    #[msg("У прогоні лишились незакриті датасети")]
+    RunPoolNotExhausted,
+    #[msg("Лічильник згорнутих батчів переповнився")]
+    RunFoldOverflow,
+    #[msg("Переповнення балансу при поверненні rent")]
+    LamportsOverflow,
 }
