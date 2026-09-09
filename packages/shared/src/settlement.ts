@@ -122,6 +122,42 @@ function toU64(amount: bigint, what: string): TokenAmount {
   return tokenAmountSchema.parse(amount)
 }
 
+/**
+ * Пул, у якому мовчать усі (`T027a`) — дзеркало `silent_pool_share`.
+ *
+ * Коли `C = 0`, масштабу `R / C` нема на що множити, і основна гілка віддала б
+ * нуль усім при розкритій когорті: покупець отримав би звіт безкоштовно, а
+ * вузьким фільтром — і безкоштовний зонд. Ціна тут — **найнижча ненульова**
+ * ціна серед мовчазних за весь `R`, поділена **порівну** між `belowFloor`.
+ * Ненульова, бо один безкоштовний датасет у пулі інакше знову зробив би весь
+ * пул безкоштовним; порівну, бо внесків тут немає — усі оголосили нуль.
+ * Залишок від ділення повертається покупцю: порядок пулу називає покупець, і
+ * він не має вирішувати, кому перепаде зайва одиниця.
+ */
+function silentPool(run: SettlementRun): { full: bigint; recipients: number } {
+  const silent = run.datasets.filter((other) => other.belowFloor)
+  const priced = silent.filter((other) => other.pricePer1k > 0n)
+  const records = BigInt(run.recordsIncluded)
+  if (records === 0n || priced.length === 0) return { full: 0n, recipients: silent.length }
+
+  const lowest = priced.reduce(
+    (min, other) => (other.pricePer1k < min ? other.pricePer1k : min),
+    priced[0]?.pricePer1k ?? 0n,
+  )
+  return { full: ceilDiv(lowest * records, RECORDS_PER_PRICE_UNIT), recipients: silent.length }
+}
+
+function silentShare(run: SettlementRun, entry: SettlementDataset, cap: boolean): bigint {
+  if (!entry.belowFloor) return 0n
+
+  const { full, recipients } = silentPool(run)
+  if (full === 0n || recipients === 0) return 0n
+
+  const escrow = run.escrowAmount as bigint
+  const total = cap && full > escrow ? escrow : full
+  return total / BigInt(recipients)
+}
+
 /** Повна ціна внеску за правилом розподілу, без стелі депозиту. */
 function uncappedFor(run: SettlementRun, index: number): bigint {
   const entry = run.datasets[index]
@@ -129,11 +165,13 @@ function uncappedFor(run: SettlementRun, index: number): bigint {
     throw new SettlementError('dataset-index-out-of-range', `датасета ${index} немає в пулі`)
   }
 
-  const contributed = contributedRecords(run)
-  const base = entry.pricePer1k * BigInt(entry.recordsIncluded)
-  if (contributed === 0n || base === 0n) return 0n
-
   const records = BigInt(run.recordsIncluded)
+  const contributed = contributedRecords(run)
+  if (contributed === 0n) return silentShare(run, entry, false)
+
+  const base = entry.pricePer1k * BigInt(entry.recordsIncluded)
+  if (base === 0n) return 0n
+
   return ceilDiv(base * records, contributed * RECORDS_PER_PRICE_UNIT)
 }
 
@@ -151,6 +189,16 @@ function uncappedFor(run: SettlementRun, index: number): bigint {
  * `settleRun`, який рахує весь прогін і має що звіряти.
  */
 export function grossFor(run: SettlementRun, index: number): TokenAmount {
+  const entry = run.datasets[index]
+  if (entry === undefined) {
+    throw new SettlementError('dataset-index-out-of-range', `датасета ${index} немає в пулі`)
+  }
+  // Мовчазний пул має власну стелю й ділиться порівну, а не пропорційно
+  // заробленому: ділити тут нема на що — усі оголосили нуль.
+  if (contributedRecords(run) === 0n) {
+    return toU64(silentShare(run, entry, true), 'нарахування')
+  }
+
   const raw = uncappedFor(run, index)
   if (raw === 0n) return toU64(0n, 'нарахування')
 
@@ -165,10 +213,6 @@ export function grossFor(run: SettlementRun, index: number): TokenAmount {
   // Повна ціна не вміщається в депозит: ділимо те, що є, пропорційно
   // заробленому. Сума часток тут не перевищує депозит за побудовою — кожна
   // заокруглена вниз, а їхня точна сума дорівнює йому.
-  const entry = run.datasets[index]
-  if (entry === undefined) {
-    throw new SettlementError('dataset-index-out-of-range', `датасета ${index} немає в пулі`)
-  }
   const base = entry.pricePer1k * BigInt(entry.recordsIncluded)
   const totalBase = run.datasets.reduce(
     (sum, other) => sum + other.pricePer1k * BigInt(other.recordsIncluded),

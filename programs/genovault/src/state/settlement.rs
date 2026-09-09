@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::errors::GenoVaultError;
-use crate::state::{Run, BPS_DENOMINATOR, RECORDS_PER_PRICE_UNIT};
+use crate::state::{Run, RunDataset, BPS_DENOMINATOR, RECORDS_PER_PRICE_UNIT};
 
 /// Розподіл плати за прогін (`T026`, `FR-018b`, `FR-019`).
 ///
@@ -38,7 +38,13 @@ use crate::state::{Run, BPS_DENOMINATOR, RECORDS_PER_PRICE_UNIT};
 /// **рівно** — пропорційно вже заробленому. Покупець ніколи не платить більше,
 /// ніж заблокував, і це не «захист», а умова, під якою він підписував.
 ///
-/// Обидві гілки — чисті функції від `Run`. Це навмисно: нарахування йдуть
+/// # Пул, у якому мовчать усі
+///
+/// Третя гілка (`T027a`): коли `Σ внесків = 0`, масштабу нема на що множити, і
+/// перші дві віддали б нуль усім при розкритій когорті. Правило й ціна цього
+/// рішення — у `silent_pool_share`.
+///
+/// Усі три гілки — чисті функції від `Run`. Це навмисно: нарахування йдуть
 /// окремими транзакціями по одному датасету, і кожна мусить порахувати ту саму
 /// частку, не питаючи, які інші вже пройшли.
 
@@ -54,13 +60,17 @@ pub fn gross_for(run: &Run, index: usize) -> Result<u64> {
         .get(index)
         .ok_or(GenoVaultError::RunDatasetIndexOutOfRange)?;
 
+    let records = run.records_included as u128;
     let contributed = run.contributed_records() as u128;
+    if contributed == 0 {
+        return silent_pool_share(run, entry, records);
+    }
+
     let base = (entry.price_per_1k as u128) * (entry.records_included as u128);
-    if contributed == 0 || base == 0 {
+    if base == 0 {
         return Ok(0);
     }
 
-    let records = run.records_included as u128;
     let unit = RECORDS_PER_PRICE_UNIT as u128;
     let raw = ceil_div(base * records, contributed * unit);
 
@@ -89,6 +99,67 @@ pub fn gross_for(run: &Run, index: usize) -> Result<u64> {
     };
 
     u64::try_from(amount).map_err(|_| GenoVaultError::RunSettlementOverflow.into())
+}
+
+/// Пул, у якому мовчать усі (`T027a`, продуктове рішення 2026-09-07).
+///
+/// Коли жоден датасет не дотягнув до `MIN_CONTRIBUTION`, `Σ внесків = 0` і
+/// масштабу `records_included / Σ внесків` нема на що множити: основна гілка
+/// віддала б нуль **усім**, а когорта з `records_included ≥ MIN_COHORT` при
+/// цьому розкривається. Покупець отримав би звіт безкоштовно й із повним
+/// поверненням депозиту — рівно та дірка, яку `T019` називав неприйнятною, і
+/// гірша за разову втрату грошей: вузьким фільтром це безкоштовний зонд, у
+/// якому й невдала спроба коштує нуль.
+///
+/// Ціна тут — **найнижча ненульова** ціна серед мовчазних, за весь
+/// `records_included`. Те саме правило, за яким верхня оцінка вже врахувала
+/// мовчазні записи (`FR-015a`), тож гроші заблоковані й межа тримається без
+/// окремої домовленості. Ненульова, а не просто найнижча: один безкоштовний
+/// датасет у пулі — консорціумний або зареєстрований покупцем саме заради
+/// цього — знову зробив би весь пул безкоштовним. Пул, у якому всі ціни
+/// нульові, чесно коштує нуль: так вирішили його власники.
+///
+/// Ділиться **порівну** між датасетами з `below_floor`, а не пропорційно
+/// внеску: внесків тут немає, всі оголосили нуль. Названа ціна цього рішення —
+/// платимо й тому, хто не дав жодного запису під фільтр: `below_floor` не
+/// відрізняє «дав, але замало» від «не дав нічого», і відрізняти означало б
+/// розкрити більше, ніж один біт, який рецепт і так оголошує.
+///
+/// Залишок від ділення повертається покупцю, а не дістається першим у списку:
+/// склад і порядок пулу називає покупець, і порядок не має вирішувати, кому
+/// перепаде зайва одиниця. Максимум 49 найменших одиниць на прогін.
+fn silent_pool_share(run: &Run, entry: &RunDataset, records: u128) -> Result<u64> {
+    // Когорта придушена (`records_included = 0`): звіт із нулів, платити нема
+    // за що. `below_floor` тут — сторож: датасет, якого не закрили, не
+    // оголошував нічого, і його частка не має братися з повітря.
+    if records == 0 || !entry.below_floor {
+        return Ok(0);
+    }
+
+    let recipients = run
+        .datasets
+        .iter()
+        .filter(|other| other.below_floor)
+        .count() as u128;
+    let lowest = run
+        .datasets
+        .iter()
+        .filter(|other| other.below_floor && other.price_per_1k > 0)
+        .map(|other| other.price_per_1k as u128)
+        .min()
+        .unwrap_or(0);
+    if recipients == 0 || lowest == 0 {
+        return Ok(0);
+    }
+
+    // Стеля та сама, що й в основній гілці: покупець не платить більше, ніж
+    // заблокував. Спрацювати вона тут не мусить — депозит рахувався по всьому
+    // пулу, а платимо за найнижчою ціною, — але спиратись на це без перевірки
+    // означало б вірити, що заявлені обсяги не менші за фактичні.
+    let full = ceil_div(lowest * records, RECORDS_PER_PRICE_UNIT as u128);
+    let total = full.min(run.escrow_amount as u128);
+
+    u64::try_from(total / recipients).map_err(|_| GenoVaultError::RunSettlementOverflow.into())
 }
 
 /// Комісія платформи з нарахування (`FR-019`).
@@ -330,6 +401,64 @@ mod tests {
 
         assert_eq!(total(&r), 0);
         assert_eq!(r.refund_amount(), 1_000_000);
+    }
+
+    #[test]
+    fn a_pool_where_everyone_is_silent_is_not_free() {
+        // `T027a`. Ніхто не дотягнув до `MIN_CONTRIBUTION`, але 450 записів у
+        // когорті, і звіт розкрито. Ціна — найнижча в пулі за весь обсяг:
+        // ceil(1 000 × 450 / 1 000) = 450, порівну на трьох.
+        let r = run(1_000_000, 450, &[(1_000, 0), (2_000, 0), (3_000, 0)]);
+
+        assert_eq!(gross_for(&r, 0).unwrap(), 150);
+        assert_eq!(gross_for(&r, 1).unwrap(), 150);
+        assert_eq!(gross_for(&r, 2).unwrap(), 150);
+        assert_eq!(total(&r), 450, "покупець платить за те, що отримав");
+    }
+
+    #[test]
+    fn a_free_dataset_does_not_make_the_silent_pool_free() {
+        // Один безкоштовний датасет у пулі — консорціумний або зареєстрований
+        // покупцем саме заради цього — не має обнуляти рахунок. Ціна береться
+        // найнижча **ненульова**.
+        let r = run(1_000_000, 100, &[(0, 0), (1_000, 0)]);
+
+        assert_eq!(total(&r), 100);
+        assert_eq!(
+            gross_for(&r, 0).unwrap(),
+            50,
+            "платимо й тому, хто віддав дані безкоштовно: `below_floor` не              відрізняє «дав, але замало» від «не дав нічого» — названа ціна рішення"
+        );
+        assert_eq!(gross_for(&r, 1).unwrap(), 50);
+    }
+
+    #[test]
+    fn a_silent_pool_priced_at_zero_costs_zero() {
+        // Усі ціни нульові — пул чесно безкоштовний: так вирішили його власники.
+        let r = run(1_000_000, 100, &[(0, 0), (0, 0)]);
+        assert_eq!(total(&r), 0);
+        assert_eq!(r.refund_amount(), 1_000_000);
+    }
+
+    #[test]
+    fn the_remainder_of_a_silent_pool_goes_back_to_the_buyer() {
+        // 450 на чотирьох — це 112 кожному й 2 одиниці залишку. Вони не
+        // дістаються першим у списку: склад і порядок пулу називає покупець.
+        let r = run(1_000_000, 450, &[(1_000, 0), (1_000, 0), (1_000, 0), (1_000, 0)]);
+
+        assert_eq!(gross_for(&r, 0).unwrap(), 112);
+        assert_eq!(total(&r), 448);
+        assert_eq!(r.escrow_amount - total(&r), 999_552);
+    }
+
+    #[test]
+    fn a_silent_pool_never_exceeds_the_escrow() {
+        // Стеля тут спрацювати не мусить, але спиратись на це без перевірки
+        // означало б вірити, що заявлені обсяги не менші за фактичні.
+        let r = run(50, 1_000, &[(1_000, 0), (1_000, 0)]);
+
+        assert_eq!(total(&r), 50);
+        assert!(total(&r) <= r.escrow_amount);
     }
 
     #[test]
