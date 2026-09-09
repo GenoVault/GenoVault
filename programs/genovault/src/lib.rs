@@ -9,10 +9,10 @@ pub use errors::GenoVaultError;
 pub use instructions::*;
 pub use state::*;
 
-// Зсуви трьох контурів прогону живуть у `instructions/dispatch.rs` разом зі
-// своїми чергами й callback'ами. Четвертий (`frequencies_reveal`) з'явиться в
-// `T026`: константа без користувача — це попередження в кожній збірці, а не
-// заготовка.
+// Зсуви контурів прогону живуть поруч зі своїми чергами й callback'ами:
+// три згорткові — в `instructions/dispatch.rs`, розкриття — в
+// `instructions/settle_run.rs`. Константа не має права лежати окремо від
+// єдиного, хто її читає.
 
 declare_id!("9G5ri75FHhrD5V4ujTwvmv5ULCSRTcu4x4mvzKk6tNEb");
 
@@ -22,8 +22,9 @@ declare_id!("9G5ri75FHhrD5V4ujTwvmv5ULCSRTcu4x4mvzKk6tNEb");
 /// чотирма контурами, і тут розгортаються їхні визначення обчислень. Прогін
 /// проходить їх по черзі: `dispatch_init` створює накопичувач, `dispatch_fold`
 /// згортає батчі з буферного акаунта, `dispatch_close_dataset` оголошує внесок
-/// кожного датасету пулу (`T025`). Розкриття звіту покупцю й розподіл плати —
-/// `T026`.
+/// кожного датасету пулу (`T025`), `dispatch_reveal` віддає звіт під ключем
+/// покупця, і з нього ж програма рахує нарахування, комісію й повернення
+/// різниці (`T026`).
 #[arcium_program]
 pub mod genovault {
     use super::*;
@@ -225,6 +226,35 @@ pub mod genovault {
         )
     }
 
+    /// Публікація в Arcium: розкриття звіту покупцю (`T026`, `FR-014`).
+    ///
+    /// Останній контур рецепта. Дозволено лише коли пул вичерпано: розкрити
+    /// звіт, не закривши останній датасет, означало б заплатити всім, крім
+    /// його власника.
+    pub fn dispatch_reveal(ctx: Context<DispatchReveal>, computation_offset: u64) -> Result<()> {
+        instructions::settle_run::queue_reveal(ctx, computation_offset)
+    }
+
+    /// Нарахування власнику одного датасету прогону (`FR-018b`).
+    ///
+    /// Порціями по одному, бо 50 власників в одну транзакцію не вміщаються.
+    /// Кличе будь-хто: суми рахуються з `Run` чистими функціями, і той, хто
+    /// покличе це для всіх датасетів, зробить рівно те, чого від нього хотіли.
+    pub fn settle_dataset(ctx: Context<SettleDataset>, index: u32) -> Result<()> {
+        instructions::settle_run::settle(ctx, index)
+    }
+
+    /// Повертає покупцю різницю між депозитом і фактичною ціною і закриває
+    /// прогін (`FR-016`, `SC-006`).
+    pub fn finalize_run(ctx: Context<FinalizeRun>) -> Result<()> {
+        instructions::settle_run::finalize(ctx)
+    }
+
+    /// Повертає rent за накопичувач, коли він більше нікому не потрібен.
+    pub fn close_accumulator(ctx: Context<CloseAccumulator>) -> Result<()> {
+        instructions::settle_run::reclaim(ctx)
+    }
+
     #[arcium_callback(encrypted_ix = "frequencies_close_dataset")]
     pub fn frequencies_close_dataset_callback(
         ctx: Context<FrequenciesCloseDatasetCallback>,
@@ -257,6 +287,47 @@ pub mod genovault {
             run_key,
             &mut ctx.accounts.run,
             &mut ctx.accounts.accumulator,
+            ctx.accounts.computation_account.key(),
+            verified,
+        )
+    }
+
+    #[arcium_callback(encrypted_ix = "frequencies_reveal")]
+    pub fn frequencies_reveal_callback(
+        ctx: Context<FrequenciesRevealCallback>,
+        output: SignedComputationOutputs<FrequenciesRevealOutput>,
+    ) -> Result<()> {
+        let verified = output
+            .verify_output(
+                &ctx.accounts.cluster_account,
+                &ctx.accounts.computation_account,
+            )
+            .ok()
+            // Той самий кортеж одним полем, що й у закритті датасету: `field_0`
+            // це весь `(звіт, records_included, unclosed)`. Звіт іде під ключем
+            // покупця, тож у ньому є ще й `encryption_key` — того, кому MXE
+            // його зашифрував.
+            .map(|FrequenciesRevealOutput { field_0 }| {
+                let FrequenciesRevealOutputStruct0 {
+                    field_0: report,
+                    field_1: records_included,
+                    field_2: unclosed,
+                } = field_0;
+                (
+                    report.encryption_key,
+                    report.nonce,
+                    report.ciphertexts,
+                    records_included,
+                    unclosed,
+                )
+            });
+
+        let run_key = ctx.accounts.run.key();
+        instructions::settle_run::accept_reveal(
+            run_key,
+            &mut ctx.accounts.run,
+            &mut ctx.accounts.accumulator,
+            &mut ctx.accounts.result,
             ctx.accounts.computation_account.key(),
             verified,
         )

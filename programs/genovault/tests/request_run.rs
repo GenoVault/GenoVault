@@ -26,8 +26,6 @@ use mollusk_svm::result::{InstructionResult, ProgramResult};
 use mollusk_svm::Mollusk;
 use mollusk_svm_programs_token::token2022;
 use solana_account::Account;
-use solana_program_option::COption;
-use spl_token_interface::state::{Account as TokenAccountState, AccountState, Mint as MintState};
 
 mod harness;
 use harness::*;
@@ -41,6 +39,9 @@ const BUYER_FUNDS: u64 = 10_000_000_000;
 const FEE_BPS: u16 = 700;
 const NONCE: u64 = 42;
 
+/// Ключ шифрування покупця: на нього MPC зашифрує звіт (`T026`).
+const BUYER_KEY: [u8; 32] = [5u8; 32];
+
 /// Диспетчер, якого називає покупець при замовленні (`T025`).
 const DISPATCHER: Pubkey = Pubkey::new_from_array([9u8; 32]);
 
@@ -51,41 +52,6 @@ const FREQUENCIES_PARAMS: FrequenciesParams = FrequenciesParams {
     sex_filter: FILTER_ANY,
     affected_filter: FILTER_ANY,
 };
-
-fn vault_pda() -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[PlatformConfig::VAULT_SEED], &genovault::ID)
-}
-
-fn mint_account() -> Account {
-    token2022::create_account_for_mint(MintState {
-        mint_authority: COption::Some(Pubkey::new_unique()),
-        supply: BUYER_FUNDS,
-        decimals: DECIMALS,
-        is_initialized: true,
-        freeze_authority: COption::None,
-    })
-}
-
-fn token_account(mint: Pubkey, owner: Pubkey, amount: u64) -> Account {
-    token2022::create_account_for_token_account(TokenAccountState {
-        mint,
-        owner,
-        amount,
-        delegate: COption::None,
-        state: AccountState::Initialized,
-        is_native: COption::None,
-        delegated_amount: 0,
-        close_authority: COption::None,
-    })
-}
-
-fn token_amount(accounts: &[(Pubkey, Account)], key: &Pubkey) -> u64 {
-    let (_, account) = accounts
-        .iter()
-        .find(|(candidate, _)| candidate == key)
-        .expect("токен-акаунт має бути серед результатів");
-    u64::from_le_bytes(account.data[64..72].try_into().expect("amount — 8 байтів"))
-}
 
 fn default_consent() -> SetConsentArgs {
     SetConsentArgs {
@@ -199,6 +165,7 @@ fn args() -> RequestRunArgs {
         use_type: use_type::ONCOLOGY,
         buyer_category: buyer_category::ACADEMIC,
         max_escrow: COST * 2,
+        buyer_x25519: BUYER_KEY,
         dispatcher: DISPATCHER,
         recipe_params: FREQUENCIES_PARAMS.encode(),
     }
@@ -220,7 +187,7 @@ fn fixture_with(dataset_ids: &[&str], consents: &[SetConsentArgs]) -> Fixture {
         (buyer, funded_wallet()),
         empty(config),
         empty(vault),
-        (mint, mint_account()),
+        (mint, mint_account(DECIMALS, BUYER_FUNDS)),
         (buyer_tokens, token_account(mint, buyer, BUYER_FUNDS)),
         system_program(),
         token2022::keyed_account(),
@@ -323,7 +290,16 @@ fn locks_the_upper_bound_and_records_the_pool() {
     let run: Run = read(&result.resulting_accounts, &run_pda(&f.buyer, NONCE));
     assert_eq!(run.buyer, f.buyer);
     assert_eq!(run.status, RunStatus::Accepted);
-    assert_eq!(run.datasets, f.datasets, "склад пулу — у порядку акаунтів");
+    assert_eq!(
+        run.datasets.iter().map(|entry| entry.dataset).collect::<Vec<_>>(),
+        f.datasets,
+        "склад пулу — у порядку акаунтів"
+    );
+    assert!(
+        run.datasets.iter().all(|entry| entry.price_per_1k == PRICE_PER_1K),
+        "ціна лягає копією: власник вільний змінити її завтра, умови прогону — ні"
+    );
+    assert_eq!(run.buyer_x25519, BUYER_KEY, "звіт зашифрують на ключ покупця");
     assert_eq!(
         run.escrow_amount,
         COST * 2,

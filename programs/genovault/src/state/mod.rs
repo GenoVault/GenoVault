@@ -6,9 +6,11 @@ mod consent;
 mod dataset;
 mod dispatch;
 mod run;
+mod settlement;
 
 pub use config::*;
 pub use consent::*;
 pub use dataset::*;
 pub use dispatch::*;
 pub use run::*;
+pub use settlement::*;

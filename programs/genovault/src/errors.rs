@@ -121,4 +121,16 @@ pub enum GenoVaultError {
     RunFoldOverflow,
     #[msg("Переповнення балансу при поверненні rent")]
     LamportsOverflow,
+    #[msg("Звіт прогону вже розкрито")]
+    RunRevealAlreadyDone,
+    #[msg("У прогоні немає датасету під таким індексом")]
+    RunDatasetIndexOutOfRange,
+    #[msg("Переданий датасет не той, що стоїть під цим індексом у прогоні")]
+    RunDatasetMismatch,
+    #[msg("Записів у звіті менше, ніж оголошено внесками датасетів")]
+    RunRecordsBelowContributions,
+    #[msg("Переповнення балансу нарахувань власника")]
+    OwnerBalanceOverflow,
+    #[msg("Результат прогону належить іншому прогону")]
+    RunResultForeignRun,
 }

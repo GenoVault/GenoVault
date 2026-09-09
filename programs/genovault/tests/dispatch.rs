@@ -15,7 +15,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::{InstructionData, ToAccountMetas};
 use genovault::state::{
-    Run, RunAccumulator, RunStatus, BATCH_BUFFER_BYTES, BATCH_BUFFER_HEADER_BYTES,
+    Run, RunAccumulator, RunDataset, RunStatus, BATCH_BUFFER_BYTES, BATCH_BUFFER_HEADER_BYTES,
     BATCH_BUFFER_INITIAL_BYTES, BATCH_PAYLOAD_BYTES, MAX_PERMITTED_DATA_INCREASE,
     RECIPE_PARAMS_LEN,
 };
@@ -47,13 +47,24 @@ fn run_state(buyer: Pubkey, dispatcher: Pubkey, datasets: usize, status: RunStat
         recipe_params: [0u8; RECIPE_PARAMS_LEN],
         use_type: 1,
         buyer_category: 1,
-        datasets: (0..datasets).map(|_| Pubkey::new_unique()).collect(),
+        buyer_x25519: [4u8; 32],
+        datasets: (0..datasets)
+            .map(|_| RunDataset {
+                dataset: Pubkey::new_unique(),
+                price_per_1k: 1_000,
+                records_included: 0,
+                below_floor: false,
+                settled: false,
+            })
+            .collect(),
         fee_bps: 700,
         escrow_amount: 1_000,
         settled_count: 0,
         settled_amount: 0,
         status,
         result_hash: None,
+        records_included: 0,
+        suppressed: false,
         dataset_cursor: 0,
         folded_batches: 0,
         folded_hash: [0u8; 32],

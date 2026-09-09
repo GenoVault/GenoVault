@@ -104,6 +104,41 @@ impl RunStatus {
     }
 }
 
+/// Один датасет у складі прогону (`T026`).
+///
+/// # Чому не просто адреса
+///
+/// Нарахування рахується з трьох чисел, і жодне з них не можна брати «зараз»:
+///
+/// - **ціна** мусить бути тією, що діяла при замовленні. Власник вільний
+///   підняти `price_per_1k` наступного дня, і депозит, порахований учора, не
+///   зобов'язаний його витримати. Копія тут — те саме рішення, що й копія
+///   `fee_bps` у `Run`.
+/// - **внесок** оголошується всередині MPC (`FR-018a`) і приходить callback'ом
+///   закриття датасету. Подією його не втримати: подія — свідчення, а платити
+///   треба з того, що лежить в акаунті.
+/// - **прапорець нарахування** окремо від `settled_count`: лічильник не
+///   заважає нарахувати одному й тому самому датасету двічі, а порційність
+///   виплат саме й означає, що порядок викликів обирає не програма.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
+pub struct RunDataset {
+    pub dataset: Pubkey,
+    /// Ціна за 1000 записів на момент замовлення (`FR-015`).
+    pub price_per_1k: u64,
+    /// Скільки записів дав цей датасет — оголошено всередині MPC.
+    /// Нуль, поки датасет не закрито, і нуль назавжди, якщо внесок не дотягнув
+    /// до порога.
+    pub records_included: u32,
+    /// Внесок був меншим за `MIN_CONTRIBUTION` і тому оголошений нулем.
+    ///
+    /// Окремо від нульового внеску, бо для власника, який дивиться на екран
+    /// нарахувань (`FR-018b`), «не дав жодного запису під фільтр» і «дав, але
+    /// замало, щоб про це говорити» — різні речі. Для гаманця однакові.
+    pub below_floor: bool,
+    /// Нарахування вже зроблено.
+    pub settled: bool,
+}
+
 /// Замовлений прогін (`FR-013`, `FR-016`).
 ///
 /// Seeds: `["run", buyer, nonce]`.
@@ -138,8 +173,16 @@ pub struct Run {
     /// вони перевірялись проти згоди кожного датасету.
     pub use_type: u32,
     pub buyer_category: u32,
+    /// Ключ шифрування покупця, на який MPC зашифрує звіт (`T026`).
+    ///
+    /// Приходить із замовленням, від самого покупця, і саме тому виняток про
+    /// диспетчера лишається безпечним: якби ключ називала публікація, диспетчер
+    /// підставив би свій і прочитав звіт, за який заплатив хтось інший.
+    /// Перевірити його програма не може ніяк — тому він і мусить приїхати від
+    /// того єдиного, хто не має причин себе обманути.
+    pub buyer_x25519: [u8; 32],
     #[max_len(MAX_RUN_DATASETS)]
-    pub datasets: Vec<Pubkey>,
+    pub datasets: Vec<RunDataset>,
     /// Комісія на момент замовлення (`FR-019`). Копія, а не посилання на
     /// конфігурацію: інакше зміна комісії переписувала б умови вже
     /// замовленого прогону.
@@ -153,6 +196,14 @@ pub struct Run {
     pub status: RunStatus,
     /// Відбиток результату; з'являється, коли повернувся callback MPC.
     pub result_hash: Option<[u8; 32]>,
+    /// Скільки записів увійшло в когорту — оголошено відкрито при розкритті
+    /// (`T026`). За цим числом рахується оплата, і приховати його від програми
+    /// означало б не мати чим платити.
+    pub records_included: u32,
+    /// Когорта виявилась меншою за `MIN_COHORT`, і рецепт віддав нулі
+    /// (`FR-012`). Прогін відбувся, платити нема за що, депозит повертається
+    /// повністю.
+    pub suppressed: bool,
     /// Який датасет пулу згортається зараз. Рухає його тільки закриття
     /// датасету в MPC — саме тому ончейн-порядок не може розійтись із тим, у
     /// якому рахував рецепт.
@@ -185,15 +236,17 @@ impl Run {
     ///
     /// Дублікат у списку — не дрібниця форматування: він заплатив би одному
     /// власнику двічі за один датасет і зламав би сходження сум (`SC-006`).
-    pub fn validate_datasets(datasets: &[Pubkey]) -> Result<()> {
+    pub fn validate_datasets(datasets: &[RunDataset]) -> Result<()> {
         require!(!datasets.is_empty(), GenoVaultError::RunWithoutDatasets);
         require!(
             datasets.len() <= MAX_RUN_DATASETS,
             GenoVaultError::RunTooManyDatasets
         );
-        for (index, dataset) in datasets.iter().enumerate() {
+        for (index, entry) in datasets.iter().enumerate() {
             require!(
-                !datasets[index + 1..].contains(dataset),
+                !datasets[index + 1..]
+                    .iter()
+                    .any(|other| other.dataset == entry.dataset),
                 GenoVaultError::RunDuplicateDataset
             );
         }
@@ -204,8 +257,21 @@ impl Run {
     pub fn current_dataset(&self) -> Result<Pubkey> {
         self.datasets
             .get(self.dataset_cursor as usize)
-            .copied()
+            .map(|entry| entry.dataset)
             .ok_or_else(|| GenoVaultError::RunPoolExhausted.into())
+    }
+
+    /// Скільки записів оголошено внесками — сума по всьому пулу.
+    ///
+    /// Це **не** `records_included`: записи датасету, чий внесок придушено
+    /// порогом, входять у когорту покупця, але сюди не потрапляють. Різниця
+    /// між двома числами і є той надлишок, за який покупець платить середньою
+    /// ціною пулу.
+    pub fn contributed_records(&self) -> u64 {
+        self.datasets
+            .iter()
+            .map(|entry| entry.records_included as u64)
+            .sum()
     }
 
     pub fn pool_exhausted(&self) -> bool {
@@ -243,14 +309,27 @@ impl Run {
     /// Курсор рухає рівно це, і рівно з callback'а: якби його рухала
     /// публікація, ончейн-порядок розійшовся б із порядком, у якому рахував
     /// рецепт, — і внесок оголосився б не тому датасету.
-    pub fn close_current_dataset(&mut self) -> Result<Pubkey> {
+    /// Внесок, оголошений у MPC, лягає в той рядок пулу, який зараз під
+    /// курсором, — і курсор рушає далі. Обидві дії одна й та сама, бо
+    /// розділити їх означало б дати внеску шанс сісти не на свій датасет.
+    pub fn close_current_dataset(
+        &mut self,
+        records_included: u32,
+        below_floor: bool,
+    ) -> Result<Pubkey> {
         require!(
             self.status == RunStatus::Running,
             GenoVaultError::RunNotRunning
         );
-        let dataset = self.current_dataset()?;
+        let index = self.dataset_cursor as usize;
+        let entry = self
+            .datasets
+            .get_mut(index)
+            .ok_or(GenoVaultError::RunPoolExhausted)?;
+        entry.records_included = records_included;
+        entry.below_floor = below_floor;
         self.dataset_cursor += 1;
-        Ok(dataset)
+        Ok(self.datasets[index].dataset)
     }
 
     /// `accepted → running`: обчислення пішло в Arcium.
@@ -282,9 +361,22 @@ impl Run {
         Ok(())
     }
 
-    /// Відбиток результату з callback MPC. Записується рівно один раз:
-    /// другий запис підмінив би те, що покупець уже бачить як свій результат.
-    pub fn record_result(&mut self, result_hash: [u8; 32]) -> Result<()> {
+    /// Розкриття повернулось: відбиток звіту, розмір когорти й придушення.
+    ///
+    /// Записується рівно один раз — другий запис підмінив би те, що покупець
+    /// уже бачить як свій результат, і переписав би число, за яким уже
+    /// нараховано.
+    ///
+    /// `records_included` не менше за суму оголошених внесків: воно рахує весь
+    /// пул, а внески — тільки ті датасети, що дотягнули до порога. Менше
+    /// означало б, що ончейн-облік і рецепт рахували різні речі, і платити з
+    /// такого числа не можна.
+    pub fn record_reveal(
+        &mut self,
+        result_hash: [u8; 32],
+        records_included: u32,
+        suppressed: bool,
+    ) -> Result<()> {
         require!(
             self.status == RunStatus::Running,
             GenoVaultError::RunNotRunning
@@ -293,13 +385,25 @@ impl Run {
             self.result_hash.is_none(),
             GenoVaultError::RunResultAlreadyRecorded
         );
+        require!(self.pool_exhausted(), GenoVaultError::RunPoolNotExhausted);
+        require!(
+            records_included as u64 >= self.contributed_records(),
+            GenoVaultError::RunRecordsBelowContributions
+        );
+
         self.result_hash = Some(result_hash);
+        self.records_included = records_included;
+        self.suppressed = suppressed;
         Ok(())
     }
 
     /// Нарахування одному власнику. Виплати йдуть порціями, бо 50 власників в
     /// одну транзакцію не вміщаються.
-    pub fn record_settlement(&mut self, amount: u64) -> Result<()> {
+    ///
+    /// Індекс, а не просто сума: без нього лічильник дозволив би нарахувати
+    /// одному датасету двічі, поки сусідній лишається без нічого — і
+    /// `settled_count` дійшов би до кінця, нічого не помітивши.
+    pub fn settle(&mut self, index: usize, gross: u64) -> Result<()> {
         require!(
             self.status == RunStatus::Running,
             GenoVaultError::RunNotRunning
@@ -308,14 +412,15 @@ impl Run {
             self.result_hash.is_some(),
             GenoVaultError::RunResultMissing
         );
-        require!(
-            self.settled_count < self.dataset_count(),
-            GenoVaultError::RunAlreadySettled
-        );
+        let entry = self
+            .datasets
+            .get(index)
+            .ok_or(GenoVaultError::RunDatasetIndexOutOfRange)?;
+        require!(!entry.settled, GenoVaultError::RunAlreadySettled);
 
         let settled_amount = self
             .settled_amount
-            .checked_add(amount)
+            .checked_add(gross)
             .ok_or(GenoVaultError::RunSettlementOverflow)?;
         // Роздати більше, ніж заблоковано, не можна навіть на одну одиницю:
         // це рівно те, що доводить `SC-006`.
@@ -324,9 +429,19 @@ impl Run {
             GenoVaultError::RunSettlementExceedsEscrow
         );
 
+        self.datasets[index].settled = true;
         self.settled_amount = settled_amount;
         self.settled_count += 1;
         Ok(())
+    }
+
+    /// Скільки з депозиту лишилось покупцю (`FR-016`).
+    ///
+    /// Різниця, а не окреме поле: депозит — верхня оцінка (`FR-015a`), і те, що
+    /// не пішло власникам, за побудовою належить тому, хто його вніс. Ціле
+    /// віднімання тут безпечне, бо `settle` не дає сумі перевищити депозит.
+    pub fn refund_amount(&self) -> u64 {
+        self.escrow_amount.saturating_sub(self.settled_amount)
     }
 
     /// `running → completed`. Проходить лише коли є результат і нараховано
@@ -406,13 +521,24 @@ mod tests {
             recipe_params: [0u8; RECIPE_PARAMS_LEN],
             use_type: 1,
             buyer_category: 1,
-            datasets: (0..datasets).map(|_| Pubkey::new_unique()).collect(),
+            buyer_x25519: [4u8; 32],
+            datasets: (0..datasets)
+                .map(|_| RunDataset {
+                    dataset: Pubkey::new_unique(),
+                    price_per_1k: 1_000,
+                    records_included: 0,
+                    below_floor: false,
+                    settled: false,
+                })
+                .collect(),
             fee_bps: 250,
             escrow_amount: 1_000,
             settled_count: 0,
             settled_amount: 0,
             status: RunStatus::Accepted,
             result_hash: None,
+            records_included: 0,
+            suppressed: false,
             dataset_cursor: 0,
             folded_batches: 0,
             folded_hash: [0u8; 32],
@@ -421,26 +547,34 @@ mod tests {
         }
     }
 
+    /// Прогін, що дійшов до розкриття: пул вичерпано, звіт записано.
+    fn revealed(datasets: usize) -> Run {
+        let mut r = run(datasets);
+        r.start().unwrap();
+        for _ in 0..datasets {
+            r.close_current_dataset(100, false).unwrap();
+        }
+        r.record_reveal(HASH, 100 * datasets as u32, false).unwrap();
+        r
+    }
+
     #[test]
     fn the_happy_path_ends_in_completed() {
-        let mut r = run(2);
-        r.start().unwrap();
-        r.record_result(HASH).unwrap();
-        r.record_settlement(400).unwrap();
-        r.record_settlement(500).unwrap();
+        let mut r = revealed(2);
+        r.settle(0, 400).unwrap();
+        r.settle(1, 500).unwrap();
         r.complete().unwrap();
 
         assert_eq!(r.status, RunStatus::Completed);
         assert_eq!(r.settled_amount, 900);
         assert_eq!(r.result_hash, Some(HASH));
+        assert_eq!(r.refund_amount(), 100, "решта депозиту належить покупцю");
     }
 
     #[test]
     fn completed_means_everyone_was_paid() {
-        let mut r = run(3);
-        r.start().unwrap();
-        r.record_result(HASH).unwrap();
-        r.record_settlement(100).unwrap();
+        let mut r = revealed(3);
+        r.settle(0, 100).unwrap();
 
         assert_eq!(
             code(r.complete()),
@@ -454,48 +588,79 @@ mod tests {
         let mut r = run(1);
         r.start().unwrap();
         assert_eq!(
-            code(r.record_settlement(10)),
+            code(r.settle(0, 10)),
             expected(GenoVaultError::RunResultMissing)
         );
     }
 
     #[test]
     fn payouts_never_exceed_the_escrow() {
-        let mut r = run(2);
-        r.start().unwrap();
-        r.record_result(HASH).unwrap();
-        r.record_settlement(1_000).unwrap();
+        let mut r = revealed(2);
+        r.settle(0, 1_000).unwrap();
 
         assert_eq!(
-            code(r.record_settlement(1)),
+            code(r.settle(1, 1)),
             expected(GenoVaultError::RunSettlementExceedsEscrow),
             "жодна порція не має права вийти за заблоковане"
         );
     }
 
     #[test]
-    fn no_extra_settlement_beyond_the_dataset_count() {
-        let mut r = run(1);
-        r.start().unwrap();
-        r.record_result(HASH).unwrap();
-        r.record_settlement(10).unwrap();
+    fn no_dataset_is_settled_twice() {
+        // Лічильника мало: він дійшов би до кінця, поки один власник отримав
+        // двічі, а сусідній — нічого.
+        let mut r = revealed(2);
+        r.settle(0, 10).unwrap();
 
         assert_eq!(
-            code(r.record_settlement(10)),
+            code(r.settle(0, 10)),
             expected(GenoVaultError::RunAlreadySettled)
         );
+        assert_eq!(
+            code(r.settle(2, 10)),
+            expected(GenoVaultError::RunDatasetIndexOutOfRange)
+        );
+        assert!(r.settle(1, 10).is_ok());
     }
 
     #[test]
     fn the_result_is_written_once() {
-        let mut r = run(1);
-        r.start().unwrap();
-        r.record_result(HASH).unwrap();
+        let mut r = revealed(1);
         assert_eq!(
-            code(r.record_result([9u8; 32])),
+            code(r.record_reveal([9u8; 32], 100, false)),
             expected(GenoVaultError::RunResultAlreadyRecorded),
             "покупець уже бачить перший відбиток як свій результат"
         );
+    }
+
+    #[test]
+    fn a_reveal_before_the_pool_is_exhausted_is_refused() {
+        // Незакритий датасет означає записи в когорті, на які ніхто не оголосив
+        // внеску: заплатили б усім, крім його власника.
+        let mut r = run(2);
+        r.start().unwrap();
+        r.close_current_dataset(100, false).unwrap();
+
+        assert_eq!(
+            code(r.record_reveal(HASH, 200, false)),
+            expected(GenoVaultError::RunPoolNotExhausted)
+        );
+    }
+
+    #[test]
+    fn a_cohort_smaller_than_the_contributions_is_refused() {
+        // Ончейн-облік і рецепт порахували різні речі: платити з такого числа
+        // означало б віддати власникам більше записів, ніж було в когорті.
+        let mut r = run(2);
+        r.start().unwrap();
+        r.close_current_dataset(100, false).unwrap();
+        r.close_current_dataset(100, false).unwrap();
+
+        assert_eq!(
+            code(r.record_reveal(HASH, 199, false)),
+            expected(GenoVaultError::RunRecordsBelowContributions)
+        );
+        assert!(r.record_reveal(HASH, 200, false).is_ok());
     }
 
     #[test]
@@ -533,7 +698,7 @@ mod tests {
             assert_eq!(code(r.fail()), expected(GenoVaultError::RunIsFinal));
             assert_eq!(code(r.start()), expected(GenoVaultError::RunNotAccepted));
             assert_eq!(
-                code(r.record_result(HASH)),
+                code(r.record_reveal(HASH, 0, false)),
                 expected(GenoVaultError::RunNotRunning)
             );
         }
@@ -598,7 +763,7 @@ mod tests {
     #[test]
     fn folding_belongs_to_a_running_run() {
         let mut r = run(1);
-        let dataset = r.datasets[0];
+        let dataset = r.datasets[0].dataset;
         assert_eq!(
             code(r.record_fold(&dataset, 1, &[]).map(|_| ())),
             expected(GenoVaultError::RunNotRunning),
@@ -611,21 +776,28 @@ mod tests {
         let mut r = run(2);
         r.start().unwrap();
 
-        let first = r.datasets[0];
-        let second = r.datasets[1];
+        let first = r.datasets[0].dataset;
+        let second = r.datasets[1].dataset;
 
         assert_eq!(r.current_dataset().unwrap(), first);
-        assert_eq!(r.close_current_dataset().unwrap(), first);
+        assert_eq!(r.close_current_dataset(120, false).unwrap(), first);
         assert_eq!(r.current_dataset().unwrap(), second);
         assert!(!r.pool_exhausted());
 
-        assert_eq!(r.close_current_dataset().unwrap(), second);
+        assert_eq!(r.close_current_dataset(9, true).unwrap(), second);
         assert!(r.pool_exhausted());
         assert_eq!(
-            code(r.close_current_dataset().map(|_| ())),
+            code(r.close_current_dataset(1, false).map(|_| ())),
             expected(GenoVaultError::RunPoolExhausted),
             "зайве закриття оголосило б внесок датасету, якого в прогоні немає"
         );
+
+        // Внесок сідає в той рядок, який був під курсором, а не в сусідній.
+        assert_eq!(r.datasets[0].records_included, 120);
+        assert!(!r.datasets[0].below_floor);
+        assert_eq!(r.datasets[1].records_included, 9);
+        assert!(r.datasets[1].below_floor);
+        assert_eq!(r.contributed_records(), 129);
     }
 
     #[test]
@@ -668,14 +840,28 @@ mod tests {
         );
     }
 
+    fn entry(dataset: Pubkey) -> RunDataset {
+        RunDataset {
+            dataset,
+            price_per_1k: 1_000,
+            records_included: 0,
+            below_floor: false,
+            settled: false,
+        }
+    }
+
     #[test]
     fn a_duplicate_dataset_is_refused() {
         let dataset = Pubkey::new_unique();
         let other = Pubkey::new_unique();
 
-        assert!(Run::validate_datasets(&[dataset, other]).is_ok());
+        assert!(Run::validate_datasets(&[entry(dataset), entry(other)]).is_ok());
         assert_eq!(
-            code(Run::validate_datasets(&[dataset, other, dataset])),
+            code(Run::validate_datasets(&[
+                entry(dataset),
+                entry(other),
+                entry(dataset)
+            ])),
             expected(GenoVaultError::RunDuplicateDataset),
             "той самий датасет двічі заплатив би власнику двічі за один вміст"
         );
@@ -688,7 +874,9 @@ mod tests {
             expected(GenoVaultError::RunWithoutDatasets)
         );
 
-        let too_many: Vec<Pubkey> = (0..=MAX_RUN_DATASETS).map(|_| Pubkey::new_unique()).collect();
+        let too_many: Vec<RunDataset> = (0..=MAX_RUN_DATASETS)
+            .map(|_| entry(Pubkey::new_unique()))
+            .collect();
         assert_eq!(
             code(Run::validate_datasets(&too_many)),
             expected(GenoVaultError::RunTooManyDatasets)

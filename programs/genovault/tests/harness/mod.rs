@@ -13,11 +13,17 @@
 
 use anchor_lang::prelude::*;
 use anchor_lang::{AccountDeserialize, AccountSerialize};
-use genovault::state::{Consent, Dataset, PlatformConfig, Run, RunAccumulator, BATCH_BUFFER_SEED};
+use genovault::state::{
+    Consent, Dataset, OwnerBalance, PlatformConfig, Run, RunAccumulator, RunResult,
+    BATCH_BUFFER_SEED,
+};
 use genovault::GenoVaultError;
 use mollusk_svm::result::{InstructionResult, ProgramResult};
 use mollusk_svm::Mollusk;
+use mollusk_svm_programs_token::token2022;
 use solana_account::Account;
+use solana_program_option::COption;
+use spl_token_interface::state::{Account as TokenAccountState, AccountState, Mint as MintState};
 
 pub const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
@@ -84,12 +90,60 @@ pub fn run_pda(buyer: &Pubkey, nonce: u64) -> Pubkey {
     .0
 }
 
+pub fn vault_pda() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[PlatformConfig::VAULT_SEED], &genovault::ID)
+}
+
+pub fn owner_balance_pda(owner: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[OwnerBalance::SEED, owner.as_ref()], &genovault::ID)
+}
+
+pub fn run_result_pda(run: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[RunResult::SEED, run.as_ref()], &genovault::ID)
+}
+
 pub fn accumulator_pda(run: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[RunAccumulator::SEED, run.as_ref()], &genovault::ID)
 }
 
 pub fn batch_buffer_pda(run: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[BATCH_BUFFER_SEED, run.as_ref()], &genovault::ID)
+}
+
+// ── Token-2022 ───────────────────────────────────────────────────────────────
+
+/// Розкладки мінта й токен-акаунта беремо з крейта, а не пишемо байтами руками:
+/// 82 і 165 байтів із `COption` усередині — рівно те місце, де тест мовчки
+/// розходиться з реальністю.
+pub fn mint_account(decimals: u8, supply: u64) -> Account {
+    token2022::create_account_for_mint(MintState {
+        mint_authority: COption::Some(Pubkey::new_unique()),
+        supply,
+        decimals,
+        is_initialized: true,
+        freeze_authority: COption::None,
+    })
+}
+
+pub fn token_account(mint: Pubkey, owner: Pubkey, amount: u64) -> Account {
+    token2022::create_account_for_token_account(TokenAccountState {
+        mint,
+        owner,
+        amount,
+        delegate: COption::None,
+        state: AccountState::Initialized,
+        is_native: COption::None,
+        delegated_amount: 0,
+        close_authority: COption::None,
+    })
+}
+
+pub fn token_amount(accounts: &[(Pubkey, Account)], key: &Pubkey) -> u64 {
+    let (_, account) = accounts
+        .iter()
+        .find(|(candidate, _)| candidate == key)
+        .expect("токен-акаунт має бути серед результатів");
+    u64::from_le_bytes(account.data[64..72].try_into().expect("amount — 8 байтів"))
 }
 
 /// Готовий акаунт зі стану, який у житті створила б інша інструкція.

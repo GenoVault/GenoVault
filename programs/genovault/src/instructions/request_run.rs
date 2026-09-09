@@ -5,7 +5,7 @@ use anchor_spl::token_interface::{
 
 use crate::errors::GenoVaultError;
 use crate::state::{
-    dataset_cost, Consent, Dataset, FrequenciesParams, PlatformConfig, Run, RunStatus,
+    dataset_cost, Consent, Dataset, FrequenciesParams, PlatformConfig, Run, RunDataset, RunStatus,
     MAX_RUN_DATASETS, RECIPE_PARAMS_LEN,
 };
 
@@ -47,6 +47,13 @@ pub struct RequestRunArgs {
     pub buyer_category: u32,
     /// Стеля, вище якої покупець не згоден. Зазвичай — число з квоти.
     pub max_escrow: u64,
+    /// Ключ шифрування покупця, на який MPC зашифрує звіт (`T026`).
+    ///
+    /// Приїжджає із замовленням, а не з публікації, з тієї ж причини, з якої
+    /// параметри рецепта лежать у `Run`: диспетчер, який називає читача звіту,
+    /// назве себе. Перевірити ключ програма не може ніяк — тому він мусить
+    /// прийти від того єдиного, хто не має причин себе обманути.
+    pub buyer_x25519: [u8; 32],
     /// Кому покупець доручає довести прогін до кінця (`T025`).
     ///
     /// Публікація в MPC — це сотні транзакцій на прогін, і підписувати їх у
@@ -162,7 +169,7 @@ pub fn request<'info>(
     );
 
     let now = Clock::get()?.unix_timestamp;
-    let mut datasets: Vec<Pubkey> = Vec::with_capacity(infos.len() / 2);
+    let mut datasets: Vec<RunDataset> = Vec::with_capacity(infos.len() / 2);
     let mut escrow: u64 = 0;
 
     for pair in infos.chunks_exact(2) {
@@ -200,7 +207,17 @@ pub fn request<'info>(
                 dataset.record_count_claimed,
             )?)
             .ok_or(GenoVaultError::RunEscrowOverflow)?;
-        datasets.push(dataset.key());
+        // Ціна лягає в прогін копією — тією, з якої щойно порахований депозит.
+        // Власник вільний змінити її завтра, і розподіл (`T026`) не має права
+        // це помітити: інакше нарахування рахувалось би не з тих умов, під
+        // якими покупець підписався.
+        datasets.push(RunDataset {
+            dataset: dataset.key(),
+            price_per_1k: dataset.price_per_1k,
+            records_included: 0,
+            below_floor: false,
+            settled: false,
+        });
     }
 
     // Порожній склад, перебір і дублікат — усе тут. Дублікат заплатив би
@@ -239,6 +256,7 @@ pub fn request<'info>(
         recipe_params: args.recipe_params,
         use_type: args.use_type,
         buyer_category: args.buyer_category,
+        buyer_x25519: args.buyer_x25519,
         datasets: datasets.clone(),
         // Копія комісії, а не посилання на конфігурацію: інакше зміна комісії
         // переписувала б умови вже замовленого прогону (`FR-019`).
@@ -248,6 +266,8 @@ pub fn request<'info>(
         settled_amount: 0,
         status: RunStatus::Accepted,
         result_hash: None,
+        records_included: 0,
+        suppressed: false,
         dataset_cursor: 0,
         folded_batches: 0,
         folded_hash: [0u8; 32],
@@ -264,7 +284,7 @@ pub fn request<'info>(
         recipe_params: args.recipe_params,
         use_type: args.use_type,
         buyer_category: args.buyer_category,
-        datasets,
+        datasets: datasets.iter().map(|entry| entry.dataset).collect(),
         fee_bps: config.fee_bps,
         escrow_amount: escrow,
         created_at: now,

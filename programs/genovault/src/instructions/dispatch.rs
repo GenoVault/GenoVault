@@ -819,7 +819,10 @@ pub fn accept_dataset_close(
     };
 
     accumulator.store(computation, nonce, ciphertexts)?;
-    let dataset = run.close_current_dataset()?;
+    // Внесок лягає в той самий рядок пулу, який зараз під курсором: `T026`
+    // платить із нього, і подія тепер свідчить про те, що вже записано, а не
+    // про те, що ніде не лежить.
+    let dataset = run.close_current_dataset(contribution, below_floor != 0)?;
 
     emit!(DatasetContributionDeclared {
         run: run_key,
@@ -859,13 +862,24 @@ mod tests {
             recipe_params: [0u8; RECIPE_PARAMS_LEN],
             use_type: 1,
             buyer_category: 1,
-            datasets: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            buyer_x25519: [4u8; 32],
+            datasets: (0..2)
+                .map(|_| crate::state::RunDataset {
+                    dataset: Pubkey::new_unique(),
+                    price_per_1k: 1_000,
+                    records_included: 0,
+                    below_floor: false,
+                    settled: false,
+                })
+                .collect(),
             fee_bps: 700,
             escrow_amount: 1_000,
             settled_count: 0,
             settled_amount: 0,
             status: RunStatus::Running,
             result_hash: None,
+            records_included: 0,
+            suppressed: false,
             dataset_cursor: 0,
             folded_batches: 0,
             folded_hash: [0u8; 32],
@@ -941,7 +955,7 @@ mod tests {
     #[test]
     fn closing_a_dataset_moves_the_cursor_and_declares_the_contribution() {
         let (run_key, mut run, mut accumulator) = run_and_accumulator();
-        let first = run.datasets[0];
+        let first = run.datasets[0].dataset;
         let computation = Pubkey::new_unique();
 
         accumulator.arm(computation).unwrap();
@@ -955,9 +969,13 @@ mod tests {
         .unwrap();
 
         assert_eq!(run.dataset_cursor, 1);
-        assert_eq!(run.current_dataset().unwrap(), run.datasets[1]);
-        assert_ne!(first, run.datasets[1]);
+        assert_eq!(run.current_dataset().unwrap(), run.datasets[1].dataset);
+        assert_ne!(first, run.datasets[1].dataset);
         assert_eq!(accumulator.nonce, 9);
+        // Внесок не просто оголошений подією — він лежить у прогоні, і саме
+        // з нього `T026` рахує нарахування власнику.
+        assert_eq!(run.datasets[0].records_included, 120);
+        assert!(!run.datasets[0].below_floor);
     }
 
     #[test]

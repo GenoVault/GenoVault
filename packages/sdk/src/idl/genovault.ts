@@ -22,10 +22,80 @@ export type Genovault = {
     "чотирма контурами, і тут розгортаються їхні визначення обчислень. Прогін",
     "проходить їх по черзі: `dispatch_init` створює накопичувач, `dispatch_fold`",
     "згортає батчі з буферного акаунта, `dispatch_close_dataset` оголошує внесок",
-    "кожного датасету пулу (`T025`). Розкриття звіту покупцю й розподіл плати —",
-    "`T026`."
+    "кожного датасету пулу (`T025`), `dispatch_reveal` віддає звіт під ключем",
+    "покупця, і з нього ж програма рахує нарахування, комісію й повернення",
+    "різниці (`T026`)."
   ],
   "instructions": [
+    {
+      "name": "closeAccumulator",
+      "docs": [
+        "Повертає rent за накопичувач, коли він більше нікому не потрібен."
+      ],
+      "discriminator": [
+        83,
+        157,
+        172,
+        124,
+        244,
+        5,
+        181,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
     {
       "name": "closeBatchBuffer",
       "docs": [
@@ -567,6 +637,292 @@ export type Genovault = {
       ]
     },
     {
+      "name": "dispatchReveal",
+      "docs": [
+        "Публікація в Arcium: розкриття звіту покупцю (`T026`, `FR-014`).",
+        "",
+        "Останній контур рецепта. Дозволено лише коли пул вичерпано: розкрити",
+        "звіт, не закривши останній датасет, означало б заплатити всім, крім",
+        "його власника."
+      ],
+      "discriminator": [
+        84,
+        244,
+        129,
+        157,
+        5,
+        37,
+        119,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "docs": [
+            "Акаунт під звіт створюється тут, до постановки в чергу: callback",
+            "платника не має, а віддавати результат нікуди — це втратити прогін, за",
+            "який уже заплачено.",
+            "",
+            "`init`, а не `init_if_needed`: другого розкриття не буває. Невдале",
+            "обчислення переводить прогін у `failed` (`accept_reveal`), а зайнятий",
+            "накопичувач не дає поставити в чергу ще одне — тож акаунт або",
+            "створюється один раз, або не створюється взагалі. Два `init_if_needed` в",
+            "одній структурі до того ж не вміщаються в 4 КіБ кадру `try_accounts` на",
+            "SBF, і збірка каже про це рядком «overwrites values in the frame»."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finalizeRun",
+      "docs": [
+        "Повертає покупцю різницю між депозитом і фактичною ціною і закриває",
+        "прогін (`FR-016`, `SC-006`)."
+      ],
+      "discriminator": [
+        79,
+        6,
+        112,
+        246,
+        170,
+        39,
+        103,
+        158
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "buyerTokens",
+          "docs": [
+            "Різниця повертається покупцю, і тільки йому: `authority` тут — умова, а",
+            "не зручність. Без неї той, хто кличе інструкцію, назвав би своїм",
+            "токен-акаунтом будь-який."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "frequenciesCloseDatasetCallback",
       "discriminator": [
         157,
@@ -860,6 +1216,130 @@ export type Genovault = {
                   "type": {
                     "defined": {
                       "name": "frequenciesInitOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "frequenciesRevealCallback",
+      "discriminator": [
+        64,
+        48,
+        3,
+        147,
+        27,
+        42,
+        40,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesRevealOutput"
                     }
                   }
                 }
@@ -1901,6 +2381,154 @@ export type Genovault = {
       ]
     },
     {
+      "name": "settleDataset",
+      "docs": [
+        "Нарахування власнику одного датасету прогону (`FR-018b`).",
+        "",
+        "Порціями по одному, бо 50 власників в одну транзакцію не вміщаються.",
+        "Кличе будь-хто: суми рахуються з `Run` чистими функціями, і той, хто",
+        "покличе це для всіх датасетів, зробить рівно те, чого від нього хотіли."
+      ],
+      "discriminator": [
+        195,
+        34,
+        225,
+        110,
+        108,
+        106,
+        124,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Платить за акаунти балансів, якщо їх ще немає. Підпис тут не дає жодних",
+            "прав: суми рахуються з `Run`, і покликати це може будь-хто."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dataset",
+          "docs": [
+            "Датасет із того самого рядка прогону. Потрібен рівно заради власника:",
+            "ціна й внесок уже лежать у `Run` і навмисно не перечитуються звідси —",
+            "власник вільний змінити ціну після замовлення, а умови прогону — ні."
+          ]
+        },
+        {
+          "name": "ownerBalance",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  108,
+                  97,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "dataset.owner",
+                "account": "dataset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "platformBalance",
+          "docs": [
+            "Комісія платформи лягає на такий самий баланс, як у власника даних:",
+            "окремий шлях для неї був би місцем, де платформа рухає гроші не так, як",
+            "усі."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  108,
+                  97,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "platformConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u32"
+        }
+      ]
+    },
+    {
       "name": "updateDatasetContent",
       "docs": [
         "Нова версія вмісту (`FR-003`). Стара не зникає: на неї посилаються",
@@ -2111,6 +2739,19 @@ export type Genovault = {
       ]
     },
     {
+      "name": "ownerBalance",
+      "discriminator": [
+        126,
+        78,
+        65,
+        151,
+        163,
+        196,
+        116,
+        207
+      ]
+    },
+    {
       "name": "platformConfig",
       "discriminator": [
         160,
@@ -2147,6 +2788,19 @@ export type Genovault = {
         56,
         93,
         82
+      ]
+    },
+    {
+      "name": "runResult",
+      "discriminator": [
+        201,
+        22,
+        203,
+        115,
+        112,
+        189,
+        94,
+        243
       ]
     }
   ],
@@ -2243,6 +2897,19 @@ export type Genovault = {
       ]
     },
     {
+      "name": "datasetSettled",
+      "discriminator": [
+        173,
+        151,
+        250,
+        76,
+        70,
+        145,
+        84,
+        202
+      ]
+    },
+    {
       "name": "datasetVersionAdded",
       "discriminator": [
         22,
@@ -2266,6 +2933,19 @@ export type Genovault = {
         140,
         112,
         162
+      ]
+    },
+    {
+      "name": "runCompleted",
+      "discriminator": [
+        233,
+        115,
+        120,
+        101,
+        166,
+        52,
+        138,
+        133
       ]
     },
     {
@@ -2305,6 +2985,32 @@ export type Genovault = {
         74,
         92,
         174
+      ]
+    },
+    {
+      "name": "runRevealRefused",
+      "discriminator": [
+        163,
+        119,
+        76,
+        239,
+        62,
+        182,
+        108,
+        231
+      ]
+    },
+    {
+      "name": "runRevealed",
+      "discriminator": [
+        190,
+        16,
+        32,
+        166,
+        94,
+        147,
+        248,
+        140
       ]
     },
     {
@@ -2606,6 +3312,36 @@ export type Genovault = {
       "code": 6056,
       "name": "lamportsOverflow",
       "msg": "Переповнення балансу при поверненні rent"
+    },
+    {
+      "code": 6057,
+      "name": "runRevealAlreadyDone",
+      "msg": "Звіт прогону вже розкрито"
+    },
+    {
+      "code": 6058,
+      "name": "runDatasetIndexOutOfRange",
+      "msg": "У прогоні немає датасету під таким індексом"
+    },
+    {
+      "code": 6059,
+      "name": "runDatasetMismatch",
+      "msg": "Переданий датасет не той, що стоїть під цим індексом у прогоні"
+    },
+    {
+      "code": 6060,
+      "name": "runRecordsBelowContributions",
+      "msg": "Записів у звіті менше, ніж оголошено внесками датасетів"
+    },
+    {
+      "code": 6061,
+      "name": "ownerBalanceOverflow",
+      "msg": "Переповнення балансу нарахувань власника"
+    },
+    {
+      "code": 6062,
+      "name": "runResultForeignRun",
+      "msg": "Результат прогону належить іншому прогону"
     }
   ],
   "types": [
@@ -3342,6 +4078,57 @@ export type Genovault = {
       }
     },
     {
+      "name": "datasetSettled",
+      "docs": [
+        "Нарахування одному власнику (`FR-018b`).",
+        "",
+        "Несе всі три числа, з яких порахована частка, а не тільки підсумок: `FR-018`",
+        "прямо вимагає, щоб власник бачив, з чого вона вийшла. Без `records_included`",
+        "прогону «мій внесок — 1 000 записів» не пояснює нічого."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "recordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "runRecordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "pricePer1k",
+            "type": "u64"
+          },
+          {
+            "name": "gross",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          },
+          {
+            "name": "net",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "datasetStatus",
       "docs": [
         "Стан датасету в каталозі.",
@@ -3530,6 +4317,56 @@ export type Genovault = {
                 ]
               }
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesRevealOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "frequenciesRevealOutputStruct0"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesRevealOutputStruct0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "sharedEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "field1",
+            "type": "u32"
+          },
+          {
+            "name": "field2",
+            "type": "u32"
           }
         ]
       }
@@ -3930,6 +4767,51 @@ export type Genovault = {
       }
     },
     {
+      "name": "ownerBalance",
+      "docs": [
+        "Нарахування власника (`FR-020`).",
+        "",
+        "Seeds: `[\"balance\", owner]`.",
+        "",
+        "Один акаунт на власника, а не на пару «власник + прогін»: токени рухаються",
+        "рівно двічі — внесок покупця в сейф і виведення власника з сейфа, — і саме",
+        "тому `SC-007` (розподіл між 50 власниками < 30 с) досяжний без петлі з 50",
+        "переказів. Розшифровку «звідки взялась ця сума» дають події прогонів, а не",
+        "окремі акаунти під кожну з них.",
+        "",
+        "Тут же лежить і комісія платформи: її балансом володіє `PlatformConfig.",
+        "authority`, і жодного окремого шляху для неї не існує. Виняток був би",
+        "місцем, де платформа рухає гроші не так, як усі."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "accrued",
+            "docs": [
+              "Скільки нараховано за весь час."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn",
+            "docs": [
+              "Скільки з нарахованого вже виведено (`T049`)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "parameter",
       "docs": [
         "A parameter of a computation.",
@@ -4156,6 +5038,23 @@ export type Genovault = {
             "type": "u64"
           },
           {
+            "name": "buyerX25519",
+            "docs": [
+              "Ключ шифрування покупця, на який MPC зашифрує звіт (`T026`).",
+              "",
+              "Приїжджає із замовленням, а не з публікації, з тієї ж причини, з якої",
+              "параметри рецепта лежать у `Run`: диспетчер, який називає читача звіту,",
+              "назве себе. Перевірити ключ програма не може ніяк — тому він мусить",
+              "прийти від того єдиного, хто не має причин себе обманути."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "dispatcher",
             "docs": [
               "Кому покупець доручає довести прогін до кінця (`T025`).",
@@ -4257,9 +5156,31 @@ export type Genovault = {
             "type": "u32"
           },
           {
+            "name": "buyerX25519",
+            "docs": [
+              "Ключ шифрування покупця, на який MPC зашифрує звіт (`T026`).",
+              "",
+              "Приходить із замовленням, від самого покупця, і саме тому виняток про",
+              "диспетчера лишається безпечним: якби ключ називала публікація, диспетчер",
+              "підставив би свій і прочитав звіт, за який заплатив хтось інший.",
+              "Перевірити його програма не може ніяк — тому він і мусить приїхати від",
+              "того єдиного, хто не має причин себе обманути."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "datasets",
             "type": {
-              "vec": "pubkey"
+              "vec": {
+                "defined": {
+                  "name": "runDataset"
+                }
+              }
             }
           },
           {
@@ -4313,6 +5234,24 @@ export type Genovault = {
                 ]
               }
             }
+          },
+          {
+            "name": "recordsIncluded",
+            "docs": [
+              "Скільки записів увійшло в когорту — оголошено відкрито при розкритті",
+              "(`T026`). За цим числом рахується оплата, і приховати його від програми",
+              "означало б не мати чим платити."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "suppressed",
+            "docs": [
+              "Когорта виявилась меншою за `MIN_COHORT`, і рецепт віддав нулі",
+              "(`FR-012`). Прогін відбувся, платити нема за що, депозит повертається",
+              "повністю."
+            ],
+            "type": "bool"
           },
           {
             "name": "datasetCursor",
@@ -4446,6 +5385,29 @@ export type Genovault = {
       }
     },
     {
+      "name": "runCompleted",
+      "docs": [
+        "Прогін закрито: всім нараховано, різницю повернуто (`SC-006`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "settledAmount",
+            "type": "u64"
+          },
+          {
+            "name": "refunded",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "runComputationAborted",
       "docs": [
         "Обчислення повернулось невдачею — прогін переходить у `failed`.",
@@ -4465,6 +5427,70 @@ export type Genovault = {
           {
             "name": "computation",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runDataset",
+      "docs": [
+        "Один датасет у складі прогону (`T026`).",
+        "",
+        "# Чому не просто адреса",
+        "",
+        "Нарахування рахується з трьох чисел, і жодне з них не можна брати «зараз»:",
+        "",
+        "- **ціна** мусить бути тією, що діяла при замовленні. Власник вільний",
+        "підняти `price_per_1k` наступного дня, і депозит, порахований учора, не",
+        "зобов'язаний його витримати. Копія тут — те саме рішення, що й копія",
+        "`fee_bps` у `Run`.",
+        "- **внесок** оголошується всередині MPC (`FR-018a`) і приходить callback'ом",
+        "закриття датасету. Подією його не втримати: подія — свідчення, а платити",
+        "треба з того, що лежить в акаунті.",
+        "- **прапорець нарахування** окремо від `settled_count`: лічильник не",
+        "заважає нарахувати одному й тому самому датасету двічі, а порційність",
+        "виплат саме й означає, що порядок викликів обирає не програма."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "pricePer1k",
+            "docs": [
+              "Ціна за 1000 записів на момент замовлення (`FR-015`)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "recordsIncluded",
+            "docs": [
+              "Скільки записів дав цей датасет — оголошено всередині MPC.",
+              "Нуль, поки датасет не закрито, і нуль назавжди, якщо внесок не дотягнув",
+              "до порога."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "belowFloor",
+            "docs": [
+              "Внесок був меншим за `MIN_CONTRIBUTION` і тому оголошений нулем.",
+              "",
+              "Окремо від нульового внеску, бо для власника, який дивиться на екран",
+              "нарахувань (`FR-018b`), «не дав жодного запису під фільтр» і «дав, але",
+              "замало, щоб про це говорити» — різні речі. Для гаманця однакові."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "settled",
+            "docs": [
+              "Нарахування вже зроблено."
+            ],
+            "type": "bool"
           }
         ]
       }
@@ -4563,6 +5589,151 @@ export type Genovault = {
       }
     },
     {
+      "name": "runResult",
+      "docs": [
+        "Результат прогону, зашифрований на ключ покупця (`T026`, `FR-014`).",
+        "",
+        "Seeds: `[\"result\", run]`.",
+        "",
+        "# Чому акаунт, а не подія",
+        "",
+        "Подія коштувала б нуль rent і жила б рівно доти, доки RPC тримає логи.",
+        "Покупець, який не забрав звіт вчасно, втратив би його назавжди: MPC стану",
+        "не зберігає, накопичувач на той момент уже закритий, і перерахувати нема з",
+        "чого — довелось би замовляти й оплачувати прогін удруге. Акаунт коштує",
+        "~0,006 SOL і читається з ланцюга будь-коли й без нашого API — рівно те, що",
+        "потрібно `FR-025` і звіряцу з `T031`.",
+        "",
+        "# Що тут відкрито, а що ні",
+        "",
+        "Відкрито `records_included` — за ним рахується оплата, і приховати його від",
+        "програми означало б не мати чим платити. Сам звіт зашифрований на ключ",
+        "покупця: ні платформа, ні власник датасету, ні диспетчер його не читають.",
+        "Приватність **сум платежів** — окрема задача (`FR-021`, `T054`-`T055`); на",
+        "M1 суми публічні, і це сказано вголос у віхах."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "encryptionKey",
+            "docs": [
+              "Ключ, яким MXE зашифрував звіт на покупця. Разом із нонсом його",
+              "вистачає, щоб покупець розшифрував звіт своїм ключем і більше нічим."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                24
+              ]
+            }
+          },
+          {
+            "name": "recordsIncluded",
+            "docs": [
+              "Розмір когорти — те саме число, що в `Run.records_included`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "suppressed",
+            "docs": [
+              "Когорта менша за `MIN_COHORT`: звіт складається з нулів (`FR-012`)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runRevealRefused",
+      "docs": [
+        "Розкриття повернулось зі сторожем `unclosed = 1`.",
+        "",
+        "Означає, що останній датасет пулу не закрито в MPC: його записи вже в",
+        "когорті, але внеску на них ніхто не оголосив, і частка мовчки розтеклася б",
+        "між рештою власників. Ончейн ми цього не допускаємо (`dispatch_reveal`",
+        "вимагає вичерпаного пулу), тож сюди можна потрапити тільки якщо ончейн-облік",
+        "розійшовся з тим, що рахував рецепт. Платити з таких чисел не можна — прогін",
+        "іде в `failed`, депозит повертається повністю (`FR-016`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "computation",
+            "type": "pubkey"
+          },
+          {
+            "name": "unclosed",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runRevealed",
+      "docs": [
+        "Звіт готовий: покупець може його забрати, програма — рахувати оплату."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "recordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "suppressed",
+            "type": "bool"
+          },
+          {
+            "name": "resultHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "runStatus",
       "docs": [
         "Статуси прогону (`FR-013`) — рівно ті п'ять, що названі у SPEC.",
@@ -4652,6 +5823,50 @@ export type Genovault = {
                 "vec": "bool"
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedEncryptedStruct",
+      "generics": [
+        {
+          "kind": "const",
+          "name": "len",
+          "type": "usize"
+        }
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "encryptionKey",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                {
+                  "generic": "len"
+                }
+              ]
+            }
           }
         ]
       }
@@ -4810,10 +6025,80 @@ export const IDL: Genovault = {
     "чотирма контурами, і тут розгортаються їхні визначення обчислень. Прогін",
     "проходить їх по черзі: `dispatch_init` створює накопичувач, `dispatch_fold`",
     "згортає батчі з буферного акаунта, `dispatch_close_dataset` оголошує внесок",
-    "кожного датасету пулу (`T025`). Розкриття звіту покупцю й розподіл плати —",
-    "`T026`."
+    "кожного датасету пулу (`T025`), `dispatch_reveal` віддає звіт під ключем",
+    "покупця, і з нього ж програма рахує нарахування, комісію й повернення",
+    "різниці (`T026`)."
   ],
   "instructions": [
+    {
+      "name": "closeAccumulator",
+      "docs": [
+        "Повертає rent за накопичувач, коли він більше нікому не потрібен."
+      ],
+      "discriminator": [
+        83,
+        157,
+        172,
+        124,
+        244,
+        5,
+        181,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "dispatcher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
     {
       "name": "closeBatchBuffer",
       "docs": [
@@ -5355,6 +6640,292 @@ export const IDL: Genovault = {
       ]
     },
     {
+      "name": "dispatchReveal",
+      "docs": [
+        "Публікація в Arcium: розкриття звіту покупцю (`T026`, `FR-014`).",
+        "",
+        "Останній контур рецепта. Дозволено лише коли пул вичерпано: розкрити",
+        "звіт, не закривши останній датасет, означало б заплатити всім, крім",
+        "його власника."
+      ],
+      "discriminator": [
+        84,
+        244,
+        129,
+        157,
+        5,
+        37,
+        119,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "docs": [
+            "Акаунт під звіт створюється тут, до постановки в чергу: callback",
+            "платника не має, а віддавати результат нікуди — це втратити прогін, за",
+            "який уже заплачено.",
+            "",
+            "`init`, а не `init_if_needed`: другого розкриття не буває. Невдале",
+            "обчислення переводить прогін у `failed` (`accept_reveal`), а зайнятий",
+            "накопичувач не дає поставити в чергу ще одне — тож акаунт або",
+            "створюється один раз, або не створюється взагалі. Два `init_if_needed` в",
+            "одній структурі до того ж не вміщаються в 4 КіБ кадру `try_accounts` на",
+            "SBF, і збірка каже про це рядком «overwrites values in the frame»."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finalizeRun",
+      "docs": [
+        "Повертає покупцю різницю між депозитом і фактичною ціною і закриває",
+        "прогін (`FR-016`, `SC-006`)."
+      ],
+      "discriminator": [
+        79,
+        6,
+        112,
+        246,
+        170,
+        39,
+        103,
+        158
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "buyerTokens",
+          "docs": [
+            "Різниця повертається покупцю, і тільки йому: `authority` тут — умова, а",
+            "не зручність. Без неї той, хто кличе інструкцію, назвав би своїм",
+            "токен-акаунтом будь-який."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "frequenciesCloseDatasetCallback",
       "discriminator": [
         157,
@@ -5648,6 +7219,130 @@ export const IDL: Genovault = {
                   "type": {
                     "defined": {
                       "name": "frequenciesInitOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "frequenciesRevealCallback",
+      "discriminator": [
+        64,
+        48,
+        3,
+        147,
+        27,
+        42,
+        40,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "accumulator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "frequenciesRevealOutput"
                     }
                   }
                 }
@@ -6689,6 +8384,154 @@ export const IDL: Genovault = {
       ]
     },
     {
+      "name": "settleDataset",
+      "docs": [
+        "Нарахування власнику одного датасету прогону (`FR-018b`).",
+        "",
+        "Порціями по одному, бо 50 власників в одну транзакцію не вміщаються.",
+        "Кличе будь-хто: суми рахуються з `Run` чистими функціями, і той, хто",
+        "покличе це для всіх датасетів, зробить рівно те, чого від нього хотіли."
+      ],
+      "discriminator": [
+        195,
+        34,
+        225,
+        110,
+        108,
+        106,
+        124,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Платить за акаунти балансів, якщо їх ще немає. Підпис тут не дає жодних",
+            "прав: суми рахуються з `Run`, і покликати це може будь-хто."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "run",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "run.buyer",
+                "account": "run"
+              },
+              {
+                "kind": "account",
+                "path": "run.nonce",
+                "account": "run"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dataset",
+          "docs": [
+            "Датасет із того самого рядка прогону. Потрібен рівно заради власника:",
+            "ціна й внесок уже лежать у `Run` і навмисно не перечитуються звідси —",
+            "власник вільний змінити ціну після замовлення, а умови прогону — ні."
+          ]
+        },
+        {
+          "name": "ownerBalance",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  108,
+                  97,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "dataset.owner",
+                "account": "dataset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "platformBalance",
+          "docs": [
+            "Комісія платформи лягає на такий самий баланс, як у власника даних:",
+            "окремий шлях для неї був би місцем, де платформа рухає гроші не так, як",
+            "усі."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  108,
+                  97,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "platformConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u32"
+        }
+      ]
+    },
+    {
       "name": "updateDatasetContent",
       "docs": [
         "Нова версія вмісту (`FR-003`). Стара не зникає: на неї посилаються",
@@ -6899,6 +8742,19 @@ export const IDL: Genovault = {
       ]
     },
     {
+      "name": "ownerBalance",
+      "discriminator": [
+        126,
+        78,
+        65,
+        151,
+        163,
+        196,
+        116,
+        207
+      ]
+    },
+    {
       "name": "platformConfig",
       "discriminator": [
         160,
@@ -6935,6 +8791,19 @@ export const IDL: Genovault = {
         56,
         93,
         82
+      ]
+    },
+    {
+      "name": "runResult",
+      "discriminator": [
+        201,
+        22,
+        203,
+        115,
+        112,
+        189,
+        94,
+        243
       ]
     }
   ],
@@ -7031,6 +8900,19 @@ export const IDL: Genovault = {
       ]
     },
     {
+      "name": "datasetSettled",
+      "discriminator": [
+        173,
+        151,
+        250,
+        76,
+        70,
+        145,
+        84,
+        202
+      ]
+    },
+    {
       "name": "datasetVersionAdded",
       "discriminator": [
         22,
@@ -7054,6 +8936,19 @@ export const IDL: Genovault = {
         140,
         112,
         162
+      ]
+    },
+    {
+      "name": "runCompleted",
+      "discriminator": [
+        233,
+        115,
+        120,
+        101,
+        166,
+        52,
+        138,
+        133
       ]
     },
     {
@@ -7093,6 +8988,32 @@ export const IDL: Genovault = {
         74,
         92,
         174
+      ]
+    },
+    {
+      "name": "runRevealRefused",
+      "discriminator": [
+        163,
+        119,
+        76,
+        239,
+        62,
+        182,
+        108,
+        231
+      ]
+    },
+    {
+      "name": "runRevealed",
+      "discriminator": [
+        190,
+        16,
+        32,
+        166,
+        94,
+        147,
+        248,
+        140
       ]
     },
     {
@@ -7394,6 +9315,36 @@ export const IDL: Genovault = {
       "code": 6056,
       "name": "lamportsOverflow",
       "msg": "Переповнення балансу при поверненні rent"
+    },
+    {
+      "code": 6057,
+      "name": "runRevealAlreadyDone",
+      "msg": "Звіт прогону вже розкрито"
+    },
+    {
+      "code": 6058,
+      "name": "runDatasetIndexOutOfRange",
+      "msg": "У прогоні немає датасету під таким індексом"
+    },
+    {
+      "code": 6059,
+      "name": "runDatasetMismatch",
+      "msg": "Переданий датасет не той, що стоїть під цим індексом у прогоні"
+    },
+    {
+      "code": 6060,
+      "name": "runRecordsBelowContributions",
+      "msg": "Записів у звіті менше, ніж оголошено внесками датасетів"
+    },
+    {
+      "code": 6061,
+      "name": "ownerBalanceOverflow",
+      "msg": "Переповнення балансу нарахувань власника"
+    },
+    {
+      "code": 6062,
+      "name": "runResultForeignRun",
+      "msg": "Результат прогону належить іншому прогону"
     }
   ],
   "types": [
@@ -8130,6 +10081,57 @@ export const IDL: Genovault = {
       }
     },
     {
+      "name": "datasetSettled",
+      "docs": [
+        "Нарахування одному власнику (`FR-018b`).",
+        "",
+        "Несе всі три числа, з яких порахована частка, а не тільки підсумок: `FR-018`",
+        "прямо вимагає, щоб власник бачив, з чого вона вийшла. Без `records_included`",
+        "прогону «мій внесок — 1 000 записів» не пояснює нічого."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "recordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "runRecordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "pricePer1k",
+            "type": "u64"
+          },
+          {
+            "name": "gross",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          },
+          {
+            "name": "net",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "datasetStatus",
       "docs": [
         "Стан датасету в каталозі.",
@@ -8318,6 +10320,56 @@ export const IDL: Genovault = {
                 ]
               }
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesRevealOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "frequenciesRevealOutputStruct0"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "frequenciesRevealOutputStruct0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "sharedEncryptedStruct",
+                "generics": [
+                  {
+                    "kind": "const",
+                    "value": "24"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "field1",
+            "type": "u32"
+          },
+          {
+            "name": "field2",
+            "type": "u32"
           }
         ]
       }
@@ -8718,6 +10770,51 @@ export const IDL: Genovault = {
       }
     },
     {
+      "name": "ownerBalance",
+      "docs": [
+        "Нарахування власника (`FR-020`).",
+        "",
+        "Seeds: `[\"balance\", owner]`.",
+        "",
+        "Один акаунт на власника, а не на пару «власник + прогін»: токени рухаються",
+        "рівно двічі — внесок покупця в сейф і виведення власника з сейфа, — і саме",
+        "тому `SC-007` (розподіл між 50 власниками < 30 с) досяжний без петлі з 50",
+        "переказів. Розшифровку «звідки взялась ця сума» дають події прогонів, а не",
+        "окремі акаунти під кожну з них.",
+        "",
+        "Тут же лежить і комісія платформи: її балансом володіє `PlatformConfig.",
+        "authority`, і жодного окремого шляху для неї не існує. Виняток був би",
+        "місцем, де платформа рухає гроші не так, як усі."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "accrued",
+            "docs": [
+              "Скільки нараховано за весь час."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn",
+            "docs": [
+              "Скільки з нарахованого вже виведено (`T049`)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "parameter",
       "docs": [
         "A parameter of a computation.",
@@ -8944,6 +11041,23 @@ export const IDL: Genovault = {
             "type": "u64"
           },
           {
+            "name": "buyerX25519",
+            "docs": [
+              "Ключ шифрування покупця, на який MPC зашифрує звіт (`T026`).",
+              "",
+              "Приїжджає із замовленням, а не з публікації, з тієї ж причини, з якої",
+              "параметри рецепта лежать у `Run`: диспетчер, який називає читача звіту,",
+              "назве себе. Перевірити ключ програма не може ніяк — тому він мусить",
+              "прийти від того єдиного, хто не має причин себе обманути."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "dispatcher",
             "docs": [
               "Кому покупець доручає довести прогін до кінця (`T025`).",
@@ -9045,9 +11159,31 @@ export const IDL: Genovault = {
             "type": "u32"
           },
           {
+            "name": "buyerX25519",
+            "docs": [
+              "Ключ шифрування покупця, на який MPC зашифрує звіт (`T026`).",
+              "",
+              "Приходить із замовленням, від самого покупця, і саме тому виняток про",
+              "диспетчера лишається безпечним: якби ключ називала публікація, диспетчер",
+              "підставив би свій і прочитав звіт, за який заплатив хтось інший.",
+              "Перевірити його програма не може ніяк — тому він і мусить приїхати від",
+              "того єдиного, хто не має причин себе обманути."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "datasets",
             "type": {
-              "vec": "pubkey"
+              "vec": {
+                "defined": {
+                  "name": "runDataset"
+                }
+              }
             }
           },
           {
@@ -9101,6 +11237,24 @@ export const IDL: Genovault = {
                 ]
               }
             }
+          },
+          {
+            "name": "recordsIncluded",
+            "docs": [
+              "Скільки записів увійшло в когорту — оголошено відкрито при розкритті",
+              "(`T026`). За цим числом рахується оплата, і приховати його від програми",
+              "означало б не мати чим платити."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "suppressed",
+            "docs": [
+              "Когорта виявилась меншою за `MIN_COHORT`, і рецепт віддав нулі",
+              "(`FR-012`). Прогін відбувся, платити нема за що, депозит повертається",
+              "повністю."
+            ],
+            "type": "bool"
           },
           {
             "name": "datasetCursor",
@@ -9234,6 +11388,29 @@ export const IDL: Genovault = {
       }
     },
     {
+      "name": "runCompleted",
+      "docs": [
+        "Прогін закрито: всім нараховано, різницю повернуто (`SC-006`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "settledAmount",
+            "type": "u64"
+          },
+          {
+            "name": "refunded",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "runComputationAborted",
       "docs": [
         "Обчислення повернулось невдачею — прогін переходить у `failed`.",
@@ -9253,6 +11430,70 @@ export const IDL: Genovault = {
           {
             "name": "computation",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runDataset",
+      "docs": [
+        "Один датасет у складі прогону (`T026`).",
+        "",
+        "# Чому не просто адреса",
+        "",
+        "Нарахування рахується з трьох чисел, і жодне з них не можна брати «зараз»:",
+        "",
+        "- **ціна** мусить бути тією, що діяла при замовленні. Власник вільний",
+        "підняти `price_per_1k` наступного дня, і депозит, порахований учора, не",
+        "зобов'язаний його витримати. Копія тут — те саме рішення, що й копія",
+        "`fee_bps` у `Run`.",
+        "- **внесок** оголошується всередині MPC (`FR-018a`) і приходить callback'ом",
+        "закриття датасету. Подією його не втримати: подія — свідчення, а платити",
+        "треба з того, що лежить в акаунті.",
+        "- **прапорець нарахування** окремо від `settled_count`: лічильник не",
+        "заважає нарахувати одному й тому самому датасету двічі, а порційність",
+        "виплат саме й означає, що порядок викликів обирає не програма."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dataset",
+            "type": "pubkey"
+          },
+          {
+            "name": "pricePer1k",
+            "docs": [
+              "Ціна за 1000 записів на момент замовлення (`FR-015`)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "recordsIncluded",
+            "docs": [
+              "Скільки записів дав цей датасет — оголошено всередині MPC.",
+              "Нуль, поки датасет не закрито, і нуль назавжди, якщо внесок не дотягнув",
+              "до порога."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "belowFloor",
+            "docs": [
+              "Внесок був меншим за `MIN_CONTRIBUTION` і тому оголошений нулем.",
+              "",
+              "Окремо від нульового внеску, бо для власника, який дивиться на екран",
+              "нарахувань (`FR-018b`), «не дав жодного запису під фільтр» і «дав, але",
+              "замало, щоб про це говорити» — різні речі. Для гаманця однакові."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "settled",
+            "docs": [
+              "Нарахування вже зроблено."
+            ],
+            "type": "bool"
           }
         ]
       }
@@ -9351,6 +11592,151 @@ export const IDL: Genovault = {
       }
     },
     {
+      "name": "runResult",
+      "docs": [
+        "Результат прогону, зашифрований на ключ покупця (`T026`, `FR-014`).",
+        "",
+        "Seeds: `[\"result\", run]`.",
+        "",
+        "# Чому акаунт, а не подія",
+        "",
+        "Подія коштувала б нуль rent і жила б рівно доти, доки RPC тримає логи.",
+        "Покупець, який не забрав звіт вчасно, втратив би його назавжди: MPC стану",
+        "не зберігає, накопичувач на той момент уже закритий, і перерахувати нема з",
+        "чого — довелось би замовляти й оплачувати прогін удруге. Акаунт коштує",
+        "~0,006 SOL і читається з ланцюга будь-коли й без нашого API — рівно те, що",
+        "потрібно `FR-025` і звіряцу з `T031`.",
+        "",
+        "# Що тут відкрито, а що ні",
+        "",
+        "Відкрито `records_included` — за ним рахується оплата, і приховати його від",
+        "програми означало б не мати чим платити. Сам звіт зашифрований на ключ",
+        "покупця: ні платформа, ні власник датасету, ні диспетчер його не читають.",
+        "Приватність **сум платежів** — окрема задача (`FR-021`, `T054`-`T055`); на",
+        "M1 суми публічні, і це сказано вголос у віхах."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "encryptionKey",
+            "docs": [
+              "Ключ, яким MXE зашифрував звіт на покупця. Разом із нонсом його",
+              "вистачає, щоб покупець розшифрував звіт своїм ключем і більше нічим."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                24
+              ]
+            }
+          },
+          {
+            "name": "recordsIncluded",
+            "docs": [
+              "Розмір когорти — те саме число, що в `Run.records_included`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "suppressed",
+            "docs": [
+              "Когорта менша за `MIN_COHORT`: звіт складається з нулів (`FR-012`)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runRevealRefused",
+      "docs": [
+        "Розкриття повернулось зі сторожем `unclosed = 1`.",
+        "",
+        "Означає, що останній датасет пулу не закрито в MPC: його записи вже в",
+        "когорті, але внеску на них ніхто не оголосив, і частка мовчки розтеклася б",
+        "між рештою власників. Ончейн ми цього не допускаємо (`dispatch_reveal`",
+        "вимагає вичерпаного пулу), тож сюди можна потрапити тільки якщо ончейн-облік",
+        "розійшовся з тим, що рахував рецепт. Платити з таких чисел не можна — прогін",
+        "іде в `failed`, депозит повертається повністю (`FR-016`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "computation",
+            "type": "pubkey"
+          },
+          {
+            "name": "unclosed",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runRevealed",
+      "docs": [
+        "Звіт готовий: покупець може його забрати, програма — рахувати оплату."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "run",
+            "type": "pubkey"
+          },
+          {
+            "name": "recordsIncluded",
+            "type": "u32"
+          },
+          {
+            "name": "suppressed",
+            "type": "bool"
+          },
+          {
+            "name": "resultHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "runStatus",
       "docs": [
         "Статуси прогону (`FR-013`) — рівно ті п'ять, що названі у SPEC.",
@@ -9440,6 +11826,50 @@ export const IDL: Genovault = {
                 "vec": "bool"
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedEncryptedStruct",
+      "generics": [
+        {
+          "kind": "const",
+          "name": "len",
+          "type": "usize"
+        }
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "encryptionKey",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "type": "u128"
+          },
+          {
+            "name": "ciphertexts",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                {
+                  "generic": "len"
+                }
+              ]
+            }
           }
         ]
       }
