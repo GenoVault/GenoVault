@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { pricePer1kSchema, solanaAddressSchema } from '../src/primitives.ts'
+import {
+  bpsSchema,
+  pricePer1kSchema,
+  solanaAddressSchema,
+  tokenAmountSchema,
+} from '../src/primitives.ts'
 import {
   datasetUpperBound,
   MAX_RUN_DATASETS,
@@ -13,6 +18,7 @@ import {
   RECORDS_PER_PRICE_UNIT,
   runQuoteRequestSchema,
 } from '../src/quote.ts'
+import { settleRun } from '../src/settlement.ts'
 
 const price = (value: bigint) => pricePer1kSchema.parse(value)
 
@@ -80,37 +86,45 @@ describe('межа по пулу', () => {
 /**
  * `FR-015a`: рахунок після прогону не перевищує показану межу.
  *
- * Розрахунок тут — **модель** правила, за яким рахуватиме `T027`, а не його
- * реалізація: мета твердження в тому, що межа тримається арифметикою, а не
- * тим, як саме написано розрахунок. Правило (продуктове рішення 2026-09-07):
- * записи датасету, що не дотяг до `MIN_CONTRIBUTION`, оплачуються за
- * **найнижчою** ціною серед таких мовчазних датасетів, а гроші йдуть решті
- * власників пулу.
+ * До `T027` тут жила **модель** правила — «мовчазні записи за найнижчою ціною
+ * серед мовчазних». Вона розійшлася з тим, що `T026` поклав ончейн (середня
+ * ціна пулу з масштабом `R / C`, стеля — депозит), і доводила властивість на
+ * арифметиці, якої в системі немає. Тепер тут викликається справжній
+ * розрахунок, і видно, чим саме тримається межа: **стелею депозиту**, а не
+ * нерівністю з найнижчою ціною. Нерівність лишається причиною, чому саме за
+ * найнижчою ціною рахується сама межа, — про це `poolUpperBound`.
  */
 const MIN_CONTRIBUTION = 10
-
-function settle(pool: { price: bigint; claimed: bigint; included: bigint }[]): bigint {
-  const silent = pool.filter((entry) => entry.included < BigInt(MIN_CONTRIBUTION))
-  const disclosed = pool.filter((entry) => entry.included >= BigInt(MIN_CONTRIBUTION))
-
-  const named = disclosed.reduce(
-    (sum, entry) => sum + datasetUpperBound(price(entry.price), entry.included),
-    0n,
-  )
-
-  if (silent.length === 0) return named
-
-  const remainder = silent.reduce((sum, entry) => sum + entry.included, 0n)
-  const lowest = silent.reduce(
-    (min, entry) => (entry.price < min ? entry.price : min),
-    silent[0]?.price ?? 0n,
-  )
-  return named + datasetUpperBound(price(lowest), remainder)
-}
 
 function bound(pool: { price: bigint; claimed: bigint }[]): bigint {
   return poolUpperBound(pool.map((entry) => datasetUpperBound(price(entry.price), entry.claimed)))
 }
+
+/**
+ * Прогін так, як його побачить програма: внесок мовчазного датасету оголошено
+ * нулем, але його записи лишились у когорті, а в депозиті лежить рівно та межа,
+ * яку показала квота.
+ */
+function charge(pool: { price: bigint; claimed: bigint; included: bigint }[]) {
+  return settleRun({
+    escrowAmount: tokenAmountSchema.parse(bound(pool)),
+    feeBps: bpsSchema.parse(700),
+    recordsIncluded: Number(pool.reduce((sum, entry) => sum + entry.included, 0n)),
+    suppressed: false,
+    datasets: pool.map((entry) => {
+      const silent = entry.included < BigInt(MIN_CONTRIBUTION)
+      return {
+        pricePer1k: price(entry.price),
+        recordsIncluded: silent ? 0 : Number(entry.included),
+        belowFloor: silent,
+        settled: false,
+      }
+    }),
+  })
+}
+
+const settle = (pool: { price: bigint; claimed: bigint; included: bigint }[]): bigint =>
+  charge(pool).grossTotal
 
 describe('рахунок ніколи не перевищує межу', () => {
   it('коли всі датасети оголосили внесок', () => {
@@ -123,12 +137,19 @@ describe('рахунок ніколи не перевищує межу', () => {
 
   it('коли дешевий датасет мовчить поруч із дорогим', () => {
     // Саме цей випадок ламає «середню ціну пулу»: за середньою залишок
-    // мовчазного датасету коштував би 9 одиниць проти 0,009 у межі.
+    // мовчазного датасету коштував би 9 одиниць проти 0,009 у межі. Межа
+    // тримається — але стелею депозиту, і тест це називає: дорогий власник
+    // отримує 1 000 001 замість 1 009 000, на які тягне правило розподілу.
     const pool = [
       { price: 1n, claimed: 9n, included: 9n },
       { price: 1_000_000n, claimed: 1_000n, included: 1_000n },
     ]
-    expect(settle(pool)).toBeLessThanOrEqual(bound(pool))
+    const settlement = charge(pool)
+
+    expect(settlement.grossTotal).toBeLessThanOrEqual(bound(pool))
+    expect(settlement.escrowCapped).toBe(true)
+    expect(settlement.lines[1]?.gross).toBe(bound(pool))
+    expect(settlement.lines[1]?.grossUncapped).toBe(1_009_000n)
   })
 
   it('коли мовчать кілька датасетів із різними цінами', () => {
@@ -141,15 +162,17 @@ describe('рахунок ніколи не перевищує межу', () => {
   })
 
   it('коли мовчать усі — пул із п’ятдесяти по дев’ять записів', () => {
-    // Той самий пул, яким покупець отримав би 450 записів безкоштовно, якби за
-    // придушений внесок ніхто не платив.
+    // Той самий пул, яким покупець отримав би 450 записів безкоштовно. `T026`
+    // закрив це лише для пулів, де хоч один датасет платний: масштаб `R / C`
+    // не має на що множити, коли `C = 0`. Тест фіксує поточну поведінку —
+    // безкоштовно, — щоб `T027a` була видною зміною, а не тихою.
     const pool = Array.from({ length: MAX_RUN_DATASETS }, (_unused, index) => ({
       price: BigInt(1_000 + index * 37),
       claimed: 9n,
       included: 9n,
     }))
     const cost = settle(pool)
-    expect(cost).toBeGreaterThan(0n)
+    expect(cost).toBe(0n)
     expect(cost).toBeLessThanOrEqual(bound(pool))
   })
 
