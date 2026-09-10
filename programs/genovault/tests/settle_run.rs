@@ -167,6 +167,7 @@ impl Fixture {
             escrow_amount: ESCROW,
             settled_count: 0,
             settled_amount: 0,
+            refunded: false,
             status: RunStatus::Running,
             result_hash: Some([3u8; 32]),
             records_included,

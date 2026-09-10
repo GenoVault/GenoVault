@@ -193,6 +193,14 @@ pub struct Run {
     pub settled_count: u32,
     /// Скільки з депозиту вже роздано власникам.
     pub settled_amount: u64,
+    /// Різницю депозиту вже повернуто покупцю.
+    ///
+    /// Окреме поле, а не статус: `failed` лишається `failed` і після виплати —
+    /// статус тут нічого не стереже, і другий виклик повернення виніс би із
+    /// сейфа депозит чужого прогону. Прапорець ставлять обидва шляхи, якими
+    /// гроші йдуть назад покупцю, — `finalize_run` і `refund_failed_run`, —
+    /// щоб «покупцю віддано» читалось однаково для `completed` і `failed`.
+    pub refunded: bool,
     pub status: RunStatus,
     /// Відбиток результату; з'являється, коли повернувся callback MPC.
     pub result_hash: Option<[u8; 32]>,
@@ -460,7 +468,32 @@ impl Run {
             GenoVaultError::RunSettlementIncomplete
         );
         self.status = RunStatus::Completed;
+        self.refunded = true;
         Ok(())
+    }
+
+    /// Повернення депозиту з невдачі (`T028`, `FR-016`).
+    ///
+    /// Окремий шлях, а не гілка в `complete()`: «завершено» означає «всім
+    /// заплачено», і пускати сюди прогін, який до нарахувань не дожив,
+    /// означало б назвати невдачу успіхом у журналі, який читає покупець.
+    /// Статус лишається `failed` — гроші повернулись, але прогін не відбувся,
+    /// і зникнути з журналу причина невдачі не має права.
+    ///
+    /// Віддається `refund_amount()`, а не `escrow_amount`: сьогодні це те саме
+    /// число, бо нарахування вимагають `result_hash`, а після розкриття прогін
+    /// уже не падає — у `failed` завжди `settled_amount == 0`. Але вимагати
+    /// цього як умови не можна: якби інваріант колись зламався, вимога
+    /// замкнула б депозит у сейфі назавжди, а різниця віддає покупцю все, що
+    /// ще його.
+    pub fn refund_failed(&mut self) -> Result<u64> {
+        require!(
+            self.status == RunStatus::Failed,
+            GenoVaultError::RunNotFailed
+        );
+        require!(!self.refunded, GenoVaultError::RunAlreadyRefunded);
+        self.refunded = true;
+        Ok(self.refund_amount())
     }
 }
 
@@ -535,6 +568,7 @@ mod tests {
             escrow_amount: 1_000,
             settled_count: 0,
             settled_amount: 0,
+            refunded: false,
             status: RunStatus::Accepted,
             result_hash: None,
             records_included: 0,
@@ -702,6 +736,71 @@ mod tests {
                 expected(GenoVaultError::RunNotRunning)
             );
         }
+    }
+
+    #[test]
+    fn a_failed_run_gives_the_whole_deposit_back() {
+        // `FR-016`: невдача повертає депозит повністю. Нарахувань тут немає за
+        // побудовою — вони вимагають результату, а прогін упав до нього.
+        let mut r = run(2);
+        r.start().unwrap();
+        r.record_fold(&Pubkey::new_unique(), 32, &[1u8; 32]).unwrap();
+        r.fail().unwrap();
+
+        assert_eq!(r.refund_failed().unwrap(), r.escrow_amount);
+        assert!(r.refunded);
+        assert_eq!(
+            r.status,
+            RunStatus::Failed,
+            "гроші повернулись, але прогін не відбувся — причина лишається в журналі"
+        );
+    }
+
+    #[test]
+    fn the_deposit_comes_back_only_once() {
+        // Статус тут не стереже нічого: `failed` лишається `failed`. Без
+        // прапорця другий виклик виніс би із сейфа депозит чужого прогону.
+        let mut r = run(1);
+        r.fail().unwrap();
+        r.refund_failed().unwrap();
+
+        assert_eq!(
+            code(r.refund_failed().map(|_| ())),
+            expected(GenoVaultError::RunAlreadyRefunded)
+        );
+    }
+
+    #[test]
+    fn only_failure_refunds_from_this_path() {
+        // `accepted` і `running` ще можуть дійти до розподілу; `rejected` не
+        // має шляху, яким туди потрапляють; `completed` уже віддав різницю
+        // через `finalize_run`, і другий переказ був би виплатою двічі.
+        for status in [
+            RunStatus::Accepted,
+            RunStatus::Running,
+            RunStatus::Rejected,
+            RunStatus::Completed,
+        ] {
+            let mut r = run(1);
+            r.status = status;
+            assert_eq!(
+                code(r.refund_failed().map(|_| ())),
+                expected(GenoVaultError::RunNotFailed),
+                "{status:?} не є невдачею"
+            );
+        }
+    }
+
+    #[test]
+    fn completion_marks_the_difference_as_returned() {
+        // Прапорець означає «покупцю віддано», і `finalize_run` мусить його
+        // ставити теж: інакше слово читалось би по-різному для двох шляхів,
+        // якими гроші йдуть назад.
+        let mut r = revealed(1);
+        r.settle(0, 900).unwrap();
+        r.complete().unwrap();
+
+        assert!(r.refunded);
     }
 
     #[test]

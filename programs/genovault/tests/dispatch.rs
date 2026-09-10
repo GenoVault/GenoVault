@@ -61,6 +61,7 @@ fn run_state(buyer: Pubkey, dispatcher: Pubkey, datasets: usize, status: RunStat
         escrow_amount: 1_000,
         settled_count: 0,
         settled_amount: 0,
+        refunded: false,
         status,
         result_hash: None,
         records_included: 0,

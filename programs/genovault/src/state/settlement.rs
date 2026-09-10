@@ -328,6 +328,7 @@ mod tests {
             escrow_amount: escrow,
             settled_count: 0,
             settled_amount: 0,
+            refunded: false,
             status: RunStatus::Running,
             result_hash: Some([1u8; 32]),
             records_included,

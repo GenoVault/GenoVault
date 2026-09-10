@@ -133,4 +133,8 @@ pub enum GenoVaultError {
     OwnerBalanceOverflow,
     #[msg("Результат прогону належить іншому прогону")]
     RunResultForeignRun,
+    #[msg("Повернення депозиту можливе лише з невдалого прогону")]
+    RunNotFailed,
+    #[msg("Депозит цього прогону вже повернуто покупцю")]
+    RunAlreadyRefunded,
 }

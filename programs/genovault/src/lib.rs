@@ -250,6 +250,15 @@ pub mod genovault {
         instructions::settle_run::finalize(ctx)
     }
 
+    /// Повертає депозит покупцю з невдалого прогону (`FR-016`).
+    ///
+    /// Окремо від `finalize_run`: той вимагає результату й нарахувань усім, а
+    /// сюди прогін потрапляє саме тому, що обчислення до них не дійшло.
+    /// Кличе будь-хто — одержувач прибитий до `run.buyer`.
+    pub fn refund_failed_run(ctx: Context<RefundFailedRun>) -> Result<()> {
+        instructions::settle_run::refund_failed(ctx)
+    }
+
     /// Повертає rent за накопичувач, коли він більше нікому не потрібен.
     pub fn close_accumulator(ctx: Context<CloseAccumulator>) -> Result<()> {
         instructions::settle_run::reclaim(ctx)

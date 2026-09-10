@@ -85,6 +85,18 @@ pub struct RunCompleted {
     pub refunded: u64,
 }
 
+/// Депозит невдалого прогону повернуто покупцю (`T028`, `FR-016`).
+///
+/// Окрема подія, а не `RunCompleted` із нульовими нарахуваннями: покупець,
+/// який читає журнал, має бачити різницю між «прогін відбувся, платити не було
+/// за що» і «прогін не відбувся». Обидва повертають гроші, і тільки подія
+/// каже, що саме сталося.
+#[event]
+pub struct RunRefunded {
+    pub run: Pubkey,
+    pub refunded: u64,
+}
+
 /// Розкриття повернулось зі сторожем `unclosed = 1`.
 ///
 /// Означає, що останній датасет пулу не закрито в MPC: його записи вже в
@@ -515,6 +527,94 @@ pub fn finalize(ctx: Context<FinalizeRun>) -> Result<()> {
     Ok(())
 }
 
+// ── Повернення депозиту з невдачі ───────────────────────────────────────────
+
+/// Той самий набір акаунтів, що у `FinalizeRun`, і навмисно той самий: гроші
+/// йдуть тим самим шляхом — із сейфа платформи на токен-акаунт покупця під
+/// підписом конфігурації. Відрізняється тільки статус, з якого це дозволено.
+#[derive(Accounts)]
+pub struct RefundFailedRun<'info> {
+    #[account(seeds = [PlatformConfig::SEED], bump = config.bump, has_one = mint)]
+    pub config: Box<Account<'info, PlatformConfig>>,
+    #[account(
+        mut,
+        seeds = [Run::SEED, run.buyer.as_ref(), &run.nonce.to_le_bytes()],
+        bump = run.bump,
+    )]
+    pub run: Box<Account<'info, Run>>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    /// Депозит повертається покупцю, і тільки йому: `authority` тут — умова, а
+    /// не зручність. Без неї той, хто кличе інструкцію, назвав би своїм
+    /// токен-акаунтом будь-який — і невдача чужого прогону стала б його
+    /// заробітком.
+    #[account(
+        mut,
+        token::mint = mint,
+        token::authority = run.buyer,
+        token::token_program = token_program,
+    )]
+    pub buyer_tokens: InterfaceAccount<'info, TokenAccount>,
+    #[account(
+        mut,
+        seeds = [PlatformConfig::VAULT_SEED],
+        bump,
+        token::mint = mint,
+        token::authority = config,
+        token::token_program = token_program,
+    )]
+    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+/// Невдалий прогін віддає депозит повністю (`T028`, `FR-016`).
+///
+/// # Чому це не гілка `finalize_run`
+///
+/// `finalize_run` вимагає `running`, результату й нарахувань усім — і кожна з
+/// цих вимог тут не виконана за побудовою: у `failed` прогін потрапляє саме
+/// тому, що обчислення не дійшло до кінця. Спільна інструкція мусила б
+/// вимкнути всі три перевірки за статусом, і успішний шлях лишився б без
+/// сторожа, який доводить `SC-006`.
+///
+/// # Хто це кличе
+///
+/// Будь-хто, як `settle_dataset` і `finalize_run`. Одержувач прибитий до
+/// `run.buyer` обмеженням акаунта, сума рахується з `Run`, і зловмисник, який
+/// покличе інструкцію, поверне покупцю його ж гроші.
+///
+/// # Звідки сюди потрапляють
+///
+/// П'ять шляхів, і жоден із них не рухав грошей: непідписаний або невдалий
+/// callback `init`, `fold`, `close_dataset` чи `reveal` (усі через
+/// `abort_computation`) і сторож `unclosed != 0` при розкритті. Тому депозит
+/// повертається цілим, скільки б батчів не встигло згорнутися.
+pub fn refund_failed(ctx: Context<RefundFailedRun>) -> Result<()> {
+    let refund = ctx.accounts.run.refund_failed()?;
+    if refund > 0 {
+        let seeds: &[&[u8]] = &[PlatformConfig::SEED, &[ctx.accounts.config.bump]];
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.key(),
+                TransferChecked {
+                    from: ctx.accounts.vault.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.buyer_tokens.to_account_info(),
+                    authority: ctx.accounts.config.to_account_info(),
+                },
+                &[seeds],
+            ),
+            refund,
+            ctx.accounts.mint.decimals,
+        )?;
+    }
+
+    emit!(RunRefunded {
+        run: ctx.accounts.run.key(),
+        refunded: refund,
+    });
+    Ok(())
+}
+
 // ── Повернення rent за накопичувач ──────────────────────────────────────────
 
 #[derive(Accounts)]
@@ -602,6 +702,7 @@ mod tests {
             escrow_amount: 1_000_000,
             settled_count: 0,
             settled_amount: 0,
+            refunded: false,
             status: RunStatus::Running,
             result_hash: None,
             records_included: 0,
