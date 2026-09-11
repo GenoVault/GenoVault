@@ -1,0 +1,177 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Дизайн-система прототипу M0. Усі кольори — HSL, лише через токени. */
+
+@layer base {
+  :root {
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+    --background: 40 24% 97%;
+    --foreground: 222 26% 13%;
+
+    --surface: 40 30% 99%;
+    --surface-sunken: 40 18% 94%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 26% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 26% 13%;
+
+    --primary: 224 58% 30%;
+    --primary-foreground: 40 32% 98%;
+
+    --secondary: 40 18% 93%;
+    --secondary-foreground: 224 34% 20%;
+
+    --muted: 40 16% 93%;
+    --muted-foreground: 222 10% 42%;
+
+    --accent: 40 20% 91%;
+    --accent-foreground: 224 40% 22%;
+
+    --brand: 18 62% 42%;
+    --brand-foreground: 40 32% 98%;
+
+    --success: 152 42% 28%;
+    --success-soft: 152 34% 92%;
+
+    --warning: 30 72% 38%;
+    --warning-soft: 36 70% 92%;
+
+    --info: 224 46% 38%;
+    --info-soft: 220 44% 94%;
+
+    --destructive: 4 62% 42%;
+    --destructive-foreground: 40 32% 98%;
+    --destructive-soft: 6 62% 95%;
+
+    --border: 40 14% 86%;
+    --input: 40 14% 84%;
+    --ring: 224 58% 34%;
+
+    --radius: 0.375rem;
+
+    --shadow-card: 0 1px 1px hsl(30 20% 40% / 0.04), 0 6px 16px -8px hsl(30 24% 30% / 0.14);
+
+    --sidebar-background: 40 22% 96%;
+    --sidebar-foreground: 222 14% 28%;
+    --sidebar-primary: 224 58% 30%;
+    --sidebar-primary-foreground: 40 32% 98%;
+    --sidebar-accent: 40 18% 92%;
+    --sidebar-accent-foreground: 224 40% 22%;
+    --sidebar-border: 40 14% 86%;
+    --sidebar-ring: 224 58% 34%;
+  }
+
+  .dark {
+    --background: 224 26% 8%;
+    --foreground: 40 18% 93%;
+
+    --surface: 224 24% 11%;
+    --surface-sunken: 224 26% 6%;
+
+    --card: 224 24% 11%;
+    --card-foreground: 40 18% 93%;
+
+    --popover: 224 24% 12%;
+    --popover-foreground: 40 18% 93%;
+
+    --primary: 220 62% 68%;
+    --primary-foreground: 224 40% 10%;
+
+    --secondary: 224 18% 17%;
+    --secondary-foreground: 40 18% 93%;
+
+    --muted: 224 18% 16%;
+    --muted-foreground: 220 12% 66%;
+
+    --accent: 224 18% 18%;
+    --accent-foreground: 40 18% 93%;
+
+    --brand: 20 68% 58%;
+    --brand-foreground: 224 40% 10%;
+
+    --success: 152 40% 62%;
+    --success-soft: 154 30% 15%;
+
+    --warning: 34 76% 62%;
+    --warning-soft: 32 40% 15%;
+
+    --info: 220 60% 70%;
+    --info-soft: 222 34% 17%;
+
+    --destructive: 6 62% 60%;
+    --destructive-foreground: 224 40% 10%;
+    --destructive-soft: 4 40% 16%;
+
+    --border: 224 14% 21%;
+    --input: 224 14% 24%;
+    --ring: 220 62% 62%;
+
+    --shadow-card: 0 1px 1px hsl(224 40% 2% / 0.5), 0 8px 24px -12px hsl(224 40% 2% / 0.7);
+
+    --sidebar-background: 224 26% 9%;
+    --sidebar-foreground: 40 18% 90%;
+    --sidebar-primary: 220 62% 68%;
+    --sidebar-primary-foreground: 224 40% 10%;
+    --sidebar-accent: 224 18% 16%;
+    --sidebar-accent-foreground: 40 18% 93%;
+    --sidebar-border: 224 14% 20%;
+    --sidebar-ring: 220 62% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+    font-feature-settings: 'kern' 1;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+  }
+}
+
+@layer components {
+  .panel {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+  }
+
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .label-tiny {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .hairline {
+    border-top: 1px solid hsl(var(--border));
+  }
+}
