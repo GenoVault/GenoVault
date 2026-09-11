@@ -133,8 +133,13 @@ export const WalletSignStep = ({
 
 /** Каталог і картка датасету відкриті без входу; решта — ні (FR-023). */
 export const SignInGate = ({ what, children }: { what: string; children: ReactNode }) => {
-  const { signedIn, signIn } = useAppState()
+  const { ready, signedIn, signIn, live } = useAppState()
   if (signedIn) return <>{children}</>
+  if (!ready) {
+    return (
+      <div className="panel mx-auto h-48 max-w-xl animate-shimmer bg-muted" aria-hidden="true" />
+    )
+  }
   return (
     <div className="panel mx-auto max-w-xl px-6 py-12 text-center">
       <KeyRound className="mx-auto h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
@@ -149,6 +154,12 @@ export const SignInGate = ({ what, children }: { what: string; children: ReactNo
           Continue with email
         </Button>
       </div>
+      {!live && (
+        <p className="mx-auto mt-4 max-w-md text-[12.5px] leading-5 text-warning">
+          This is the prototype sign-in: no Privy app is configured, so nothing is authenticated and
+          no wallet is created. The address it puts in the header is mock data.
+        </p>
+      )}
       <p className="mt-5 text-[12.5px] text-muted-foreground">
         Browsing the{' '}
         <Link to="/datasets" className="underline underline-offset-2">

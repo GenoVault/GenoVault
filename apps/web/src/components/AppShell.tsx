@@ -53,7 +53,13 @@ const RoleSwitch = () => {
 }
 
 const SignInControl = () => {
-  const { signedIn, signIn, signOut, address, method } = useAppState()
+  const { ready, signedIn, signIn, signOut, address, method, live } = useAppState()
+
+  // Privy відповідає не миттєво. Кнопка «Sign in», намальована до відповіді,
+  // блимає й пропонує зайти тому, хто вже зайшов.
+  if (!ready) {
+    return <div className="h-8 w-20 animate-shimmer rounded bg-muted" aria-hidden="true" />
+  }
 
   if (!signedIn) {
     return (
@@ -64,6 +70,11 @@ const SignInControl = () => {
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel className="font-normal text-[12.5px] text-muted-foreground">
             Two equal paths. Email creates a wallet for you.
+            {!live && (
+              <span className="mt-1 block text-warning">
+                Prototype sign-in — no Privy app is configured.
+              </span>
+            )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => signIn('wallet')}>
@@ -79,7 +90,9 @@ const SignInControl = () => {
     <div className="flex items-center gap-2">
       <div className="hidden text-right sm:block">
         <p className="num text-[12.5px] leading-4">{truncateMiddle(address ?? '', 4, 4)}</p>
-        <p className="text-[11px] leading-4 text-muted-foreground">signed in · {method}</p>
+        <p className="text-[11px] leading-4 text-muted-foreground">
+          {live ? 'signed in' : 'prototype sign-in'} · {method}
+        </p>
       </div>
       <Button variant="ghost" size="icon" onClick={signOut} aria-label="Sign out">
         <LogOut className="h-4 w-4" />
