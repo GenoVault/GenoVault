@@ -40,9 +40,38 @@ export const MIN_COHORT = 10
  */
 export const MAX_MARKERS = 64
 
-/** Опис одного поля запису — те саме, що віддає `publicManifest` у `tools/gen-dataset`. */
+/**
+ * Колонки запису, які не є маркерами: `subjectId`, `sex`, `age`, `affected`.
+ *
+ * Названі числом, а не переліком, бо схему описує власник, а не ми: назвати
+ * колонки означало б вимагати саме ці імена. Але їхня кількість — межа, і без
+ * неї межа схеми стояла на `MAX_MARKERS`, тобто повний профіль рецепта (64
+ * маркери плюс ці чотири) не проходив власної перевірки. Знайдено на `T029`
+ * тестом, який ганяє маніфест `tools/gen-dataset` через `datasetMetadataSchema`.
+ */
+export const FIXED_FIELDS = 4
+
+/** Скільки рядків узагалі може мати опис схеми датасету. */
+export const MAX_SCHEMA_FIELDS = MAX_MARKERS + FIXED_FIELDS
+
+/**
+ * Опис одного поля запису — те саме, що віддає `publicManifest` у `tools/gen-dataset`.
+ *
+ * Підкреслення в імені дозволене, і це рішення, а не послаблення. Генератор
+ * фікстур називає маркери `marker_0001`, а коментар вище прямо каже, що це «те
+ * саме, що віддає `publicManifest`» — тобто схема, яка їх не приймає, робить
+ * власне твердження неправдою: маніфест власного генератора не проходить у
+ * `POST /datasets`. Знайдено на `T028`, полагоджено на `T029`; тест нижче
+ * ганяє справжній маніфест генератора через цю схему, щоб розходження більше
+ * не жило непоміченим.
+ *
+ * Межа в 32 символи лишається: імена полів їдуть у маніфест кожного датасету,
+ * і довші не додають змісту, лише байтів.
+ */
 export const datasetFieldSchema = z.strictObject({
-  field: z.string().regex(/^[a-z][a-zA-Z0-9]{0,31}$/, 'очікувалось ім’я поля в lowerCamelCase'),
+  field: z
+    .string()
+    .regex(/^[a-z][a-zA-Z0-9_]{0,31}$/, 'очікувалось ім’я поля з літери, далі букви, цифри або _'),
   type: z.enum(['integer', 'string']),
   description: z.string().min(1).max(200),
 })
@@ -87,7 +116,7 @@ export type DatasetProvenance = z.infer<typeof datasetProvenanceSchema>
 const baseMetadataSchema = z.strictObject({
   title: z.string().min(3).max(120),
   description: z.string().min(1).max(2000),
-  schema: z.array(datasetFieldSchema).min(1).max(64),
+  schema: z.array(datasetFieldSchema).min(1).max(MAX_SCHEMA_FIELDS),
   recordCount: recordCountSchema,
   markerCount: z.number().int().min(1).max(MAX_MARKERS),
   statistics: datasetStatisticsSchema.optional(),

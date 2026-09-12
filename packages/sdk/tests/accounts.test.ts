@@ -6,6 +6,8 @@ import {
   decodeConsent,
   decodeDataset,
   decodePlatformConfig,
+  decodeRun,
+  decodeRunResult,
   fetchConsents,
   fetchDatasets,
 } from '../src/accounts.ts'
@@ -14,6 +16,7 @@ import { createProgram } from '../src/program.ts'
 
 const program = createProgram({ connection: new Connection('http://127.0.0.1:8899') })
 const OWNER = new PublicKey('7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2')
+const DISPATCHER = new PublicKey('So11111111111111111111111111111111111111112')
 
 /**
  * Акаунти тут проходять через справжній borsh-кодувальник програми.
@@ -236,5 +239,155 @@ describe('читання пачкою', () => {
 
     expect(consent).toEqual(decodeConsent(decoded))
     fetchMultiple.mockRestore()
+  })
+})
+
+/**
+ * Прогін і його звіт (`T029`).
+ *
+ * Той самий прогін через кодувальник: `Run` — найбільший акаунт програми, і
+ * помилка в порядку полів тут проявилась би не винятком, а числом внеску,
+ * зчитаним із поля комісії.
+ */
+const RUN_FIELDS = {
+  buyer: OWNER,
+  dispatcher: DISPATCHER,
+  nonce: toBn(42n),
+  recipeId: 1,
+  recipeParams: Array.from({ length: 32 }, (_, i) => (i < 4 ? [40, 70, 2, 2][i] : 0)),
+  useType: 0b0010,
+  buyerCategory: 0b0001,
+  buyerX25519: Array.from({ length: 32 }, (_, i) => i + 1),
+  datasets: [
+    {
+      dataset: OWNER,
+      pricePer1k: toBn(250_000n),
+      recordsIncluded: 8_120,
+      belowFloor: false,
+      settled: true,
+    },
+    {
+      dataset: DISPATCHER,
+      pricePer1k: toBn(1n),
+      recordsIncluded: 0,
+      belowFloor: true,
+      settled: false,
+    },
+  ],
+  feeBps: 700,
+  escrowAmount: toBn(88_200n),
+  settledCount: 1,
+  settledAmount: toBn(49_440n),
+  refunded: false,
+  status: { running: {} },
+  resultHash: null,
+  recordsIncluded: 8_120,
+  suppressed: false,
+  datasetCursor: 1,
+  foldedBatches: 254,
+  foldedHash: hashToBytes('a1'.repeat(32)),
+  createdAt: toBn(1_757_000_000n),
+  bump: 252,
+}
+
+const RESULT_FIELDS = {
+  run: OWNER,
+  encryptionKey: Array.from({ length: 32 }, () => 0x5c),
+  // u128, а не u64: нонс шифру ширший за все інше в програмі, і `toBn` сюди
+  // не годиться — він відхиляє все, що не вміщається в u64.
+  nonce: new BN((1n << 100n).toString(10), 10),
+  ciphertexts: Array.from({ length: 24 }, (_, i) => Array.from({ length: 32 }, () => i)),
+  recordsIncluded: 8_120,
+  suppressed: false,
+  bump: 251,
+}
+
+describe('декодування прогону', () => {
+  it('прогін доїжджає з ланцюга без втрат', async () => {
+    const encoded = await program.coder.accounts.encode('run', RUN_FIELDS)
+    const run = decodeRun(program.coder.accounts.decode('run', encoded))
+
+    expect(run.buyer.equals(OWNER)).toBe(true)
+    expect(run.dispatcher.equals(DISPATCHER)).toBe(true)
+    expect(run.nonce).toBe(42n)
+    expect(run.status).toBe('running')
+    expect(run.escrowAmount).toBe(88_200n)
+    expect(run.settledAmount).toBe(49_440n)
+    expect(run.feeBps).toBe(700)
+    expect(run.resultHash).toBeNull()
+    expect(run.foldedHash).toBe('a1'.repeat(32))
+    expect(run.createdAt).toBe(1_757_000_000n)
+    expect(Array.from(run.buyerX25519)).toEqual(Array.from({ length: 32 }, (_, i) => i + 1))
+    expect(Array.from(run.recipeParams.slice(0, 4))).toEqual([40, 70, 2, 2])
+  })
+
+  it('розрізняє «не дав записів» і «дав, але замало»', async () => {
+    // Для гаманця це однакові нулі, для власника на екрані нарахувань — ні.
+    const encoded = await program.coder.accounts.encode('run', RUN_FIELDS)
+    const run = decodeRun(program.coder.accounts.decode('run', encoded))
+
+    expect(run.datasets).toHaveLength(2)
+    expect(run.datasets[0]).toMatchObject({
+      pricePer1k: 250_000n,
+      recordsIncluded: 8_120,
+      belowFloor: false,
+      settled: true,
+    })
+    expect(run.datasets[1]).toMatchObject({
+      recordsIncluded: 0,
+      belowFloor: true,
+      settled: false,
+    })
+  })
+
+  it("усі п'ять статусів мають ім'я, а шостого не буває", async () => {
+    for (const [variant, name] of [
+      ['accepted', 'accepted'],
+      ['running', 'running'],
+      ['completed', 'completed'],
+      ['rejected', 'rejected'],
+      ['failed', 'failed'],
+    ] as const) {
+      const encoded = await program.coder.accounts.encode('run', {
+        ...RUN_FIELDS,
+        status: { [variant]: {} },
+      })
+      expect(decodeRun(program.coder.accounts.decode('run', encoded)).status).toBe(name)
+    }
+
+    expect(() => decodeRun({ ...RUN_FIELDS, status: { settling: {} } } as never)).toThrow(
+      /невідомий статус прогону/,
+    )
+  })
+
+  it("відбиток результату з'являється разом із callback'ом", async () => {
+    const encoded = await program.coder.accounts.encode('run', {
+      ...RUN_FIELDS,
+      status: { completed: {} },
+      resultHash: hashToBytes('0f'.repeat(32)),
+      refunded: true,
+    })
+    const run = decodeRun(program.coder.accounts.decode('run', encoded))
+
+    expect(run.resultHash).toBe('0f'.repeat(32))
+    expect(run.refunded).toBe(true)
+  })
+
+  it('звіт несе ключ, нонс u128 і всі 24 шифротексти', async () => {
+    const encoded = await program.coder.accounts.encode('runResult', RESULT_FIELDS)
+    const result = decodeRunResult(program.coder.accounts.decode('runResult', encoded))
+
+    expect(result.run.equals(OWNER)).toBe(true)
+    // Нонс ширший за u64: через `Number()` тут утратилась би сама можливість
+    // розшифрувати звіт.
+    expect(result.nonce).toBe(1n << 100n)
+    expect(result.ciphertexts).toHaveLength(24)
+    expect(result.ciphertexts.every((c) => c.length === 32)).toBe(true)
+    expect(Array.from(result.ciphertexts[23] as Uint8Array)).toEqual(
+      Array.from({ length: 32 }, () => 23),
+    )
+    expect(Array.from(result.encryptionKey)).toEqual(Array.from({ length: 32 }, () => 0x5c))
+    expect(result.recordsIncluded).toBe(8_120)
+    expect(result.suppressed).toBe(false)
   })
 })

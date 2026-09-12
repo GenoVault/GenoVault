@@ -1,6 +1,15 @@
+import { MAX_RUN_DATASETS, RECIPE_PARAMS_LEN, X25519_KEY_BYTES } from '@genovault/shared'
 import type { PublicKey, TransactionInstruction } from '@solana/web3.js'
 import { hashToBytes, toBn } from './convert.ts'
-import { consentAddress, datasetAddress, platformConfigAddress } from './pda.ts'
+import {
+  associatedTokenAddress,
+  consentAddress,
+  datasetAddress,
+  platformConfigAddress,
+  runAddress,
+  TOKEN_2022_PROGRAM_ID,
+  vaultAddress,
+} from './pda.ts'
 import type { GenoVaultProgram } from './program.ts'
 
 /**
@@ -194,5 +203,119 @@ export async function revokeConsentIx(
       dataset,
       consent: consentAddress(dataset, params.currentVersion, program.programId).address,
     })
+    .instruction()
+}
+
+/**
+ * Датасет у складі прогону, разом із версією згоди, проти якої його перевірять.
+ *
+ * Версія береться параметром, а не вгадується: програма вимагає **чинну**
+ * (`consent.version == dataset.consent_version`), і клієнт, який підставив би
+ * сюди «останню, яку бачив», зібрав би транзакцію, що падає на власнику, який
+ * саме змінив умови. Читає її той, хто вже читає акаунт датасету.
+ */
+export interface RunPoolEntry extends DatasetRef {
+  consentVersion: number
+}
+
+export interface RequestRunParams {
+  buyer: PublicKey
+  /** Мінт із `PlatformConfig`; програма звіряє його з конфігурацією. */
+  mint: PublicKey
+  /**
+   * Токен-акаунт покупця. Пропущений — асоційований (`associatedTokenAddress`).
+   * Програма приймає будь-який, аби власником був покупець і мінт збігався.
+   */
+  buyerTokens?: PublicKey
+  /** Обраний покупцем; він же в seeds прогону. */
+  nonce: bigint
+  recipeId: number
+  /** Біт типу використання і біт категорії — ті самі, що в `packages/shared`. */
+  useType: number
+  buyerCategory: number
+  /** Стеля, вище якої покупець не згоден. Зазвичай — число з квоти. */
+  maxEscrow: bigint | number
+  /** Публічний x25519 покупця: на нього MPC зашифрує звіт. */
+  buyerX25519: Uint8Array
+  /** Кому покупець доручає довести прогін до кінця (`T025`). */
+  dispatcher: PublicKey
+  /** Параметри рецепта в розкладці `Run::recipe_params` — рівно 32 байти. */
+  recipeParams: Uint8Array
+  datasets: readonly RunPoolEntry[]
+  tokenProgram?: PublicKey
+}
+
+/**
+ * Замовлення прогону (`FR-013`, `FR-015a`, `FR-016`) — одна транзакція.
+ *
+ * Склад пулу їде в `remaining_accounts` парами «датасет + його чинна згода», і
+ * порядок пар — це порядок, у якому програма їх звіряє: непарна довжина або
+ * переставлена пара означає, що згода одного датасету перевірилась би проти
+ * сусіднього. Тому пари складаються тут, з одного джерела, а не двома списками.
+ *
+ * Обидва акаунти пари — на читання. Прогін не змінює ні датасету, ні згоди:
+ * він копіює з них ціну й перевіряє умови. `isWritable: true` тут не помилка
+ * підпису, а зайве блокування 100 акаунтів на час транзакції.
+ *
+ * Вартість рахує програма з ончейн-цін; звідси й `maxEscrow` — не сума, а
+ * стеля. Покупець підписує «не більше ніж», і зміна ціни між квотою й підписом
+ * валить транзакцію замість того, щоб мовчки списати більше.
+ */
+export async function requestRunIx(
+  program: GenoVaultProgram,
+  params: RequestRunParams,
+): Promise<TransactionInstruction> {
+  if (params.buyerX25519.length !== X25519_KEY_BYTES) {
+    throw new RangeError(
+      `ключ покупця має бути ${X25519_KEY_BYTES} байтів, отримано ${params.buyerX25519.length}`,
+    )
+  }
+  if (params.recipeParams.length !== RECIPE_PARAMS_LEN) {
+    throw new RangeError(
+      `параметри рецепта мають бути ${RECIPE_PARAMS_LEN} байтів, отримано ${params.recipeParams.length}`,
+    )
+  }
+  if (params.datasets.length === 0) {
+    throw new RangeError('прогін без жодного датасету не буває')
+  }
+  if (params.datasets.length > MAX_RUN_DATASETS) {
+    throw new RangeError(
+      `прогін вміщає до ${MAX_RUN_DATASETS} датасетів, отримано ${params.datasets.length}`,
+    )
+  }
+
+  const tokenProgram = params.tokenProgram ?? TOKEN_2022_PROGRAM_ID
+  const remainingAccounts = params.datasets.flatMap((entry) => {
+    const dataset = datasetAddress(entry.owner, entry.datasetId, program.programId).address
+    const consent = consentAddress(dataset, entry.consentVersion, program.programId).address
+    return [
+      { pubkey: dataset, isSigner: false, isWritable: false },
+      { pubkey: consent, isSigner: false, isWritable: false },
+    ]
+  })
+
+  return program.methods
+    .requestRun({
+      nonce: toBn(params.nonce),
+      recipeId: params.recipeId,
+      useType: params.useType,
+      buyerCategory: params.buyerCategory,
+      maxEscrow: toBn(params.maxEscrow),
+      buyerX25519: Array.from(params.buyerX25519),
+      dispatcher: params.dispatcher,
+      recipeParams: Array.from(params.recipeParams),
+    })
+    .accountsPartial({
+      buyer: params.buyer,
+      config: platformConfigAddress(program.programId).address,
+      run: runAddress(params.buyer, params.nonce, program.programId).address,
+      mint: params.mint,
+      buyerTokens:
+        params.buyerTokens ??
+        associatedTokenAddress(params.buyer, params.mint, tokenProgram).address,
+      vault: vaultAddress(program.programId).address,
+      tokenProgram,
+    })
+    .remainingAccounts(remainingAccounts)
     .instruction()
 }

@@ -7,10 +7,12 @@ import {
   AGE_MAX,
   AGE_MIN,
   encodeFrequenciesFilters,
+  encodeFrequenciesParams,
   FILTER_ANY,
   FREQUENCIES_RECIPE_ID,
   findRecipe,
   frequenciesParamsSchema,
+  RECIPE_PARAMS_LEN,
   RECIPES,
 } from '../src/recipes.ts'
 
@@ -110,5 +112,41 @@ describe('параметри «частот і розподілів»', () => {
     expect(encodeFrequenciesFilters(frequenciesParamsSchema.parse({ sex: 'male' })).sexFilter).toBe(
       1,
     )
+  })
+})
+
+describe('розкладка `Run.recipe_params`', () => {
+  it('чотири байти фільтрів, далі нулі до кінця', () => {
+    const raw = encodeFrequenciesParams(
+      frequenciesParamsSchema.parse({
+        minAge: 18,
+        maxAge: 65,
+        sex: 'female',
+        affected: 'affected',
+      }),
+    )
+
+    expect(raw).toHaveLength(RECIPE_PARAMS_LEN)
+    expect(Array.from(raw.slice(0, 4))).toEqual([18, 65, 0, 1])
+    // Непорожній хвіст програма відхиляє (`FrequenciesParams::decode`): вона
+    // читає перші чотири байти й вимагає, щоб решта нічого не означала.
+    expect(Array.from(raw.slice(4)).every((byte) => byte === 0)).toBe(true)
+  })
+
+  it('порядок байтів не переставляє фільтри місцями', () => {
+    // Зсув на одиницю поміняв би стать на ураженість, нічого не зламавши, —
+    // тому тут перевіряються два фільтри з різними значеннями.
+    const raw = encodeFrequenciesParams(
+      frequenciesParamsSchema.parse({ sex: 'male', affected: 'unaffected' }),
+    )
+
+    expect(raw[2]).toBe(1)
+    expect(raw[3]).toBe(0)
+  })
+
+  it('значення за замовчуванням — вікно на весь діапазон і обидва «будь-який»', () => {
+    const raw = encodeFrequenciesParams(frequenciesParamsSchema.parse({}))
+
+    expect(Array.from(raw.slice(0, 4))).toEqual([AGE_MIN, AGE_MAX, FILTER_ANY, FILTER_ANY])
   })
 })

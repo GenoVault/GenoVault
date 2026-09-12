@@ -107,3 +107,33 @@ export function findRecipe(id: number): Recipe | undefined {
 }
 
 export const recipeIdSchema = z.number().int().min(0).max(0xffff)
+
+/**
+ * Довжина `Run.recipe_params` — дзеркало `RECIPE_PARAMS_LEN` у програмі.
+ *
+ * Поле фіксованої довжини на всі рецепти, а не по полю на кожен: акаунт прогону
+ * має однаковий розмір незалежно від того, що замовили, і додати рецепт зі
+ * своїми параметрами не означає міняти розкладку вже замовлених прогонів.
+ */
+export const RECIPE_PARAMS_LEN = 32
+
+/**
+ * Параметри «частот» у розкладці, яку читає програма (`FrequenciesParams::decode`).
+ *
+ * Перші чотири байти — вікове вікно і два фільтри, решта нулі, і саме нулі
+ * програма перевіряє: непорожній хвіст означає, що клієнт поклав туди щось,
+ * чого рецепт не читає, і мовчки проігнорувати це — значить пообіцяти покупцю
+ * фільтр, якого не буде.
+ *
+ * Порядок байтів дублює сигнатуру `frequencies_fold`: зсув на одиницю поміняв
+ * би фільтр статі на фільтр ураженості, нічого не зламавши.
+ */
+export function encodeFrequenciesParams(params: FrequenciesParams): Uint8Array {
+  const filters = encodeFrequenciesFilters(params)
+  const raw = new Uint8Array(RECIPE_PARAMS_LEN)
+  raw[0] = filters.minAge
+  raw[1] = filters.maxAge
+  raw[2] = filters.sexFilter
+  raw[3] = filters.affectedFilter
+  return raw
+}

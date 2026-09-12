@@ -1,3 +1,4 @@
+import { datasetFieldSchema, datasetMetadataSchema, MAX_MARKERS } from '@genovault/shared'
 import { describe, expect, it } from 'vitest'
 import { generateDataset, publicManifest } from '../src/generate.ts'
 import { Rng } from '../src/rng.ts'
@@ -95,5 +96,69 @@ describe('publicManifest', () => {
     const shown = publicManifest(manifest)
     expect(shown.statistics.alleleFrequencies).toHaveLength(BASE.markers)
     expect(shown.recordCount).toBe(BASE.records)
+  })
+})
+
+/**
+ * Маніфест генератора мусить проходити ту саму схему, що й заявка власника.
+ *
+ * Коментар у `packages/shared/src/dataset-metadata.ts` каже, що
+ * `datasetFieldSchema` — це «те саме, що віддає `publicManifest`». До `T029`
+ * це було неправдою в двох місцях одразу, і жодне з них ніде не падало, бо
+ * цим шляхом ще ніхто не ходив: імена маркерів мають підкреслення, а схема
+ * приймала лише lowerCamelCase; і повний профіль на 64 маркери дає 68 рядків
+ * схеми — чотири фіксовані колонки плюс маркери, — а межа стояла на 64.
+ *
+ * Тест ганяє **справжній** вивід генератора, а не зліплений руками об'єкт:
+ * розходження, яке ловиться зліпленим прикладом, не те, якого ми боїмось.
+ */
+describe('маніфест проходить схему каталогу', () => {
+  const metadata = (markers: number) => ({
+    title: 'Синтетична когорта',
+    description: 'Фікстура для тестів; жодних справжніх пацієнтських даних.',
+    ...publicManifest(generateDataset({ ...BASE, markers }).manifest),
+    provenance: {
+      source: 'synthetic' as const,
+      collectedFrom: '2026-01-01',
+      collectedTo: '2026-06-30',
+    },
+  })
+
+  it('на повному профілі рецепта — 64 маркери, 68 колонок', () => {
+    const value = metadata(MAX_MARKERS)
+
+    expect(value.schema).toHaveLength(MAX_MARKERS + 4)
+    expect(value.schema.map((f) => f.field)).toContain('marker_0064')
+    expect(datasetMetadataSchema.safeParse(value).success).toBe(true)
+  })
+
+  it('на неповному профілі теж', () => {
+    expect(datasetMetadataSchema.safeParse(metadata(20)).success).toBe(true)
+  })
+
+  it('імена маркерів проходять схему поля як є', () => {
+    // Рівно те, що ламалось: `marker_0001` проти регексу без підкреслення.
+    expect(
+      datasetFieldSchema.safeParse({
+        field: 'marker_0001',
+        type: 'integer',
+        description: 'копій мінорного алеля: 0, 1 або 2',
+      }).success,
+    ).toBe(true)
+    // Межа лишається межею: ім'я з великої літери чи з дефісом — не поле.
+    expect(
+      datasetFieldSchema.safeParse({
+        field: 'Marker_0001',
+        type: 'integer',
+        description: 'x',
+      }).success,
+    ).toBe(false)
+    expect(
+      datasetFieldSchema.safeParse({
+        field: 'marker-0001',
+        type: 'integer',
+        description: 'x',
+      }).success,
+    ).toBe(false)
   })
 })

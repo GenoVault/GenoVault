@@ -1,18 +1,29 @@
 import type { BorshInstructionCoder } from '@anchor-lang/core'
+import {
+  buyerCategoryBit,
+  encodeFrequenciesParams,
+  FILTER_ANY,
+  FREQUENCIES_RECIPE_ID,
+  frequenciesParamsSchema,
+  MAX_RUN_DATASETS,
+  useTypeBit,
+} from '@genovault/shared'
 import { Connection, Keypair, PublicKey, SystemProgram } from '@solana/web3.js'
 import { describe, expect, it } from 'vitest'
 import { ZodError } from 'zod'
 import { fromBn, U64_MAX } from '../src/convert.ts'
+import type { RequestRunParams } from '../src/instructions.ts'
 import {
   initializeIx,
   registerDatasetIx,
+  requestRunIx,
   retireDatasetIx,
   revokeConsentIx,
   setConsentIx,
   setDatasetPriceIx,
   updateDatasetContentIx,
 } from '../src/instructions.ts'
-import { consentAddress, datasetAddress } from '../src/pda.ts'
+import { associatedTokenAddress, consentAddress, datasetAddress } from '../src/pda.ts'
 import { createProgram, PROGRAM_ID } from '../src/program.ts'
 
 const program = createProgram({ connection: new Connection('http://127.0.0.1:8899') })
@@ -203,5 +214,122 @@ describe('інструкції', () => {
         pricePer1k: 1n,
       }),
     ).rejects.toThrow(ZodError)
+  })
+})
+
+/**
+ * Замовлення прогону (`T029`).
+ *
+ * Крім round-trip, тут перевіряється порядок `remaining_accounts`: програма
+ * читає їх парами `chunks_exact(2)` і звіряє `consent.dataset == dataset.key()`.
+ * Переставлена пара або загублена згода означає, що умови одного датасету
+ * перевірились би проти сусіднього, — і жоден тип цього не спіймає.
+ */
+describe('замовлення прогону', () => {
+  const BUYER = new PublicKey('4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T')
+  const MINT = new PublicKey('9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM')
+  const DISPATCHER = new PublicKey('So11111111111111111111111111111111111111112')
+  const X25519 = Uint8Array.from({ length: 32 }, (_, i) => i + 1)
+
+  const params = (over: Partial<RequestRunParams> = {}): RequestRunParams => ({
+    buyer: BUYER,
+    mint: MINT,
+    nonce: 42n,
+    recipeId: FREQUENCIES_RECIPE_ID,
+    useType: useTypeBit('rareDisease'),
+    buyerCategory: buyerCategoryBit('academic'),
+    maxEscrow: 88_200n,
+    buyerX25519: X25519,
+    dispatcher: DISPATCHER,
+    recipeParams: encodeFrequenciesParams(
+      frequenciesParamsSchema.parse({ minAge: 40, maxAge: 70 }),
+    ),
+    datasets: [
+      { owner: OWNER, datasetId: 'cohort-alpha', consentVersion: 3 },
+      { owner: OWNER, datasetId: 'cohort-beta', consentVersion: 1 },
+    ],
+    ...over,
+  })
+
+  it('доїжджає до кодувальника без втрат', async () => {
+    const decoded = await roundTrip(await requestRunIx(program, params()))
+    const args = (decoded.data as { args: Record<string, unknown> }).args
+
+    expect(fromBn(args.nonce as never)).toBe(42n)
+    expect(args.recipeId).toBe(FREQUENCIES_RECIPE_ID)
+    expect(fromBn(args.maxEscrow as never)).toBe(88_200n)
+    expect((args.dispatcher as PublicKey).toBase58()).toBe(DISPATCHER.toBase58())
+    expect(Array.from(args.buyerX25519 as number[])).toEqual(Array.from(X25519))
+    // Вікове вікно й обидва фільтри «будь-який», далі нулі до 32 байтів.
+    expect(Array.from(args.recipeParams as number[]).slice(0, 4)).toEqual([
+      40,
+      70,
+      FILTER_ANY,
+      FILTER_ANY,
+    ])
+    expect(
+      Array.from(args.recipeParams as number[])
+        .slice(4)
+        .every((b) => b === 0),
+    ).toBe(true)
+  })
+
+  it('склад пулу їде парами «датасет + його згода», у порядку пулу', async () => {
+    const ix = await requestRunIx(program, params())
+    // Вісім іменованих акаунтів інструкції, далі пари.
+    const remaining = ix.keys.slice(8)
+
+    expect(remaining).toHaveLength(4)
+    const alpha = datasetAddress(OWNER, 'cohort-alpha')
+    const beta = datasetAddress(OWNER, 'cohort-beta')
+    expect(remaining.map((key) => key.pubkey.toBase58())).toEqual([
+      alpha.address.toBase58(),
+      consentAddress(alpha.address, 3).address.toBase58(),
+      beta.address.toBase58(),
+      consentAddress(beta.address, 1).address.toBase58(),
+    ])
+    // Прогін нічого в них не змінює: копіює ціну й перевіряє умови.
+    expect(remaining.every((key) => !key.isWritable && !key.isSigner)).toBe(true)
+  })
+
+  it('єдиний підписант — покупець', async () => {
+    const ix = await requestRunIx(program, params())
+
+    expect(ix.keys.filter((key) => key.isSigner).map((key) => key.pubkey.toBase58())).toEqual([
+      BUYER.toBase58(),
+    ])
+  })
+
+  it('токен-акаунт за замовчуванням асоційований, але його можна назвати', async () => {
+    const byDefault = await requestRunIx(program, params())
+    expect(byDefault.keys[4]?.pubkey.toBase58()).toBe(
+      associatedTokenAddress(BUYER, MINT).address.toBase58(),
+    )
+
+    const explicit = Keypair.generate().publicKey
+    const named = await requestRunIx(program, params({ buyerTokens: explicit }))
+    expect(named.keys[4]?.pubkey.toBase58()).toBe(explicit.toBase58())
+  })
+
+  it('відхиляє те, чого програма не прийме', async () => {
+    await expect(requestRunIx(program, params({ datasets: [] }))).rejects.toThrow(RangeError)
+    await expect(
+      requestRunIx(
+        program,
+        params({
+          datasets: Array.from({ length: MAX_RUN_DATASETS + 1 }, (_, i) => ({
+            owner: OWNER,
+            datasetId: `cohort-${i}`,
+            consentVersion: 1,
+          })),
+        }),
+      ),
+    ).rejects.toThrow(RangeError)
+    await expect(
+      requestRunIx(program, params({ buyerX25519: new Uint8Array(31) })),
+    ).rejects.toThrow(RangeError)
+    await expect(
+      requestRunIx(program, params({ recipeParams: new Uint8Array(4) })),
+    ).rejects.toThrow(RangeError)
   })
 })

@@ -2,7 +2,15 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js'
 import { describe, expect, it } from 'vitest'
 import { ZodError } from 'zod'
 import { registerDatasetIx, setConsentIx } from '../src/instructions.ts'
-import { consentAddress, datasetAddress, platformConfigAddress } from '../src/pda.ts'
+import {
+  associatedTokenAddress,
+  consentAddress,
+  datasetAddress,
+  platformConfigAddress,
+  runAddress,
+  runResultAddress,
+  vaultAddress,
+} from '../src/pda.ts'
 import { createProgram, PROGRAM_ID } from '../src/program.ts'
 
 const program = createProgram({ connection: new Connection('http://127.0.0.1:8899') })
@@ -92,5 +100,63 @@ describe('деривація адрес', () => {
     const addresses = ix.keys.map((key) => key.pubkey.toBase58())
     expect(addresses).toContain(consentAddress(dataset, 4).address.toBase58())
     expect(addresses).toContain(consentAddress(dataset, 3).address.toBase58())
+  })
+})
+
+/**
+ * Адреси прогону звіряються з програмою, а не лише самі з собою.
+ *
+ * Деривація, яка стабільна й off-curve, але зроблена з іншими seeds, дає
+ * акаунт, за яким нічого немає, — і дізнаємось ми про це відмовою транзакції в
+ * мережі, вже після підпису. Тому очікувані адреси нижче — літерали, і ті самі
+ * літерали перевіряє `programs/genovault/tests/pda.rs` на боці програми.
+ * Розійтись їм ніде: якщо хтось змінить seed з одного боку, впаде інший.
+ */
+const BUYER = new PublicKey('4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T')
+const MINT = new PublicKey('9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM')
+
+describe('адреси прогону', () => {
+  it('збігаються з тими, що деривує програма', () => {
+    expect(vaultAddress().address.toBase58()).toBe('8gn6vk6KDHJ3Gt8Act7gK1A8ZEHYvbSHJREABxPkJxSK')
+    expect(runAddress(BUYER, 42n).address.toBase58()).toBe(
+      '7wGaxUS9vcfmAzTbPMCBAEvbbkTTYPEoHshmywLsEJej',
+    )
+    expect(runResultAddress(runAddress(BUYER, 42n).address).address.toBase58()).toBe(
+      '7JwGcRD9xizCpbEtHSA4jYab5W7bv7uWmut8Km9L1yt4',
+    )
+    expect(associatedTokenAddress(BUYER, MINT).address.toBase58()).toBe(
+      'ESuX35w52w3g46Q6nJyntikFxoNRR7EAyEfryrJGr2DV',
+    )
+  })
+
+  it('розрізняє нонси, і саме молодшим байтом уперед', () => {
+    // `1` і `2 ^ 56` відрізняються рівно порядком байтів: на big-endian
+    // кодуванні ці два прогони отримали б адреси один одного.
+    const first = runAddress(BUYER, 1n).address.toBase58()
+    const swapped = runAddress(BUYER, 1n << 56n).address.toBase58()
+
+    expect(first).not.toBe(swapped)
+    expect(first).toBe('8KP4d8tJXLtxrVGjTQASsfH4iHYbnqQwVCauyXayMnS6')
+  })
+
+  it('розрізняє покупців', () => {
+    const other = Keypair.generate().publicKey
+    expect(runAddress(BUYER, 7n).address.toBase58()).not.toBe(
+      runAddress(other, 7n).address.toBase58(),
+    )
+  })
+
+  it('відхиляє нонс поза u64', () => {
+    expect(() => runAddress(BUYER, -1n)).toThrow(RangeError)
+    expect(() => runAddress(BUYER, 1n << 64n)).toThrow(RangeError)
+    // Межа включно: `u64::MAX` — валідний нонс.
+    expect(() => runAddress(BUYER, (1n << 64n) - 1n)).not.toThrow()
+  })
+
+  it('усі три PDA поза кривою', () => {
+    const run = runAddress(BUYER, 42n).address
+    for (const address of [vaultAddress().address, run, runResultAddress(run).address]) {
+      expect(PublicKey.isOnCurve(address.toBytes())).toBe(false)
+    }
   })
 })

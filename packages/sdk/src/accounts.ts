@@ -176,3 +176,166 @@ export async function fetchConsents(
   const raw = await program.account.consent.fetchMultiple(addresses)
   return raw.map((account) => (account === null ? null : decodeConsent(account)))
 }
+
+/**
+ * П'ять статусів прогону (`FR-013`) — рівно ті, що названі у SPEC.
+ *
+ * Порційність виплат сюди не додається шостим значенням: її тримає
+ * `settledCount`. Інакше «завершено» означало б «обчислення скінчилось», а не
+ * «всім заплачено».
+ */
+export type RunStatusName = 'accepted' | 'running' | 'completed' | 'rejected' | 'failed'
+
+export interface RunDatasetEntry {
+  dataset: PublicKey
+  /** Ціна на момент замовлення — копія, а не поточна ціна датасету. */
+  pricePer1k: bigint
+  /** Внесок, оголошений усередині MPC. 0, доки датасет не закрито. */
+  recordsIncluded: number
+  /**
+   * Внесок був меншим за `MIN_CONTRIBUTION` і оголошений нулем (`T019`).
+   *
+   * Окремо від нульового внеску: для власника «не дав жодного запису під
+   * фільтр» і «дав, але замало, щоб про це говорити» — різні речі, і екран
+   * нарахувань мусить їх розрізняти.
+   */
+  belowFloor: boolean
+  settled: boolean
+}
+
+export interface RunAccount {
+  buyer: PublicKey
+  /** Кому покупець доручив довести прогін до кінця (`T025`). */
+  dispatcher: PublicKey
+  nonce: bigint
+  recipeId: number
+  /** Параметри рецепта в розкладці програми — 32 байти як є. */
+  recipeParams: Uint8Array
+  useType: number
+  buyerCategory: number
+  /** Публічний x25519 покупця: цим ключем MPC зашифрував звіт. */
+  buyerX25519: Uint8Array
+  datasets: RunDatasetEntry[]
+  /** Комісія на момент замовлення — копія, а не поточна конфігурація. */
+  feeBps: number
+  escrowAmount: bigint
+  settledCount: number
+  settledAmount: bigint
+  refunded: boolean
+  status: RunStatusName
+  /** `null`, доки не повернувся callback MPC. */
+  resultHash: ContentHash | null
+  recordsIncluded: number
+  /** Когорта менша за `MIN_COHORT`: звіт із нулів, платити нема за що. */
+  suppressed: boolean
+  datasetCursor: number
+  foldedBatches: number
+  /** Ланцюжок відбитків усього, що пішло в MPC (`FR-025`). */
+  foldedHash: ContentHash
+  createdAt: bigint
+  bump: number
+}
+
+export interface RunResultAccount {
+  run: PublicKey
+  /** Ключ, яким MXE зашифрував звіт на покупця. */
+  encryptionKey: Uint8Array
+  nonce: bigint
+  /** 24 польові елементи звіту — розшифровує їх покупець, і більше ніхто. */
+  ciphertexts: Uint8Array[]
+  recordsIncluded: number
+  suppressed: boolean
+  bump: number
+}
+
+type RawRun = Awaited<ReturnType<GenoVaultProgram['account']['run']['fetch']>>
+type RawRunResult = Awaited<ReturnType<GenoVaultProgram['account']['runResult']['fetch']>>
+
+function runStatus(raw: RawRun['status']): RunStatusName {
+  if ('accepted' in raw) return 'accepted'
+  if ('running' in raw) return 'running'
+  if ('completed' in raw) return 'completed'
+  if ('rejected' in raw) return 'rejected'
+  if ('failed' in raw) return 'failed'
+  throw new Error(`невідомий статус прогону: ${JSON.stringify(raw)}`)
+}
+
+/**
+ * Байти з IDL приходять масивом чисел і йдуть назовні `Uint8Array`.
+ *
+ * Не hex-рядком, як `contentHash`: відбиток читає людина й порівнює очима, а
+ * ключ шифрування і шифротексти читає лише крипто — і кожне перетворення в
+ * рядок і назад це ще одне місце, де 32 байти можуть стати 31.
+ */
+function toBytes(raw: number[]): Uint8Array {
+  return Uint8Array.from(raw)
+}
+
+export function decodeRun(raw: RawRun): RunAccount {
+  return {
+    buyer: raw.buyer,
+    dispatcher: raw.dispatcher,
+    nonce: fromBn(raw.nonce),
+    recipeId: raw.recipeId,
+    recipeParams: toBytes(raw.recipeParams),
+    useType: raw.useType,
+    buyerCategory: raw.buyerCategory,
+    buyerX25519: toBytes(raw.buyerX25519),
+    datasets: raw.datasets.map((entry) => ({
+      dataset: entry.dataset,
+      pricePer1k: fromBn(entry.pricePer1k),
+      recordsIncluded: entry.recordsIncluded,
+      belowFloor: entry.belowFloor,
+      settled: entry.settled,
+    })),
+    feeBps: raw.feeBps,
+    escrowAmount: fromBn(raw.escrowAmount),
+    settledCount: raw.settledCount,
+    settledAmount: fromBn(raw.settledAmount),
+    refunded: raw.refunded,
+    status: runStatus(raw.status),
+    resultHash: raw.resultHash === null ? null : bytesToHash(raw.resultHash),
+    recordsIncluded: raw.recordsIncluded,
+    suppressed: raw.suppressed,
+    datasetCursor: raw.datasetCursor,
+    foldedBatches: raw.foldedBatches,
+    foldedHash: bytesToHash(raw.foldedHash),
+    createdAt: fromBn(raw.createdAt),
+    bump: raw.bump,
+  }
+}
+
+export function decodeRunResult(raw: RawRunResult): RunResultAccount {
+  return {
+    run: raw.run,
+    encryptionKey: toBytes(raw.encryptionKey),
+    nonce: fromBn(raw.nonce),
+    ciphertexts: raw.ciphertexts.map(toBytes),
+    recordsIncluded: raw.recordsIncluded,
+    suppressed: raw.suppressed,
+    bump: raw.bump,
+  }
+}
+
+export async function fetchRun(
+  program: GenoVaultProgram,
+  address: PublicKey,
+): Promise<RunAccount | null> {
+  const raw = await program.account.run.fetchNullable(address)
+  return raw === null ? null : decodeRun(raw)
+}
+
+/**
+ * Звіт прогону; `null` — розкриття ще не відбулося.
+ *
+ * Відсутній акаунт тут не помилка й на екрані має читатись як «ще рахують», а
+ * не як «звіту не буде»: `dispatch_reveal` створює його вже після того, як
+ * пул вичерпано.
+ */
+export async function fetchRunResult(
+  program: GenoVaultProgram,
+  address: PublicKey,
+): Promise<RunResultAccount | null> {
+  const raw = await program.account.runResult.fetchNullable(address)
+  return raw === null ? null : decodeRunResult(raw)
+}

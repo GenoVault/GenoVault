@@ -57,7 +57,9 @@ export {
   datasetMetadataSchema,
   datasetProvenanceSchema,
   datasetStatisticsSchema,
+  FIXED_FIELDS,
   MAX_MARKERS,
+  MAX_SCHEMA_FIELDS,
   MIN_COHORT,
   registerDatasetRequestSchema,
 } from './dataset-metadata.ts'
@@ -129,10 +131,12 @@ export {
   AGE_MAX,
   AGE_MIN,
   encodeFrequenciesFilters,
+  encodeFrequenciesParams,
   FILTER_ANY,
   FREQUENCIES_RECIPE_ID,
   findRecipe,
   frequenciesParamsSchema,
+  RECIPE_PARAMS_LEN,
   RECIPES,
   recipeIdSchema,
 } from './recipes.ts'
