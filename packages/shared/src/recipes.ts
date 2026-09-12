@@ -137,3 +137,24 @@ export function encodeFrequenciesParams(params: FrequenciesParams): Uint8Array {
   raw[3] = filters.affectedFilter
   return raw
 }
+
+/**
+ * Зворотне до `encodeFrequenciesParams` — щоб показати умови вже замовленого
+ * прогону.
+ *
+ * Читає рівно чотири байти й нічого не перевіряє понад словник: акаунт прогону
+ * уже пройшов `FrequenciesParams::decode` у програмі, і друга валідація тут
+ * означала б, що ми не віримо ланцюгу. Невідоме значення фільтра все ж стає
+ * `'any'`, а не падає: екран, який не відкривається через байт, гірший за
+ * екран, який показує ширший фільтр, ніж був.
+ */
+export function decodeFrequenciesParams(raw: Uint8Array): FrequenciesParams {
+  const sex = raw[2]
+  const affected = raw[3]
+  return {
+    minAge: raw[0] ?? AGE_MIN,
+    maxAge: raw[1] ?? AGE_MAX,
+    sex: sex === 0 ? 'female' : sex === 1 ? 'male' : 'any',
+    affected: affected === 0 ? 'unaffected' : affected === 1 ? 'affected' : 'any',
+  }
+}

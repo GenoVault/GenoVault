@@ -108,6 +108,9 @@ const CONSENT = {
   revoked: false,
 } as const
 
+/** Чинна версія згоди у фікстурах. Ненульова: нуль означав би «згоди немає». */
+const CONSENT_VERSION = 2
+
 /** Датасет у мережі: активний, зі згодою на онкологію для академічного покупця. */
 function chainDataset(
   datasetId: DatasetId,
@@ -119,6 +122,7 @@ function chainDataset(
       status: 'active',
       recordCountClaimed: BigInt(RECORDS),
       pricePer1k: PRICE,
+      consentVersion: CONSENT_VERSION,
     },
     consent: { ...CONSENT },
     ...patch,
@@ -246,6 +250,7 @@ describe('квота рахує вартість', () => {
             status: 'active',
             recordCountClaimed: 1_000n,
             pricePer1k: pricePer1kSchema.parse(2_000n),
+            consentVersion: CONSENT_VERSION,
           },
         },
       ]),
@@ -280,6 +285,7 @@ describe('квота рахує вартість', () => {
             status: 'active',
             recordCountClaimed: 1n,
             pricePer1k: pricePer1kSchema.parse(1_000n),
+            consentVersion: CONSENT_VERSION,
           },
         },
         {
@@ -288,6 +294,7 @@ describe('квота рахує вартість', () => {
             status: 'active',
             recordCountClaimed: 1n,
             pricePer1k: pricePer1kSchema.parse(1_000n),
+            consentVersion: CONSENT_VERSION,
           },
         },
       ]),
@@ -353,7 +360,12 @@ describe('непридатний датасет позначається, а н�
       'знятий',
       {
         ...chainDataset(BETA),
-        dataset: { status: 'retired' as const, recordCountClaimed: 12n, pricePer1k: PRICE },
+        dataset: {
+          status: 'retired' as const,
+          recordCountClaimed: 12n,
+          pricePer1k: PRICE,
+          consentVersion: CONSENT_VERSION,
+        },
       },
       'retired',
     ],
@@ -431,7 +443,12 @@ describe('непридатний датасет позначається, а н�
     // не туди.
     const body = await withBeta({
       ...chainDataset(BETA),
-      dataset: { status: 'retired', recordCountClaimed: 12n, pricePer1k: PRICE },
+      dataset: {
+        status: 'retired',
+        recordCountClaimed: 12n,
+        pricePer1k: PRICE,
+        consentVersion: CONSENT_VERSION,
+      },
       consent: { ...CONSENT, revoked: true },
     })
     const line = body.datasets[1]

@@ -6,6 +6,7 @@ import { MAX_MARKERS, MIN_COHORT } from '../src/dataset-metadata.ts'
 import {
   AGE_MAX,
   AGE_MIN,
+  decodeFrequenciesParams,
   encodeFrequenciesFilters,
   encodeFrequenciesParams,
   FILTER_ANY,
@@ -148,5 +149,28 @@ describe('розкладка `Run.recipe_params`', () => {
     const raw = encodeFrequenciesParams(frequenciesParamsSchema.parse({}))
 
     expect(Array.from(raw.slice(0, 4))).toEqual([AGE_MIN, AGE_MAX, FILTER_ANY, FILTER_ANY])
+  })
+})
+
+describe('розбір `Run.recipe_params` назад', () => {
+  it('round-trip зберігає всі чотири поля', () => {
+    for (const params of [
+      { minAge: 18, maxAge: 65, sex: 'female', affected: 'affected' },
+      { minAge: 0, maxAge: 255, sex: 'male', affected: 'unaffected' },
+      {},
+    ] as const) {
+      const parsed = frequenciesParamsSchema.parse(params)
+      expect(decodeFrequenciesParams(encodeFrequenciesParams(parsed))).toEqual(parsed)
+    }
+  })
+
+  it('невідомий байт фільтра читається як «будь-який», а не валить екран', () => {
+    // Такого байта в акаунті не буває — програма їх перевіряє. Але екран, який
+    // не відкривається через байт, гірший за екран, який показує ширший фільтр.
+    const raw = new Uint8Array(RECIPE_PARAMS_LEN)
+    raw[2] = 9
+    raw[3] = 9
+
+    expect(decodeFrequenciesParams(raw)).toMatchObject({ sex: 'any', affected: 'any' })
   })
 })

@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import type { RunAccount, RunResultAccount } from '@genovault/sdk'
 import {
   consentAddress,
   createProgram,
@@ -8,8 +9,13 @@ import {
   fetchDataset,
   fetchDatasets,
   fetchPlatformConfig,
+  fetchRun,
+  fetchRunResult,
   platformConfigAddress,
   registerDatasetIx,
+  requestRunIx,
+  runAddress,
+  runResultAddress,
 } from '@genovault/sdk'
 import type {
   ChainView,
@@ -19,6 +25,8 @@ import type {
   PricePer1k,
   RunDatasetRef,
   SolanaAddress,
+  UnsignedAccount,
+  UnsignedInstruction,
 } from '@genovault/shared'
 import { chainViewSchema, pricePer1kSchema, solanaAddressSchema } from '@genovault/shared'
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js'
@@ -40,18 +48,14 @@ import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3
  * можна зрозуміти. Хеш блоку бере той, хто підписує, — у момент підпису.
  */
 
-export interface UnsignedAccount {
-  pubkey: string
-  isSigner: boolean
-  isWritable: boolean
-}
-
-/** Інструкція у вигляді, який переживає JSON: адреси base58, дані base64. */
-export interface UnsignedInstruction {
-  programId: string
-  accounts: UnsignedAccount[]
-  data: string
-}
+/**
+ * Подання інструкції переїхало в `packages/shared` (`T029`).
+ *
+ * Воно перетинає межу — його розбирає той, хто підписує, — і межі описує
+ * схема, а не інтерфейс на боці сервера. Реекспорт лишається, щоб маршрути не
+ * знали, звідки тип: місце оголошення тут ніколи не було їхньою справою.
+ */
+export type { UnsignedAccount, UnsignedInstruction }
 
 export interface RegistrationParams {
   owner: SolanaAddress
@@ -84,9 +88,9 @@ export function deriveDatasetAddress(owner: SolanaAddress, datasetId: DatasetId)
 
 export function encodeInstruction(instruction: TransactionInstruction): UnsignedInstruction {
   return {
-    programId: instruction.programId.toBase58(),
+    programId: solanaAddressSchema.parse(instruction.programId.toBase58()),
     accounts: instruction.keys.map((key) => ({
-      pubkey: key.pubkey.toBase58(),
+      pubkey: solanaAddressSchema.parse(key.pubkey.toBase58()),
       isSigner: key.isSigner,
       isWritable: key.isWritable,
     })),
@@ -229,6 +233,14 @@ export interface QuoteDatasetState {
     status: 'active' | 'retired'
     recordCountClaimed: bigint
     pricePer1k: PricePer1k
+    /**
+     * Чинна версія згоди; 0 — згоди немає.
+     *
+     * Квоті вона не потрібна, а замовленню потрібна: саме ця версія їде в
+     * `remaining_accounts`, і взяти її другим читанням означало б зібрати
+     * інструкцію проти згоди, якої вже немає.
+     */
+    consentVersion: number
   } | null
   /** `null` — згоди немає: або датасету немає, або власник її ще не задав. */
   consent: ConsentState | null
@@ -325,6 +337,7 @@ export function createQuoteChainReader(rpcUrl: string): QuoteChainReader {
                   status: dataset.status,
                   recordCountClaimed: dataset.recordCountClaimed,
                   pricePer1k: pricePer1kSchema.parse(dataset.pricePer1k),
+                  consentVersion: dataset.consentVersion,
                 },
           consent:
             consent === null
@@ -340,4 +353,165 @@ export function createQuoteChainReader(rpcUrl: string): QuoteChainReader {
       }),
     }
   }
+}
+
+/**
+ * Стан платформи для клієнта (`GET /platform`) — `T029`.
+ *
+ * Читається щоразу, а не кешується: комісія й пауза змінюються інструкціями
+ * платформи, і кешоване значення означало б, що покупець бачить умови, яких
+ * уже немає. Ціна одного читання на відкриття екрана замовлення тут менша за
+ * ціну розходження.
+ */
+export interface PlatformState {
+  programId: SolanaAddress
+  mint: SolanaAddress
+  feeBps: number
+  paused: boolean
+}
+
+export type PlatformReader = () => Promise<PlatformState>
+
+export function createPlatformReader(rpcUrl: string): PlatformReader {
+  const program = createProgram({ connection: new Connection(rpcUrl) })
+
+  return async () => {
+    let config: Awaited<ReturnType<typeof fetchPlatformConfig>>
+    try {
+      config = await fetchPlatformConfig(program, platformConfigAddress(program.programId).address)
+    } catch {
+      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+    }
+    if (config === null) {
+      throw new ChainStateError('not-initialized', 'конфігурації платформи немає в мережі')
+    }
+
+    return {
+      programId: solanaAddressSchema.parse(program.programId.toBase58()),
+      mint: solanaAddressSchema.parse(config.mint.toBase58()),
+      feeBps: config.feeBps,
+      paused: config.paused,
+    }
+  }
+}
+
+export interface RunOrderDataset {
+  owner: SolanaAddress
+  datasetId: DatasetId
+  /** Чинна версія згоди — та, проти якої програма перевірятиме умови. */
+  consentVersion: number
+}
+
+export interface RunOrderParams {
+  buyer: SolanaAddress
+  mint: SolanaAddress
+  nonce: bigint
+  recipeId: number
+  /** Біти типу використання й категорії — ті самі, що в `packages/shared`. */
+  useType: number
+  buyerCategory: number
+  maxEscrow: bigint
+  /** Публічний x25519 покупця, 32 байти шістнадцятково. */
+  buyerX25519: string
+  dispatcher: SolanaAddress
+  recipeParams: Uint8Array
+  datasets: readonly RunOrderDataset[]
+}
+
+export interface RunOrderBuild {
+  runAddress: SolanaAddress
+  instruction: UnsignedInstruction
+}
+
+export type RunOrderBuilder = (params: RunOrderParams) => Promise<RunOrderBuild>
+
+/**
+ * Збирач інструкції замовлення прогону.
+ *
+ * Мережі не питає — усе, що потрібно, маршрут уже прочитав, складаючи квоту
+ * тим самим запитом. Другий обхід за тими самими акаунтами дав би не свіжіші
+ * дані, а другу правду: ціна, з якої порахована стеля, і ціна, з якої зібрана
+ * інструкція, мусять бути одним читанням.
+ */
+export function createRunOrderBuilder(rpcUrl: string): RunOrderBuilder {
+  const program = createProgram({ connection: new Connection(rpcUrl) })
+
+  return async (params) => {
+    const buyer = new PublicKey(params.buyer)
+    const instruction = await requestRunIx(program, {
+      buyer,
+      mint: new PublicKey(params.mint),
+      nonce: params.nonce,
+      recipeId: params.recipeId,
+      useType: params.useType,
+      buyerCategory: params.buyerCategory,
+      maxEscrow: params.maxEscrow,
+      buyerX25519: hexToBytes(params.buyerX25519),
+      dispatcher: new PublicKey(params.dispatcher),
+      recipeParams: params.recipeParams,
+      datasets: params.datasets.map((entry) => ({
+        owner: new PublicKey(entry.owner),
+        datasetId: entry.datasetId,
+        consentVersion: entry.consentVersion,
+      })),
+    })
+
+    return {
+      runAddress: solanaAddressSchema.parse(
+        runAddress(buyer, params.nonce, program.programId).address.toBase58(),
+      ),
+      instruction: encodeInstruction(instruction),
+    }
+  }
+}
+
+export interface RunChainState {
+  runAddress: SolanaAddress
+  /** `null` — прогону з таким нонсом покупець не замовляв. */
+  run: RunAccount | null
+  /** `null` — розкриття ще не відбулося. Не помилка: MPC ще рахує. */
+  result: RunResultAccount | null
+}
+
+export type RunReader = (buyer: SolanaAddress, nonce: bigint) => Promise<RunChainState>
+
+/**
+ * Читач стану прогону (`FR-013`, `FR-025`).
+ *
+ * Обидва акаунти читаються одним заходом, бо екран показує їх разом, і
+ * послідовні читання дали б стан, у якому прогін уже `completed`, а звіту ще
+ * «немає». Недоступний вузол тут — помилка відповіді, а не порожній прогін:
+ * на відміну від картки датасету, показати з дзеркала нема чого.
+ */
+export function createRunReader(rpcUrl: string): RunReader {
+  const program = createProgram({ connection: new Connection(rpcUrl) })
+
+  return async (buyer, nonce) => {
+    const address = runAddress(new PublicKey(buyer), nonce, program.programId).address
+    const resultAddress = runResultAddress(address, program.programId).address
+
+    let run: RunAccount | null
+    let result: RunResultAccount | null
+    try {
+      ;[run, result] = await Promise.all([
+        fetchRun(program, address),
+        fetchRunResult(program, resultAddress),
+      ])
+    } catch {
+      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+    }
+
+    return {
+      runAddress: solanaAddressSchema.parse(address.toBase58()),
+      run,
+      result,
+    }
+  }
+}
+
+/** Шістнадцяткові 32 байти → байти. Форму перевіряє схема на межі запиту. */
+function hexToBytes(hex: string): Uint8Array {
+  return Uint8Array.from({ length: hex.length / 2 }, (_unused, i) =>
+    Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16),
+  )
 }

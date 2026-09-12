@@ -1,14 +1,23 @@
+import type { SolanaAddress } from '@genovault/shared'
 import { DatasetEnvelopeError } from '@genovault/shared'
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
 import { fail } from './errors.ts'
 import type { AuthVariables } from './middleware/auth.ts'
 import { datasetRoutes } from './routes/datasets.ts'
+import { platformRoutes } from './routes/platform.ts'
 import { runRoutes } from './routes/runs.ts'
 import { sessionRoutes } from './routes/session.ts'
 import type { TokenVerifier } from './services/auth.ts'
 import type { CatalogStore } from './services/catalog.ts'
-import type { ChainReader, QuoteChainReader, RegistrationBuilder } from './services/chain.ts'
+import type {
+  ChainReader,
+  PlatformReader,
+  QuoteChainReader,
+  RegistrationBuilder,
+  RunOrderBuilder,
+  RunReader,
+} from './services/chain.ts'
 import type { StorageDriver } from './services/storage.ts'
 
 export interface AppDeps {
@@ -34,6 +43,18 @@ export interface AppDeps {
    * квота питає про пул і без мережі не існує (`T023`).
    */
   readQuoteChain?: QuoteChainReader | undefined
+  /** Збирач інструкції замовлення прогону (`T029`). Без нього `POST /runs` — 500. */
+  buildRunOrder?: RunOrderBuilder | undefined
+  /** Читач стану прогону з ланцюга. Дзеркала прогонів немає й не буде. */
+  readRun?: RunReader | undefined
+  readPlatform?: PlatformReader | undefined
+  /**
+   * Адреса диспетчера платформи (`Run.dispatcher` за замовчуванням).
+   *
+   * Необов'язкова: платформа без диспетчера законна. Тоді покупець мусить
+   * назвати свого, і `POST /runs` без нього відмовляє явно.
+   */
+  dispatcher?: SolanaAddress | undefined
   baseUrl?: string | undefined
   maxCiphertextBytes?: number | undefined
 }
@@ -62,8 +83,12 @@ export function createApp(deps: AppDeps = {}) {
       verify: deps.verifyAccessToken,
       catalog: deps.catalog,
       readQuoteChain: deps.readQuoteChain,
+      buildRunOrder: deps.buildRunOrder,
+      readRun: deps.readRun,
+      dispatcher: deps.dispatcher,
     }),
   )
+  app.route('/', platformRoutes({ readPlatform: deps.readPlatform, dispatcher: deps.dispatcher }))
 
   app.notFound((c) => fail(c, 'NOT_FOUND', 'маршрут не знайдено'))
 

@@ -1,3 +1,4 @@
+import { solanaAddressSchema } from '@genovault/shared'
 import { serve } from '@hono/node-server'
 import { pino } from 'pino'
 import { createApp } from './app.ts'
@@ -5,8 +6,11 @@ import { authConfigFromEnv, createTokenVerifier } from './services/auth.ts'
 import { catalogConfigFromEnv, createCatalog } from './services/catalog.ts'
 import {
   createChainReader,
+  createPlatformReader,
   createQuoteChainReader,
   createRegistrationBuilder,
+  createRunOrderBuilder,
+  createRunReader,
 } from './services/chain.ts'
 import { createStorage, storageConfigFromEnv } from './services/storage.ts'
 
@@ -27,6 +31,16 @@ const catalog = catalogConfigFromEnv(process.env)
 const storage = storageConfigFromEnv(process.env)
 const rpcUrl = process.env.SOLANA_RPC_URL ?? 'http://127.0.0.1:8909'
 
+// Диспетчер платформи (`T029`). Розбирається на старті, а не при першому
+// замовленні: адреса з одруківкою прийняла б прогони, яких потім ніхто не
+// зрушить, і виявилось би це вже після того, як покупець заплатив.
+// Не заданий — законний стан: тоді покупець називає свого, а `POST /runs`
+// без нього відмовляє явно.
+const dispatcher =
+  process.env.GENOVAULT_DISPATCHER === undefined
+    ? undefined
+    : solanaAddressSchema.parse(process.env.GENOVAULT_DISPATCHER)
+
 const app = createApp({
   verifyAccessToken: createTokenVerifier(auth),
   catalog: createCatalog(catalog),
@@ -34,6 +48,10 @@ const app = createApp({
   buildRegistration: createRegistrationBuilder(rpcUrl),
   readChain: createChainReader(rpcUrl),
   readQuoteChain: createQuoteChainReader(rpcUrl),
+  buildRunOrder: createRunOrderBuilder(rpcUrl),
+  readRun: createRunReader(rpcUrl),
+  readPlatform: createPlatformReader(rpcUrl),
+  dispatcher,
   baseUrl: process.env.API_BASE_URL ?? `http://127.0.0.1:${port}`,
   ...(process.env.API_MAX_CIPHERTEXT_BYTES === undefined
     ? {}
@@ -47,6 +65,7 @@ serve({ fetch: app.fetch, port }, (info) => {
       authKeySource: auth.keySource,
       catalogDriver: catalog.driver,
       storageDriver: storage.driver,
+      dispatcher: dispatcher ?? 'не задано',
     },
     'api піднято',
   )

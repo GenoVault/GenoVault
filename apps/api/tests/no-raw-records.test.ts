@@ -1,7 +1,9 @@
 import { Buffer } from 'node:buffer'
+import type { RunAccount, RunResultAccount } from '@genovault/sdk'
 import {
   BUYER_CATEGORIES,
   contentHash,
+  datasetIdSchema,
   LIMB_BYTES,
   NONCE_BYTES,
   pricePer1kSchema,
@@ -11,11 +13,16 @@ import {
   USE_TYPES,
   X25519_KEY_BYTES,
 } from '@genovault/shared'
+import { PublicKey } from '@solana/web3.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../src/app.ts'
 import { AuthError, type TokenVerifier } from '../src/services/auth.ts'
 import { memoryCatalog } from '../src/services/catalog.ts'
-import { createRegistrationBuilder } from '../src/services/chain.ts'
+import {
+  createRegistrationBuilder,
+  createRunOrderBuilder,
+  deriveDatasetAddress,
+} from '../src/services/chain.ts'
 import type { StorageDriver } from '../src/services/storage.ts'
 
 /**
@@ -44,7 +51,7 @@ import type { StorageDriver } from '../src/services/storage.ts'
 
 const OWNER = solanaAddressSchema.parse('11111111111111111111111111111112')
 const USER = 'did:privy:clx0000000000000000000000'
-const DATASET_ID = 'cohort-alpha'
+const DATASET_ID = datasetIdSchema.parse('cohort-alpha')
 
 /**
  * 13, а не 12: число має бути впізнаваним.
@@ -124,6 +131,83 @@ const verify: TokenVerifier = async (token) => {
 
 const auth = { authorization: 'Bearer good' }
 
+const BUYER = solanaAddressSchema.parse('4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T')
+const DISPATCHER = solanaAddressSchema.parse('So11111111111111111111111111111111111111112')
+
+/**
+ * Замовлення прогону, яке має пройти.
+ *
+ * Стеля свідомо з запасом: ця проба перевіряє не арифметику, а те, що
+ * успішний шлях `POST /runs` не несе у відповіді нічого з записів. Відмову
+ * перевіряє сусідня проба, у якої стеля одиниця.
+ */
+const ORDER_BODY = {
+  buyer: BUYER,
+  recipeId: 1,
+  useType: 'oncology',
+  buyerCategory: 'academic',
+  datasets: [{ owner: OWNER, datasetId: DATASET_ID }],
+  params: {},
+  nonce: '42',
+  maxEscrow: '999999999999',
+  buyerX25519: '11'.repeat(32),
+}
+
+/**
+ * Прогін, який уже дорахувався, разом зі звітом.
+ *
+ * Саме цей стан найнебезпечніший для `FR-002`: у ньому є і склад пулу, і
+ * шифротексти звіту, і кількість записів у когорті. Проба стоїть тут, щоб
+ * будь-яке майбутнє «покажемо покупцю трохи більше» валило гард.
+ */
+function completedRun(): RunAccount {
+  return {
+    buyer: new PublicKey(BUYER),
+    dispatcher: new PublicKey(DISPATCHER),
+    nonce: 42n,
+    recipeId: 1,
+    recipeParams: new Uint8Array(32),
+    useType: USE_TYPES.oncology,
+    buyerCategory: BUYER_CATEGORIES.academic,
+    buyerX25519: new Uint8Array(32).fill(0x11),
+    datasets: [
+      {
+        dataset: new PublicKey(deriveDatasetAddress(OWNER, DATASET_ID)),
+        pricePer1k: 1_500_000n,
+        recordsIncluded: RECORDS,
+        belowFloor: false,
+        settled: true,
+      },
+    ],
+    feeBps: 700,
+    escrowAmount: 1_500_000n,
+    settledCount: 1,
+    settledAmount: 1_395_000n,
+    refunded: true,
+    status: 'completed',
+    resultHash: '0f'.repeat(32) as never,
+    recordsIncluded: RECORDS,
+    suppressed: false,
+    datasetCursor: 1,
+    foldedBatches: 1,
+    foldedHash: 'a1'.repeat(32) as never,
+    createdAt: 1_735_689_600n,
+    bump: 254,
+  }
+}
+
+function completedResult(): RunResultAccount {
+  return {
+    run: new PublicKey(BUYER),
+    encryptionKey: new Uint8Array(32).fill(0x5c),
+    nonce: 1n << 100n,
+    ciphertexts: Array.from({ length: 24 }, () => new Uint8Array(32).fill(0x33)),
+    recordsIncluded: RECORDS,
+    suppressed: false,
+    bump: 253,
+  }
+}
+
 let app: ReturnType<typeof createApp>
 let ciphertext: Uint8Array
 let frame: Uint8Array
@@ -150,6 +234,7 @@ beforeEach(async () => {
           status: 'active' as const,
           recordCountClaimed: BigInt(RECORDS),
           pricePer1k: pricePer1kSchema.parse(1_500_000n),
+          consentVersion: 1,
         },
         consent: {
           allowedUses: USE_TYPES.oncology,
@@ -160,6 +245,19 @@ beforeEach(async () => {
         },
       })),
     })),
+    buildRunOrder: createRunOrderBuilder('http://127.0.0.1:8899'),
+    readRun: vi.fn(async (_buyer: unknown, nonce: bigint) => ({
+      runAddress: BUYER,
+      run: nonce === 42n ? completedRun() : null,
+      result: nonce === 42n ? completedResult() : null,
+    })),
+    readPlatform: vi.fn(async () => ({
+      programId: solanaAddressSchema.parse('11111111111111111111111111111112'),
+      mint: solanaAddressSchema.parse('SysvarC1ock11111111111111111111111111111111'),
+      feeBps: 700,
+      paused: false,
+    })),
+    dispatcher: DISPATCHER,
     baseUrl: 'http://127.0.0.1:8879',
   })
 
@@ -298,6 +396,41 @@ function probes(): { label: string; route: string; run: () => Promise<Response> 
             params: {},
           }),
         }),
+    },
+    {
+      label: 'стан платформи',
+      route: 'GET /platform',
+      run: async () => app.request('/platform'),
+    },
+    {
+      label: 'замовлення прогону',
+      route: 'POST /runs',
+      run: async () =>
+        app.request('/runs', {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json' },
+          body: JSON.stringify(ORDER_BODY),
+        }),
+    },
+    {
+      label: 'замовлення зі стелею нижче ціни',
+      route: 'POST /runs',
+      run: async () =>
+        app.request('/runs', {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json' },
+          body: JSON.stringify({ ...ORDER_BODY, maxEscrow: '1' }),
+        }),
+    },
+    {
+      label: 'стан прогону',
+      route: 'GET /runs/:buyer/:nonce',
+      run: async () => app.request(`/runs/${BUYER}/42`),
+    },
+    {
+      label: 'стан неіснуючого прогону',
+      route: 'GET /runs/:buyer/:nonce',
+      run: async () => app.request(`/runs/${BUYER}/43`),
     },
     {
       label: 'невідомий маршрут',

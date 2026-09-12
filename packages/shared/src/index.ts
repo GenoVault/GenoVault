@@ -104,6 +104,7 @@ export {
   solanaAddressSchema,
   tokenAmountSchema,
   u64StringSchema,
+  u128StringSchema,
 } from './primitives.ts'
 export type {
   QuoteBlocker,
@@ -130,6 +131,7 @@ export type { FrequenciesParams, Recipe } from './recipes.ts'
 export {
   AGE_MAX,
   AGE_MIN,
+  decodeFrequenciesParams,
   encodeFrequenciesFilters,
   encodeFrequenciesParams,
   FILTER_ANY,
@@ -140,6 +142,33 @@ export {
   RECIPES,
   recipeIdSchema,
 } from './recipes.ts'
+export type {
+  PlatformView,
+  RunOrder,
+  RunOrderRefusal,
+  RunOrderRequest,
+  RunResultView,
+  RunStatusName,
+  RunView,
+  RunViewDataset,
+  UnsignedAccount,
+  UnsignedInstruction,
+} from './run.ts'
+export {
+  platformViewSchema,
+  RUN_ORDER_REFUSALS,
+  RUN_STATUSES,
+  runOrderDatasetSchema,
+  runOrderRefusalSchema,
+  runOrderRequestSchema,
+  runOrderSchema,
+  runResultViewSchema,
+  runViewDatasetSchema,
+  runViewSchema,
+  unsignedAccountSchema,
+  unsignedInstructionSchema,
+  x25519PublicKeySchema,
+} from './run.ts'
 export type {
   RunSettlement,
   SettlementDataset,
