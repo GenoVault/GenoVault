@@ -42,6 +42,7 @@ export type ChainStatus = 'active' | 'retired'
 export type RunStatus = 'accepted' | 'running' | 'completed' | 'rejected' | 'failed'
 
 export type ApiErrorCode =
+  | 'PLATFORM_PAUSED'
   | 'INVALID_INPUT'
   | 'UNAUTHORIZED'
   | 'CONSENT_VIOLATION'
@@ -72,6 +73,9 @@ export const BUYER_CATEGORIES: BuyerCategory[] = [
 ]
 
 export const API_ERROR_STATUS: Record<ApiErrorCode, number> = {
+  // Пауза платформи (`T029`): 409, а не 503. Запит покупця бездоганний, і
+  // повтор нічого не змінить, доки паузу не знімуть.
+  PLATFORM_PAUSED: 409,
   INVALID_INPUT: 400,
   UNAUTHORIZED: 401,
   CONSENT_VIOLATION: 403,
@@ -385,7 +389,7 @@ const HALVARD: Dataset = {
 
 const KELDAN: Dataset = {
   datasetId: 'keldan-pop-07',
-  owner: '2Rb5NmZq7sHc3yTd9fXk1uPaLe8gJwVh6ZrKn4Bt1Gh',
+  owner: '2Rb5NmZq7sHc3yTd9fXk1uPaLe8gJwVh6ZrKn4Bt1Gh1',
   ownerName: 'Keldan Population Study',
   title: 'Keldan population panel — release 07',
   description:
@@ -429,7 +433,7 @@ const KELDAN: Dataset = {
 
 const SUNDRY: Dataset = {
   datasetId: 'sundry-onco-11',
-  owner: '6Wc2WmZr8sHd4yTe1fXk5uPaLb9gJqVh7ZrNn3Ct2Ij',
+  owner: '6Wc2WmZr8sHd4yTe1fXk5uPaLb9gJqVh7ZrNn3Ct2Jj1',
   ownerName: 'Sundry Oncology Collective',
   title: 'Sundry oncology collective — batch 11',
   description:
@@ -473,7 +477,7 @@ const SUNDRY: Dataset = {
 
 const VARDE: Dataset = {
   datasetId: 'varde-pilot-03',
-  owner: '3Pt9NmZs5sHe2yTf7fXk8uPaLc1gJwVh4ZrBn6Dt5Kl',
+  owner: '3Pt9NmZs5sHe2yTf7fXk8uPaLc1gJwVh4ZrBn6Dt5Km1',
   ownerName: 'Varde Pilot Biobank',
   title: 'Varde pilot biobank — pilot 03',
   description:

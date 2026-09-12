@@ -1,12 +1,13 @@
 /** Порожні стани, помилки, скелетони, крок підпису в гаманці, ворота входу. */
 
+import type { ApiError, ApiErrorCode } from '@genovault/shared'
 import { AlertTriangle, Inbox, KeyRound, RotateCcw, Wallet } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { useAppState } from '@/lib/appState'
 import { cn } from '@/lib/utils'
-import { API_ERROR_STATUS, type ApiError, type ApiErrorCode } from '@/mockData'
+import { API_ERROR_STATUS } from '@/mockData'
 
 export const EmptyState = ({
   title,

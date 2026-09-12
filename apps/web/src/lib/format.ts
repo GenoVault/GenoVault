@@ -22,15 +22,31 @@ export const MINT_SHORT = truncateMiddle(STABLE_MINT.address, 3, 4)
 
 export const formatInt = (value: number): string => value.toLocaleString('en-US')
 
+/**
+ * Сума приходить `bigint` або рядком, бо в мережі вона u64 (`T029`).
+ *
+ * `number` тут лишається дозволеним заради мок-даних прототипу, але всередині
+ * усе зводиться до `bigint`: сума в базових одиницях при шести знаках після
+ * коми виходить за 2^53 уже на 9 мільярдах одиниць, і саме на цьому місці
+ * `JSON.parse` мовчки округлив би нарахування.
+ */
+export type Amountish = bigint | number | string
+
+const toBaseUnits = (value: Amountish): bigint =>
+  typeof value === 'bigint' ? value : BigInt(Math.trunc(Number(value)))
+
 /** Базові одиниці → два знаки після коми, з округленням угору від .005. */
-export const formatAmount = (baseUnits: number): string => {
-  const cents = Math.round(baseUnits / 10 ** (STABLE_MINT.decimals - 2))
-  return (cents / 100).toFixed(2)
+export const formatAmount = (value: Amountish): string => {
+  const units = toBaseUnits(value)
+  const scale = 10n ** BigInt(STABLE_MINT.decimals - 2)
+  const half = scale / 2n
+  const cents = (units + half) / scale
+  return `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`
 }
 
 /** Повне значення — у тултипі, щоб на екрані не було «загубленої» дрібнички. */
-export const amountTitle = (baseUnits: number): string =>
-  `${formatInt(baseUnits)} base units · ${STABLE_MINT.decimals} decimals · mint ${STABLE_MINT.address}`
+export const amountTitle = (value: Amountish): string =>
+  `${toBaseUnits(value).toLocaleString('en-US')} base units · ${STABLE_MINT.decimals} decimals · mint ${STABLE_MINT.address}`
 
 export const formatBps = (bps: number): string => `${(bps / 100).toFixed(2)}%`
 

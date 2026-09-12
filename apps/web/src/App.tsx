@@ -18,7 +18,9 @@ const App = () => (
         <Route path="/datasets/new" element={<RegisterPage />} />
         <Route path="/datasets/:owner/:datasetId" element={<DatasetPage />} />
         <Route path="/runs/new" element={<OrderRunPage />} />
-        <Route path="/runs/:runId" element={<RunPage />} />
+        {/* Прогін адресується парою «покупець + нонс»: саме з них деривується
+            його PDA, і третього поля, обчислюваного з двох інших, тут не треба. */}
+        <Route path="/runs/:buyer/:nonce" element={<RunPage />} />
         <Route path="/balance" element={<BalancePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

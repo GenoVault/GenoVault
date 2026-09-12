@@ -9,7 +9,11 @@
  */
 
 import { PrivyProvider, useLogin, useLogout, usePrivy } from '@privy-io/react-auth'
-import { useWallets as useSolanaWallets } from '@privy-io/react-auth/solana'
+import {
+  useSignAndSendTransaction,
+  useSignMessage,
+  useWallets as useSolanaWallets,
+} from '@privy-io/react-auth/solana'
 import {
   createContext,
   type ReactNode,
@@ -24,6 +28,21 @@ import { MOCK_SESSION, type Role } from '@/mockData'
 
 export type SignInMethod = 'wallet' | 'email'
 
+/**
+ * Дії, яких прототип не вміє й не має вдавати, що вміє.
+ *
+ * Мок-сесія кидає саме це замість того, щоб повернути правдоподібні байти:
+ * підроблений підпис виглядав би як робочий шлях покупця й дав би те саме хибне
+ * відчуття доведеності, від якого застерігає визначення `M0`.
+ */
+export class NoWalletError extends Error {
+  override readonly name = 'NoWalletError'
+
+  constructor(what: string) {
+    super(`прототип не має гаманця: ${what} потребує справжнього входу`)
+  }
+}
+
 interface Session {
   /** Провайдер входу ще не відповів. У моці — завжди `true`. */
   ready: boolean
@@ -34,6 +53,18 @@ interface Session {
   signOut: () => void
   /** `false`, коли вхід мокований: екран входу мусить це сказати вголос. */
   live: boolean
+  /** Сесійний токен для `apps/api`; `null` — сесії немає або вхід мокований. */
+  token: string | null
+  /**
+   * Підпис довільного повідомлення. Потрібен рівно для одного — вивести ключ,
+   * яким покупець читає звіт свого прогону (`packages/crypto`).
+   */
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>
+  /**
+   * Підпис і відправка транзакції. Складає її **клієнт**: API віддає
+   * неспідписану інструкцію й ніколи не бачить ключа.
+   */
+  signAndSendTransaction: (transaction: Uint8Array) => Promise<Uint8Array>
 }
 
 interface AppState extends Session {
@@ -69,11 +100,33 @@ const useSession = (): Session => {
  * гаманцем ми показали б власнику чужу адресу як його ончейн-ідентичність.
  */
 const PrivySession = ({ children }: { children: ReactNode }) => {
-  const { ready, authenticated } = usePrivy()
+  const { ready, authenticated, getAccessToken } = usePrivy()
   const { login } = useLogin()
   const { logout } = useLogout()
   const { wallets } = useSolanaWallets()
+  const { signMessage } = useSignMessage()
+  const { signAndSendTransaction } = useSignAndSendTransaction()
   const [method, setMethod] = useState<SignInMethod | null>(null)
+  const [token, setToken] = useState<string | null>(null)
+
+  const wallet = wallets[0]
+
+  // Токен береться один раз на вхід і оновлюється при зміні гаманця. Privy
+  // тримає його свіжим сам; питати перед кожним запитом означало б чекати на
+  // нього в кожному екрані.
+  useEffect(() => {
+    if (!authenticated) {
+      setToken(null)
+      return
+    }
+    let alive = true
+    void getAccessToken().then((next) => {
+      if (alive) setToken(next)
+    })
+    return () => {
+      alive = false
+    }
+  }, [authenticated, getAccessToken])
 
   const signIn = useCallback(
     (next: SignInMethod) => {
@@ -93,12 +146,33 @@ const PrivySession = ({ children }: { children: ReactNode }) => {
       ready,
       signedIn: authenticated,
       method,
-      address: wallets[0]?.address ?? null,
+      address: wallet?.address ?? null,
       signIn,
       signOut,
       live: true,
+      token,
+      signMessage: async (message: Uint8Array) => {
+        if (wallet === undefined) throw new NoWalletError('підпис повідомлення')
+        const { signature } = await signMessage({ message, wallet })
+        return signature
+      },
+      signAndSendTransaction: async (transaction: Uint8Array) => {
+        if (wallet === undefined) throw new NoWalletError('підпис транзакції')
+        const { signature } = await signAndSendTransaction({ transaction, wallet })
+        return signature
+      },
     }),
-    [ready, authenticated, method, wallets, signIn, signOut],
+    [
+      ready,
+      authenticated,
+      method,
+      wallet,
+      signIn,
+      signOut,
+      token,
+      signMessage,
+      signAndSendTransaction,
+    ],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
@@ -122,6 +196,9 @@ const MockSession = ({ children }: { children: ReactNode }) => {
       signIn,
       signOut,
       live: false,
+      token: null,
+      signMessage: () => Promise.reject(new NoWalletError('підпис повідомлення')),
+      signAndSendTransaction: () => Promise.reject(new NoWalletError('підпис транзакції')),
     }),
     [method, signIn, signOut],
   )

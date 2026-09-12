@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./report-key": "./src/report-key.ts"
   },
   "scripts": {
     "test": "vitest run",
@@ -12,6 +13,7 @@
   },
   "dependencies": {
     "@arcium-hq/client": "0.14.1",
+    "@noble/curves": "1.9.6",
     "@genovault/shared": "workspace:*",
     "zod": "4.5.4"
   },

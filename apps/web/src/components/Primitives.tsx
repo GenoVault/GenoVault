@@ -2,7 +2,7 @@
 
 import { Check, Copy } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { amountTitle, formatAmount, formatInt, MINT_SHORT } from '@/lib/format'
+import { type Amountish, amountTitle, formatAmount, formatInt, MINT_SHORT } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 /* --- amounts --- */
@@ -12,7 +12,7 @@ export const Amount = ({
   className,
   withMint = false,
 }: {
-  value: number
+  value: Amountish
   className?: string
   withMint?: boolean
 }) => (

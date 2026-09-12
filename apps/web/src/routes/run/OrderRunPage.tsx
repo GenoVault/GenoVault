@@ -7,7 +7,13 @@ import { Ban, Info, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Amount, Count, KeyValue, SourceNote, Tag } from '@/components/Primitives'
-import { EmptyState, SignInGate, StatePreview, WalletSignStep } from '@/components/StateBlocks'
+import {
+  EmptyState,
+  ErrorBlock,
+  SignInGate,
+  StatePreview,
+  WalletSignStep,
+} from '@/components/StateBlocks'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -32,15 +38,16 @@ import {
   formatBps,
   formatInt,
   REASON_TEXT,
+  truncateMiddle,
   USE_TYPE_LABEL,
 } from '@/lib/format'
-import { buildQuote } from '@/lib/quote'
+import { type OrderPhase, useOrderRun } from '@/lib/order'
+import { RPC_URL } from '@/lib/rpc'
+import { LIVE_DATA, useCatalog, usePlatform, useQuote } from '@/lib/runData'
 import {
   type AffectedFilter,
   BUYER_CATEGORIES,
   type BuyerCategory,
-  DATASETS,
-  datasetKey,
   FREQUENCIES_RECIPE,
   LIMITS,
   MOCK_QUOTE_FILTERS,
@@ -53,8 +60,37 @@ import {
 
 const recipe = FREQUENCIES_RECIPE
 
+/** Ключ датасету в пулі — та сама пара, що адресує його всюди. */
+const key = (dataset: { owner: string; datasetId: string }) =>
+  `${dataset.owner}/${dataset.datasetId}`
+
+/**
+ * Що саме зараз відбувається, поки покупець дивиться на модалку.
+ *
+ * Чотири кроки, і кожен названий: покупець підписує двічі, і без пояснення
+ * другий запит гаманця виглядає як збій. Перший підпис — не про гроші, і саме
+ * це треба сказати першим.
+ */
+const ORDER_STEP_TEXT: Record<OrderPhase, string> = {
+  idle:
+    'Two signatures, in this order. First a message — it derives the key your report is ' +
+    'encrypted to, and moves no money. Then the transaction that locks the quote in escrow. ' +
+    'The platform never signs on your behalf, and whatever the run does not use comes back ' +
+    'to you at settlement.',
+  key: 'Waiting for the message signature — this one derives your report key.',
+  building: 'The API is composing the instruction from on-chain prices.',
+  signing: 'Waiting for the transaction signature — this one locks the escrow.',
+  sent: 'Sent. Opening the run…',
+  error: 'The run was not ordered. Nothing was locked.',
+}
+
+const ORDER_ERROR_HINT =
+  'Nothing is locked until the transaction is signed and accepted. If the signature went ' +
+  'through but the send did not, do not order again with the same run — check the run page first.'
+
 const OrderRunFlow = () => {
-  const { pool, addToPool, removeFromPool } = useAppState()
+  const { pool, addToPool, removeFromPool, address, token, signMessage, signAndSendTransaction } =
+    useAppState()
   const navigate = useNavigate()
 
   const [useType, setUseType] = useState<UseType>('rareDisease')
@@ -63,40 +99,83 @@ const OrderRunFlow = () => {
   const [platformPaused, setPlatformPaused] = useState<'running' | 'platform-paused'>('running')
   const [signing, setSigning] = useState(false)
 
+  const catalog = useCatalog(token)
+  const platform = usePlatform()
+  const order = useOrderRun()
+
+  const datasets = useMemo(() => catalog.data ?? [], [catalog.data])
+
   // Прототип: якщо покупець зайшов напряму, пул один раз заповнюється каталогом,
   // щоб оцінка мала що показати. Далі пул повністю в руках користувача.
   const seeded = useRef(false)
   useEffect(() => {
-    if (seeded.current) return
+    if (seeded.current || datasets.length === 0) return
     seeded.current = true
     if (pool.length === 0) {
-      for (const d of DATASETS) addToPool(datasetKey(d))
+      for (const dataset of datasets) addToPool(key(dataset))
     }
-  }, [pool.length, addToPool])
+  }, [pool.length, addToPool, datasets])
 
-  const poolDatasets = useMemo(() => DATASETS.filter((d) => pool.includes(datasetKey(d))), [pool])
-
-  const available = DATASETS.filter((d) => !pool.includes(datasetKey(d)))
-
-  const quote = useMemo(
-    () =>
-      buildQuote(
-        poolDatasets,
-        useType,
-        buyerCategory,
-        filters,
-        platformPaused === 'platform-paused',
-      ),
-    [poolDatasets, useType, buyerCategory, filters, platformPaused],
+  const poolDatasets = useMemo(
+    () => datasets.filter((dataset) => pool.includes(key(dataset))),
+    [datasets, pool],
   )
 
-  const setFilter = <K extends keyof RunFilters>(key: K, value: RunFilters[K]) =>
-    setFilters((prev) => ({ ...prev, [key]: value }))
+  const available = datasets.filter((dataset) => !pool.includes(key(dataset)))
+
+  const request = useMemo(
+    () => ({
+      datasets: poolDatasets.map((dataset) => ({
+        owner: dataset.owner,
+        datasetId: dataset.datasetId,
+      })),
+      useType,
+      buyerCategory,
+      params: { ...filters },
+    }),
+    [poolDatasets, useType, buyerCategory, filters],
+  )
+
+  const quoted = useQuote(request, token, platformPaused === 'platform-paused')
+  const quote = quoted.data
+
+  const setFilter = <K extends keyof RunFilters>(key2: K, value: RunFilters[K]) =>
+    setFilters((prev) => ({ ...prev, [key2]: value }))
 
   const clampAge = (raw: string) => {
     const n = Number(raw.replace(/\D/g, ''))
     if (!Number.isFinite(n)) return LIMITS.AGE_MIN
     return Math.min(LIMITS.AGE_MAX, Math.max(LIMITS.AGE_MIN, n))
+  }
+
+  /**
+   * Замовлення.
+   *
+   * У прототипі підписувати нічого: гаманця немає, і вдавати підпис означало б
+   * показувати робочий шлях покупця там, де його немає. Тому мок веде на
+   * заготовлений прогін, а живий режим проходить усі чотири кроки `useOrderRun`.
+   */
+  const confirm = async () => {
+    if (!LIVE_DATA || quote === null || address === null || RPC_URL === null) {
+      navigate(`/runs/mock/${RUNS.accepted.status}`)
+      return
+    }
+
+    const done = await order.start({
+      buyer: address,
+      quote,
+      datasets: request.datasets,
+      useType,
+      buyerCategory,
+      params: filters,
+      ...(platform.data?.dispatcher == null ? {} : { dispatcher: platform.data.dispatcher }),
+      token,
+      rpcUrl: RPC_URL,
+      signMessage,
+      signAndSendTransaction,
+    })
+
+    if (done !== null) navigate(`/runs/${done.buyer}/${done.nonce}`)
   }
 
   return (
@@ -249,7 +328,7 @@ const OrderRunFlow = () => {
           <ul className="mt-4 flex flex-wrap gap-2">
             {poolDatasets.map((d) => (
               <li
-                key={datasetKey(d)}
+                key={key(d)}
                 className="flex items-center gap-2 rounded border border-border bg-surface-sunken/60 py-1 pl-2.5 pr-1.5"
               >
                 <Link
@@ -261,7 +340,7 @@ const OrderRunFlow = () => {
                 <button
                   type="button"
                   aria-label={`Remove ${d.datasetId}`}
-                  onClick={() => removeFromPool(datasetKey(d))}
+                  onClick={() => removeFromPool(key(d))}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -275,11 +354,11 @@ const OrderRunFlow = () => {
           <div className="mt-4 flex flex-wrap gap-2">
             {available.map((d) => (
               <Button
-                key={datasetKey(d)}
+                key={key(d)}
                 variant="outline"
                 size="sm"
                 className="num text-[12.5px]"
-                onClick={() => addToPool(datasetKey(d))}
+                onClick={() => addToPool(key(d))}
               >
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 {d.datasetId}
@@ -301,7 +380,11 @@ const OrderRunFlow = () => {
           />
         </div>
 
-        {quote.rows.length === 0 ? (
+        {quoted.error !== null ? (
+          <div className="mt-4">
+            <ErrorBlock error={quoted.error} />
+          </div>
+        ) : quote === null || quote.datasets.length === 0 ? (
           <div className="mt-4">
             <EmptyState
               title="Nothing to quote yet"
@@ -325,7 +408,7 @@ const OrderRunFlow = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {quote.rows.map((row) => (
+                {quote.datasets.map((row) => (
                   <TableRow
                     key={`${row.owner}/${row.datasetId}`}
                     className={row.eligible ? '' : 'bg-surface-sunken/40'}
@@ -337,18 +420,20 @@ const OrderRunFlow = () => {
                       >
                         {row.datasetId}
                       </Link>
-                      <p className="text-[12px] text-muted-foreground">{row.ownerName}</p>
+                      <p className="num text-[12px] text-muted-foreground">
+                        {truncateMiddle(row.owner, 4, 4)}
+                      </p>
                     </TableCell>
                     {row.eligible ? (
                       <>
                         <TableCell className="text-right">
-                          <Amount value={row.pricePer1k ?? 0} />
+                          <Amount value={row.pricePer1k} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <Count value={row.claimedRecords ?? 0} />
+                          <Count value={Number(row.recordCountClaimed)} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <Amount value={row.upperBound ?? 0} />
+                          <Amount value={row.upperBound} />
                         </TableCell>
                       </>
                     ) : (
@@ -367,43 +452,48 @@ const OrderRunFlow = () => {
           </div>
         )}
 
-        <div className="hairline mt-5 grid gap-5 pt-5 md:grid-cols-3">
-          <KeyValue label="Upper bound">
-            <Amount value={quote.upperBound} className="text-xl" withMint />
-            <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
-              Exactly this amount is locked in escrow. Whatever the run does not use is refunded to
-              you when it settles.
-            </p>
-          </KeyValue>
-          <KeyValue label="Platform fee">
-            <span className="num text-xl">{formatBps(quote.feeBps)}</span>
-            <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
-              Taken out of the owner's payout, not added to your bill. You pay exactly price ×
-              records.
-            </p>
-          </KeyValue>
-          <KeyValue label="Eligible datasets">
-            <span className="num text-xl">
-              {quote.eligibleCount} of {quote.totalCount}
-            </span>
-            <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
-              Ineligible datasets carry no numbers — a price for a dataset that cannot be computed
-              is a false quote.
-            </p>
-          </KeyValue>
-        </div>
+        {quote !== null && (
+          <div className="hairline mt-5 grid gap-5 pt-5 md:grid-cols-3">
+            <KeyValue label="Upper bound">
+              <Amount value={quote.upperBound} className="text-xl" withMint />
+              <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
+                Exactly this amount is locked in escrow. Whatever the run does not use is refunded
+                to you when it settles.
+              </p>
+            </KeyValue>
+            <KeyValue label="Platform fee">
+              <span className="num text-xl">{formatBps(quote.feeBps)}</span>
+              <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
+                Taken out of the owner's payout, not added to your bill. You pay exactly price ×
+                records.
+              </p>
+            </KeyValue>
+            <KeyValue label="Eligible datasets">
+              <span className="num text-xl">
+                {quote.eligibleCount} of {quote.datasets.length}
+              </span>
+              <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
+                Ineligible datasets carry no numbers — a price for a dataset that cannot be computed
+                is a false quote.
+              </p>
+            </KeyValue>
+          </div>
+        )}
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Button disabled={!quote.orderable} onClick={() => setSigning(true)}>
+          <Button
+            disabled={quote === null || !quote.orderable || order.phase !== 'idle'}
+            onClick={() => setSigning(true)}
+          >
             Order run
           </Button>
-          {quote.blocker && (
+          {quote?.blocker && (
             <span className="flex items-center gap-1.5 text-[13px] text-destructive">
               <Info className="h-3.5 w-3.5" />
               {BLOCKER_TEXT[quote.blocker]}
             </span>
           )}
-          {quote.orderable && (
+          {quote?.orderable && (
             <span className="text-[12.5px] text-muted-foreground">
               A cohort smaller than <span className="num">{LIMITS.MIN_COHORT}</span> records yields
               a report of zeros.
@@ -415,12 +505,22 @@ const OrderRunFlow = () => {
       {signing && (
         <WalletSignStep
           title="Sign the escrow lock in your wallet"
-          body={`Locking the upper bound of the quote. The platform never signs on your behalf, and the difference between the upper bound and the actual cost comes back to you at settlement.`}
+          body={ORDER_STEP_TEXT[order.phase]}
           confirmLabel="Sign and order"
-          pending={false}
-          onConfirm={() => navigate(`/runs/${RUNS.accepted.runId}`)}
-          onCancel={() => setSigning(false)}
+          pending={order.phase !== 'idle' && order.phase !== 'error'}
+          onConfirm={() => void confirm()}
+          onCancel={() => {
+            order.reset()
+            setSigning(false)
+          }}
         />
+      )}
+
+      {order.error !== null && (
+        <div className="panel p-5">
+          <ErrorBlock error={order.error} onRetry={order.reset} />
+          <p className="mt-3 text-[12.5px] leading-5 text-muted-foreground">{ORDER_ERROR_HINT}</p>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">

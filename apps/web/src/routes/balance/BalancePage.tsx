@@ -56,7 +56,10 @@ const PayoutTable = ({ rows }: { rows: PayoutRow[] }) => (
           <Fragment key={row.runId}>
             <TableRow>
               <TableCell>
-                <Link to={`/runs/${row.runId}`} className="num text-[13px] hover:underline">
+                {/* Прототип: прогін адресується парою «покупець + нонс», а
+                    вигаданого `runId` у мережі не існує — тому баланс веде на
+                    заготовлений завершений прогін, а не на неіснуючу адресу. */}
+                <Link to="/runs/mock/completed" className="num text-[13px] hover:underline">
                   {row.runId}
                 </Link>
                 <p className="num text-[12px] text-muted-foreground">{row.date}</p>
