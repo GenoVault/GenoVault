@@ -1,0 +1,31 @@
+{
+  "name": "@genovault/run-dispatcher",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "type": "module",
+  "bin": {
+    "run-dispatcher": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anchor-lang/core": "1.2.0",
+    "@arcium-hq/client": "0.14.1",
+    "@genovault/crypto": "workspace:*",
+    "@genovault/sdk": "workspace:*",
+    "@genovault/shared": "workspace:*",
+    "@noble/curves": "1.9.6",
+    "@solana/spl-token": "0.4.14",
+    "@solana/web3.js": "1.98.4",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
