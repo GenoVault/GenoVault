@@ -200,6 +200,37 @@ importers:
         specifier: 3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@26.4.1)(jiti@1.21.7)(lightningcss@1.33.0)(yaml@2.9.0)
 
+  tools/audit-verify:
+    dependencies:
+      '@arcium-hq/client':
+        specifier: 0.14.1
+        version: 0.14.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
+      '@noble/hashes':
+        specifier: 1.8.0
+        version: 1.8.0
+      '@solana/web3.js':
+        specifier: 1.98.4
+        version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@anchor-lang/core':
+        specifier: 1.2.0
+        version: 1.2.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
+      '@genovault/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
+      '@genovault/run-dispatcher':
+        specifier: workspace:*
+        version: link:../run-dispatcher
+      '@genovault/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@26.4.1)(jiti@1.21.7)(lightningcss@1.33.0)(yaml@2.9.0)
+
   tools/gen-dataset:
     dependencies:
       '@genovault/shared':
@@ -9203,7 +9234,7 @@ snapshots:
 
   isomorphic-ws@4.0.1(ws@7.5.13):
     dependencies:
-      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
   isows@1.0.6(ws@8.18.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)):
     dependencies:
@@ -9230,7 +9261,7 @@ snapshots:
       json-stringify-safe: 5.0.1
       stream-json: 1.9.1
       uuid: 8.3.2
-      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate

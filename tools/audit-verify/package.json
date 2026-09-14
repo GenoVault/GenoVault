@@ -1,0 +1,26 @@
+{
+  "name": "@genovault/audit-verify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "audit-verify": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@arcium-hq/client": "0.14.1",
+    "@noble/hashes": "1.8.0",
+    "@solana/web3.js": "1.98.4"
+  },
+  "devDependencies": {
+    "@anchor-lang/core": "1.2.0",
+    "@genovault/crypto": "workspace:*",
+    "@genovault/run-dispatcher": "workspace:*",
+    "@genovault/sdk": "workspace:*",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
