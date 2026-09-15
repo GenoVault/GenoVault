@@ -55,7 +55,7 @@ describe('дві реалізації розкладки батча', () => {
     const header = readHeader(envelope)
     const theirs = transcodeDataset(envelope)
 
-    expect(theirs).toHaveLength(3)
+    expect(theirs).toHaveLength(18)
     for (const [index, batch] of theirs.entries()) {
       const mine = batchPayload(envelope, header, index)
       expect(mine.live).toBe(batch.live)
@@ -66,12 +66,12 @@ describe('дві реалізації розкладки батча', () => {
 
   it('останній батч оголошує рівно стільки живих, скільки лишилось записів', () => {
     const header = readHeader(envelope)
-    expect(batchPayload(envelope, header, 2).live).toBe(70 - 2 * RECIPE_BATCH)
+    expect(batchPayload(envelope, header, 17).live).toBe(70 - 17 * RECIPE_BATCH)
   })
 
   it('не віддає батча поза датасетом', () => {
     const header = readHeader(envelope)
-    expect(() => batchPayload(envelope, header, 3)).toThrow(FoldChainError)
+    expect(() => batchPayload(envelope, header, 18)).toThrow(FoldChainError)
   })
 })
 
@@ -93,7 +93,9 @@ describe('ланцюжок відбитків', () => {
     const batch = new Uint8Array(BATCH_PAYLOAD_BYTES)
 
     expect(() => foldHash(new Uint8Array(32), dataset, 0, batch)).toThrow(FoldChainError)
-    expect(() => foldHash(new Uint8Array(32), dataset, 33, batch)).toThrow(FoldChainError)
+    expect(() => foldHash(new Uint8Array(32), dataset, RECIPE_BATCH + 1, batch)).toThrow(
+      FoldChainError,
+    )
   })
 
   it('порядок датасетів у пулі змінює відбиток', () => {
@@ -109,7 +111,7 @@ describe('ланцюжок відбитків', () => {
       { address: a, envelope },
     ])
 
-    expect(forward.folds).toHaveLength(6)
+    expect(forward.folds).toHaveLength(36)
     expect(equalBytes(forward.hash, backward.hash)).toBe(false)
   })
 
@@ -130,10 +132,10 @@ describe('ланцюжок відбитків', () => {
     const sources = [{ address: dataset, envelope }]
     const { hash } = replayFoldChain(sources)
 
-    expect(verifyFoldChain(sources, hash, 3).matches).toBe(true)
+    expect(verifyFoldChain(sources, hash, 18).matches).toBe(true)
     // Стільки ж згорток, інший відбиток: підміна вмісту.
-    expect(verifyFoldChain(sources, new Uint8Array(32), 3).matches).toBe(false)
+    expect(verifyFoldChain(sources, new Uint8Array(32), 18).matches).toBe(false)
     // Той самий відбиток, інша кількість: перезапущений драйвер згорнув зайве.
-    expect(verifyFoldChain(sources, hash, 4).matches).toBe(false)
+    expect(verifyFoldChain(sources, hash, 19).matches).toBe(false)
   })
 })

@@ -19,11 +19,18 @@
  */
 
 import { sha256 } from '@noble/hashes/sha2.js'
+import { sharedKeyWord } from './curve.ts'
 import type { EnvelopeHeader } from './envelope.ts'
 import { frameAt, LIMB_BYTES, NONCE_BYTES, readHeader } from './envelope.ts'
 
-/** Числа рецепта. Публічні: вони в тексті програми й у `.idarc`. */
-export const RECIPE_BATCH = 32
+/**
+ * Числа рецепта. Публічні: вони в тексті програми й у `.idarc`.
+ *
+ * `RECIPE_BATCH` тут — четвірка, і звіряч бере її з опису рецепта, а не з
+ * нашого коду: батч задає, як саме публічний шифротекст ріжеться на згортки, і
+ * без цього числа ланцюжок відбитків не перерахувати.
+ */
+export const RECIPE_BATCH = 4
 export const RECIPE_MARKERS = 64
 export const WORD_BYTES = 32
 export const RECORD_WORDS = 2 + 3 + RECIPE_MARKERS
@@ -76,13 +83,14 @@ export function batchPayload(
   }
   const live = Math.min(RECIPE_BATCH, header.recordCount - firstRecord)
   const payload = new Uint8Array(BATCH_PAYLOAD_BYTES)
+  const shared = sharedKeyWord(header.ephemeralPublicKey)
 
   for (let slot = 0; slot < RECIPE_BATCH; slot += 1) {
     const record = firstRecord + (slot < live ? slot : 0)
     const at = slot * RECORD_WORDS * WORD_BYTES
     const frame = frameAt(header, record)
 
-    payload.set(header.ephemeralPublicKey, at)
+    payload.set(shared, at)
     payload.set(envelope.subarray(frame, frame + NONCE_BYTES), at + WORD_BYTES)
     payload.set(
       envelope.subarray(

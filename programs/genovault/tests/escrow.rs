@@ -27,7 +27,7 @@ use genovault::instructions::dispatch::{accept_accumulator, accept_dataset_close
 use genovault::instructions::settle_run::accept_reveal;
 use genovault::state::{
     PlatformConfig, Run, RunAccumulator, RunDataset, RunResult, RunStatus, ACCUMULATOR_CIPHERTEXTS,
-    RECIPE_PARAMS_LEN, REPORT_CIPHERTEXTS,
+    RECIPE_BATCH, RECIPE_PARAMS_LEN, REPORT_CIPHERTEXTS,
 };
 use genovault::GenoVaultError;
 use mollusk_svm::result::InstructionResult;
@@ -158,14 +158,14 @@ fn failed_run(path: FailurePath, buyer: Pubkey, bump: u8) -> Run {
     for _ in 0..2 {
         let fold = computation();
         acc.arm(fold).unwrap();
-        run.record_fold(&first, 32, &BATCH).unwrap();
+        run.record_fold(&first, RECIPE_BATCH as u8, &BATCH).unwrap();
         accept_accumulator(run_key, &mut run, &mut acc, fold, Some((2, ACCUMULATOR))).unwrap();
     }
 
     if matches!(path, FailurePath::Fold) {
         let fold = computation();
         acc.arm(fold).unwrap();
-        run.record_fold(&first, 32, &BATCH).unwrap();
+        run.record_fold(&first, RECIPE_BATCH as u8, &BATCH).unwrap();
         accept_accumulator(run_key, &mut run, &mut acc, fold, None).unwrap();
         return run;
     }

@@ -242,8 +242,9 @@ fn opening_a_run_creates_the_accumulator_and_the_buffer() {
     assert!(!accumulator.ready, "накопичувач створює MPC, а не ми");
     assert!(accumulator.pending.is_none());
 
-    // Буфер створюється рівно на межу приросту за одну інструкцію: більший
-    // акаунт через CPI не створюється взагалі.
+    // Буфер створюється на `min(батч, межа приросту за одну інструкцію)`:
+    // більший акаунт через CPI не створюється взагалі. При `RECIPE_BATCH = 4`
+    // це весь батч одразу.
     let buffer = fixture.account(&fixture.buffer);
     assert_eq!(buffer.data.len(), BATCH_BUFFER_INITIAL_BYTES);
     assert_eq!(&buffer.data[..8], b"GVBATCH1");
@@ -279,34 +280,25 @@ fn a_run_that_already_started_is_not_opened_twice() {
 }
 
 #[test]
-fn the_buffer_grows_to_exactly_one_batch() {
+fn the_buffer_is_born_whole_at_this_batch_size() {
+    // При `RECIPE_BATCH = 4` буфер це 8 896 байтів, тобто менше за межу
+    // приросту за одну інструкцію, і `open_run` створює його цілим. Тест
+    // тримає саме це: дорощувати нічого, і сьома спроба — не єдина зайва, а
+    // будь-яка.
     let mut fixture = Fixture::new(RunStatus::Accepted);
     let open = fixture.open_ix(fixture.dispatcher);
     assert!(is_success(&fixture.run_ix(&open)));
 
-    let mut steps = 0;
-    while fixture.buffer_len() < BATCH_BUFFER_BYTES {
-        let before = fixture.buffer_len();
-        let grow = fixture.grow_ix();
-        assert!(is_success(&fixture.run_ix(&grow)));
-        assert!(
-            fixture.buffer_len() - before <= MAX_PERMITTED_DATA_INCREASE,
-            "приріст за одну інструкцію обмежений рантаймом"
-        );
-        steps += 1;
-        assert!(steps <= 10, "дорощування не сходиться");
-    }
-
     assert_eq!(fixture.buffer_len(), BATCH_BUFFER_BYTES);
-    assert_eq!(steps, 6);
+    assert_eq!(BATCH_BUFFER_INITIAL_BYTES, BATCH_BUFFER_BYTES);
+    assert!(BATCH_BUFFER_BYTES <= MAX_PERMITTED_DATA_INCREASE);
 
-    // Сьоме дорощування — це або помилка в клієнті, або спроба зробити акаунт
-    // більшим за контур.
     let grow = fixture.grow_ix();
     let result = fixture.run_ix(&grow);
     assert_eq!(
         custom_error_code(&result),
-        Some(expected(GenoVaultError::BatchBufferNotGrowing))
+        Some(expected(GenoVaultError::BatchBufferNotGrowing)),
+        "дорощувати повний буфер нема куди"
     );
 }
 
@@ -354,18 +346,18 @@ fn a_write_past_the_batch_is_refused_not_truncated() {
 }
 
 #[test]
-fn nothing_is_written_into_a_buffer_that_has_not_grown() {
-    // Акаунт створено на 10 КіБ; запис у хвіст мовчки нікуди б не потрапив.
+fn the_tail_of_a_fresh_buffer_takes_a_write() {
+    // Зворотний бік того самого: раз буфер народжується повним, запис у його
+    // хвіст має проходити одразу після `open_run`. Сторож `BatchBufferTooSmall`
+    // при цьому лишається в програмі — він знадобиться тієї миті, коли стеля
+    // Arcium дозволить більший батч і буфер знову доведеться доростати.
     let mut fixture = Fixture::new(RunStatus::Accepted);
     let open = fixture.open_ix(fixture.dispatcher);
     assert!(is_success(&fixture.run_ix(&open)));
 
-    let write = fixture.write_ix(0, vec![1u8; 32]);
-    let result = fixture.run_ix(&write);
-    assert_eq!(
-        custom_error_code(&result),
-        Some(expected(GenoVaultError::BatchBufferTooSmall))
-    );
+    let tail_offset = (BATCH_PAYLOAD_BYTES - 32) as u32;
+    let write = fixture.write_ix(tail_offset, vec![1u8; 32]);
+    assert!(is_success(&fixture.run_ix(&write)));
 }
 
 #[test]

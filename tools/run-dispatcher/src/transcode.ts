@@ -17,6 +17,7 @@ import {
   NONCE_BYTES,
   SCALAR_FIELD_COUNT,
 } from '@genovault/shared'
+import { montgomeryToEdwards } from './curve.ts'
 import {
   BATCH_PAYLOAD_BYTES,
   RECIPE_BATCH,
@@ -101,6 +102,9 @@ export function transcodeBatch(bytes: Uint8Array, index: number): Batch {
   const firstRecord = index * RECIPE_BATCH
   const live = Math.min(RECIPE_BATCH, header.recordCount - firstRecord)
   const payload = new Uint8Array(BATCH_PAYLOAD_BYTES)
+  // Ключ у конверта один на датасет, тож перетворення робиться раз на батч, а
+  // не раз на слот: обернення в полі це 254 піднесення до квадрата.
+  const shared = montgomeryToEdwards(header.ephemeralPublicKey)
 
   for (let slot = 0; slot < RECIPE_BATCH; slot += 1) {
     // Слоти за межею `live` повторюють перший справжній запис батча — див.
@@ -108,7 +112,7 @@ export function transcodeBatch(bytes: Uint8Array, index: number): Batch {
     // того, скільки записів у ньому виявилось живими, і два прогони над тим
     // самим датасетом дають однакові байти.
     const record = slot < live ? firstRecord + slot : firstRecord
-    writeRecord(payload, slot, bytes, header, record)
+    writeRecord(payload, slot, bytes, header, record, shared)
   }
 
   return { index, firstRecord, live, payload }
@@ -133,13 +137,16 @@ function writeRecord(
   bytes: Uint8Array,
   header: EnvelopeHeader,
   record: number,
+  shared: Uint8Array,
 ): void {
   const at = slot * RECORD_WORDS * WORD_BYTES
   const frame = HEADER_BYTES + record * frameBytes(header.fieldsPerRecord)
 
-  // Слово 0 — спільний ключ. Один на весь датасет: секрет виводиться з пари
-  // «ефемерний ключ власника × ключ MXE», і контур відновлює його сам.
-  payload.set(header.ephemeralPublicKey, at)
+  // Слово 0 — спільний ключ у формі, яку читає черга: стиснена точка Едвардса,
+  // а не u-координата з конверта (`curve.ts`). Один на весь датасет: секрет
+  // виводиться з пари «ефемерний ключ власника × ключ MXE», і контур
+  // відновлює його сам.
+  payload.set(shared, at)
 
   // Слово 1 — нонс кадру як `u128` little-endian у повному слові. Шістнадцять
   // байтів нонса лягають на початок, решта лишається нулями: рівно те, що дає

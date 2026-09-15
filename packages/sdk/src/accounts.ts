@@ -241,7 +241,7 @@ export interface RunResultAccount {
   /** Ключ, яким MXE зашифрував звіт на покупця. */
   encryptionKey: Uint8Array
   nonce: bigint
-  /** 24 польові елементи звіту — розшифровує їх покупець, і більше ніхто. */
+  /** 13 шифротекстів звіту — розшифровує їх покупець, і більше ніхто. */
   ciphertexts: Uint8Array[]
   recordsIncluded: number
   suppressed: boolean

@@ -125,6 +125,7 @@ function print(audit: Audit, budgetSeconds: number): void {
   log(`  уражених:         ${report.affected}`)
   log(`  вік ≥ порогів:    ${report.ageAtLeast.join(', ')}`)
   log(`  Σ алелів (1-8):   ${report.alleleSum.slice(0, 8).join(', ')}…`)
+  log('  (розподілу генотипів у звіті немає — Σg² прибрано з рецепта, T030)')
 
   log('')
   log('── внески пулу ──────────────────────────────────────────')

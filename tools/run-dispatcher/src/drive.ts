@@ -3,7 +3,7 @@
  *
  * # Чому це окрема програма, а не кнопка в браузері
  *
- * Один батч це 79 транзакцій запису, а стандартний датасет — 313 батчів. Так
+ * Один батч це 10 транзакцій запису, а стандартний датасет — 2500 батчів. Так
  * само як публікацію підписує названий покупцем диспетчер, а не вкладка
  * (`T025`), доводить прогін до кінця саме цей код: він тримає ключ диспетчера,
  * подає байти й чекає callback'и від MPC-вузлів.
@@ -154,6 +154,16 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
     for (const batch of batches) {
       await writeBatch(options, batch.payload, index, batch.index)
 
+      // Нонс накопичувача **до** згортки. Саме він і є ознакою того, що
+      // callback дійсно прийшов: рецепт бере свіжий нонс на кожну згортку, бо
+      // Rescue працює в режимі CTR. Чекати лише на `pending === null` не можна
+      // — читання акаунта може відстати від щойно підтвердженої транзакції, і
+      // тоді драйвер вирішує, що згортка вже позаду, і починає переписувати
+      // буфер, який вузол ще не прочитав. Виміряно на живому кластері
+      // (`T030`): виглядало це як `Invalid point encoding` на боці вузла,
+      // тобто як зіпсований шифротекст, а не як гонка.
+      const before = await readAccumulator(options.connection, options.program, options.run)
+
       await step(
         options,
         'fold',
@@ -169,7 +179,7 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
       )
       await waitFor(options, `згортку ${index}/${batch.index}`, async () => {
         const accumulator = await readAccumulator(options.connection, options.program, options.run)
-        return accumulator.pending === null
+        return accumulator.pending === null && accumulator.nonce !== before.nonce
       })
       folds += 1
     }
@@ -189,18 +199,21 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
     run = await requireRun(options)
   }
 
-  if (run.status === 'running') {
+  // Розкриття не міняє статусу, і це не недогляд програми: `completed` означає
+  // «всім заплачено», а після callback'а розкриття не заплачено ще нікому.
+  // Ознака того, що звіт прийшов, — `result_hash`, який ставить `record_reveal`.
+  if (run.status === 'running' && run.resultHash === null) {
     await step(options, 'reveal', async () => [
       await dispatchRevealIx({ ...context(options), arcium: options.arcium, ...offset() }),
     ])
     await waitFor(options, 'розкриття звіту', async () => {
       const next = await requireRun(options)
-      return next.status !== 'running'
+      return next.resultHash !== null
     })
     run = await requireRun(options)
   }
 
-  if (run.status === 'completed') {
+  if (run.status === 'running' && run.resultHash !== null) {
     for (const [index, entry] of run.datasets.entries()) {
       if (entry.settled) continue
       await step(
@@ -269,13 +282,17 @@ async function writeBatch(
     // програми.
     await Promise.all(
       chunks.slice(at, at + limit).map(async (chunk) =>
-        send(options, [
-          await writeBatchIx({
-            ...context(options),
-            offset: chunk.offset,
-            bytes: chunk.bytes,
-          }),
-        ]),
+        send(
+          options,
+          [
+            await writeBatchIx({
+              ...context(options),
+              offset: chunk.offset,
+              bytes: chunk.bytes,
+            }),
+          ],
+          true,
+        ),
       ),
     )
   }
@@ -336,11 +353,21 @@ async function step(
   options.onProgress?.({ stage, elapsedMs: Date.now() - started, ...extra })
 }
 
+/**
+ * Підписує, відправляє й чекає підтвердження.
+ *
+ * `skipPreflight` вмикається лише для запису батча: там транзакцій ~79 на
+ * згортку, і зайвий круг симуляції на кожній коштує помітно. Для решти
+ * симуляція лишається, бо вона — єдине місце, де видно, **чому** програма
+ * відмовила: у підтвердженні приїжджає лише код, без логів.
+ */
 async function send(
   options: DriveOptions,
   instructions: TransactionInstruction[],
+  skipPreflight = false,
 ): Promise<string> {
-  const { blockhash } = await options.connection.getLatestBlockhash('confirmed')
+  const { blockhash, lastValidBlockHeight } =
+    await options.connection.getLatestBlockhash('confirmed')
   const message = new TransactionMessage({
     payerKey: options.dispatcher.publicKey,
     recentBlockhash: blockhash,
@@ -351,23 +378,43 @@ async function send(
   transaction.sign([options.dispatcher])
 
   const signature = await options.connection.sendTransaction(transaction, {
-    // Симуляція тут — зайвий круг до RPC на кожній з ~24 700 транзакцій
-    // запису, а всі перевірки програми ми й так побачимо у підтвердженні.
-    skipPreflight: true,
+    skipPreflight,
     maxRetries: 3,
   })
   const status = await options.connection.confirmTransaction(
-    {
-      signature,
-      blockhash,
-      lastValidBlockHeight: (await options.connection.getBlockHeight()) + 150,
-    },
+    { signature, blockhash, lastValidBlockHeight },
     'confirmed',
   )
   if (status.value.err !== null) {
-    throw new DriveError(`транзакція ${signature} відхилена: ${JSON.stringify(status.value.err)}`)
+    throw new DriveError(
+      `транзакція ${signature} відхилена: ${JSON.stringify(status.value.err)}` +
+        (await logsOf(options.connection, signature)),
+    )
   }
   return signature
+}
+
+/**
+ * Логи програми з підтвердженої транзакції.
+ *
+ * Код помилки без логів — це «0x1771» замість «згода відкликана». Хвіст, а не
+ * весь лог: перші рядки це виклики системної програми, і корисне завжди
+ * наприкінці.
+ */
+async function logsOf(connection: Connection, signature: string): Promise<string> {
+  try {
+    const transaction = await connection.getTransaction(signature, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0,
+    })
+    const logs = transaction?.meta?.logMessages ?? []
+    if (logs.length === 0) return ''
+    return `\n  ${logs.slice(-12).join('\n  ')}`
+  } catch {
+    // Логи — це діагностика, і їхня відсутність не має підміняти собою
+    // початкову помилку.
+    return ''
+  }
 }
 
 /**
@@ -377,22 +424,45 @@ async function send(
  * вузлів, і `onAccountChange` мовчки губить оновлення при переприєднанні
  * сокета. Тут потрібна не швидкість, а те, щоб зависання називалося
  * зависанням.
+ *
+ * # Чому статус прогону читається на кожному кроці
+ *
+ * Обчислення, яке повернулось **невдачею**, теж повертається — callback'ом
+ * `RunComputationAborted`, який переводить прогін у `failed` і звільняє
+ * накопичувач, не роблячи його готовим. Умова «накопичувач готовий» при цьому
+ * не настане ніколи, і чекання дотягне до таймаута. Тобто без цієї перевірки
+ * будь-яка відмова MPC виглядає як зависання мережі — а це два різні діагнози
+ * і два різні наступні кроки.
  */
 async function waitFor(
   options: DriveOptions,
   what: string,
   done: () => Promise<boolean>,
 ): Promise<void> {
-  const deadline = Date.now() + (options.callbackTimeoutMs ?? DEFAULT_CALLBACK_TIMEOUT_MS)
+  const timeout = options.callbackTimeoutMs ?? DEFAULT_CALLBACK_TIMEOUT_MS
+  const deadline = Date.now() + timeout
 
   while (Date.now() < deadline) {
+    // Статус читається першим: обчислення, що повернулось невдачею, теж
+    // звільняє накопичувач, і перевірка `done()` попереду прийняла б це за
+    // успіх.
+    const run = await requireRun(options)
+    if (run.status === 'failed' || run.status === 'rejected') {
+      throw new DriveError(
+        `обчислення повернулось невдачею: ${what}. Прогін у статусі ${run.status}. ` +
+          'Причину каже вузол, а не ланцюг: ' +
+          'docker exec artifacts-arx-node-0-1 sh -c "tail -50 /usr/arx-node/logs/*_0.log"',
+      )
+    }
+
     if (await done()) return
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
   }
 
   throw new DriveError(
-    `не дочекались: ${what}. Обчислення в черзі Arcium не повернулось за ` +
-      `${options.callbackTimeoutMs ?? DEFAULT_CALLBACK_TIMEOUT_MS} мс — дивись лог MPC-вузлів`,
+    `не дочекались: ${what}. Обчислення в черзі Arcium не повернулось за ${timeout} мс — ` +
+      'дивись лог MPC-вузлів: ' +
+      'docker exec artifacts-arx-node-0-1 sh -c "tail -50 /usr/arx-node/logs/*_0.log"',
   )
 }
 

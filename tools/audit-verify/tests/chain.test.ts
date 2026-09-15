@@ -3,7 +3,7 @@ import { createProgram } from '@genovault/sdk'
 import { Connection, Keypair, PublicKey } from '@solana/web3.js'
 import { describe, expect, it } from 'vitest'
 import { BorshError, Reader, stripDiscriminator } from '../src/borsh.ts'
-import { decodeRun, decodeRunResult, RUN_DISCRIMINATOR } from '../src/chain.ts'
+import { decodeRun, decodeRunResult, REPORT_CIPHERTEXTS, RUN_DISCRIMINATOR } from '../src/chain.ts'
 
 /**
  * Звіряч читає ланцюг власним кодом; звірити цей код можна лише з тим, який
@@ -138,12 +138,12 @@ describe('прогін читається без нашого SDK', () => {
 })
 
 describe('результат прогону читається без нашого SDK', () => {
-  it('віддає 24 шифротексти й нонс, ширший за u64', async () => {
+  it('віддає всі шифротексти звіту й нонс, ширший за u64', async () => {
     const raw = {
       run: Keypair.generate().publicKey,
       encryptionKey: bytes(5),
       nonce: new BN('340282366920938463463374607431768211455'),
-      ciphertexts: Array.from({ length: 24 }, (_, index) => bytes(index)),
+      ciphertexts: Array.from({ length: REPORT_CIPHERTEXTS }, (_, index) => bytes(index)),
       recordsIncluded: 73,
       suppressed: false,
       bump: 253,
@@ -155,8 +155,10 @@ describe('результат прогону читається без нашог
     expect(new PublicKey(result.run).toBase58()).toBe(raw.run.toBase58())
     expect(Array.from(result.encryptionKey)).toEqual(raw.encryptionKey)
     expect(result.nonce).toBe(340_282_366_920_938_463_463_374_607_431_768_211_455n)
-    expect(result.ciphertexts).toHaveLength(24)
-    expect(Array.from(result.ciphertexts[23] ?? [])).toEqual(bytes(23))
+    expect(result.ciphertexts).toHaveLength(REPORT_CIPHERTEXTS)
+    expect(Array.from(result.ciphertexts[REPORT_CIPHERTEXTS - 1] ?? [])).toEqual(
+      bytes(REPORT_CIPHERTEXTS - 1),
+    )
     expect(result.recordsIncluded).toBe(73)
     expect(result.suppressed).toBe(false)
     expect(result.bump).toBe(253)

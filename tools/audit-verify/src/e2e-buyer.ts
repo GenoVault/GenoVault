@@ -28,14 +28,16 @@
 
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { AnchorProvider, Wallet } from '@anchor-lang/core'
+import { getMXEPublicKey } from '@arcium-hq/client'
 import type { Connection } from '@solana/web3.js'
-import { PublicKey } from '@solana/web3.js'
+import { Keypair, PublicKey } from '@solana/web3.js'
 import type { Run, RunResult } from './chain.ts'
 import { decodeRun, decodeRunResult, fetchAccount } from './chain.ts'
 import type { ChainVerdict, DatasetSource } from './fold-chain.ts'
 import { equalBytes, hex, verifyFoldChain } from './fold-chain.ts'
 import type { Report } from './report.ts'
-import { decryptReport, loadReportUnpacker } from './report.ts'
+import { decryptReport, loadReportLayout } from './report.ts'
 
 export class AuditError extends Error {
   override readonly name = 'AuditError'
@@ -124,10 +126,10 @@ export async function auditBuyerPath(options: AuditOptions): Promise<Audit> {
   const report = await timed('розшифрувати звіт', async () =>
     decryptReport({
       buyerSecretKey: options.buyerSecretKey,
-      encryptionKey: result.encryptionKey,
+      mxePublicKey: await mxeKey(options),
       nonce: result.nonce,
       ciphertexts: result.ciphertexts,
-      unpacker: await loadReportUnpacker(options.circuitsModulePath),
+      layout: await loadReportLayout(options.circuitsModulePath),
     }),
   )
 
@@ -154,6 +156,23 @@ export async function auditBuyerPath(options: AuditOptions): Promise<Audit> {
 }
 
 /**
+ * Публічний ключ MXE-кластера — з мережі, не з чужих слів.
+ *
+ * Читається бібліотекою Arcium, а не нашою: незалежність звіряча про **наш**
+ * код, а не про криптографію взагалі. Гаманець провайдеру потрібен формально —
+ * тут нічого не підписується, тож пара одноразова.
+ */
+async function mxeKey(options: AuditOptions): Promise<Uint8Array> {
+  const provider = new AnchorProvider(options.connection, new Wallet(Keypair.generate()), {
+    commitment: 'confirmed',
+  })
+  const key = await getMXEPublicKey(provider, options.programId)
+  if (key === null)
+    throw new AuditError('у MXE немає публічного ключа — кластер не завершив keygen')
+  return key
+}
+
+/**
  * Час блоку, в якому акаунт з'явився.
  *
  * Підписи повертаються від найновішого; найстаріший і є той, що акаунт
@@ -163,7 +182,17 @@ export async function auditBuyerPath(options: AuditOptions): Promise<Audit> {
 async function firstBlockTime(connection: Connection, address: PublicKey): Promise<number | null> {
   const signatures = await connection.getSignaturesForAddress(address, { limit: 1000 }, 'confirmed')
   const oldest = signatures.at(-1)
-  return oldest?.blockTime ?? null
+  if (oldest === undefined) return null
+  if (oldest.blockTime != null) return oldest.blockTime
+
+  // Локальний валідатор часто віддає підписи без часу блоку. Слот у нього є
+  // завжди, і час слота — окремий виклик; якщо й він порожній, числа просто
+  // немає, і звіряч так і каже.
+  try {
+    return await connection.getBlockTime(oldest.slot)
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -195,6 +224,11 @@ function collectProblems(
       `результат посилається на прогін ${new PublicKey(result.run).toBase58()}, ` +
         `а звіряли ${address.toBase58()}`,
     )
+  }
+
+  // Звіт адресований саме цьому покупцю: `encryption_key` — це його ключ.
+  if (!equalBytes(result.encryptionKey, run.buyerX25519)) {
+    problems.push('звіт зашифрований не на ключ покупця з акаунта прогону')
   }
 
   if (result.recordsIncluded !== run.recordsIncluded) {

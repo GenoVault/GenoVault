@@ -18,7 +18,7 @@
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { AnchorProvider, Wallet } from '@anchor-lang/core'
 import { createProgram, PROGRAM_ID } from '@genovault/sdk'
@@ -128,8 +128,8 @@ async function main(): Promise<void> {
 
   log('роздаємо SOL учасникам стенду…')
   await fund(connection, [...owners.map((o) => o.publicKey), buyer.publicKey], 2)
-  // Диспетчеру більше: rent за буфер на 70 720 байтів це ~0,49 SOL, і він
-  // вносить його на кожному прогоні, поки не покличе `close_batch_buffer`.
+  // Диспетчеру більше: буфер, накопичувач і 2500 акаунтів обчислень на
+  // стандартний датасет — усе це rent, який він вносить і забирає назад.
   await fund(connection, [dispatcher.publicKey], 5)
 
   log('розгортаємо платформу…')
@@ -175,6 +175,52 @@ async function main(): Promise<void> {
     onProgress: (note) => log(`  ${note}`),
   })
 
+  // Звіт кладеться на диск **до** прогону, а не після: у ньому адреси, ключ
+  // читача звіту й шлях до ключа диспетчера, а прогін на 2500 згорток колись
+  // обірветься — таймаутом, світлом, Ctrl+C. Звіт, який з'являється лише в
+  // кінці, робить перерваний прогін невідновлюваним: ані довести до кінця, ані
+  // навіть прочитати те, за що заплачено, уже нічим. Після прогону файл
+  // переписується з результатами.
+  //
+  // Читає його `tools/audit-verify`, і читає він **адреси**, а не наші
+  // висновки. Приватна половина ключа звіту теж тут — іншого місця, де вона
+  // зберігається, немає за побудовою (`T029`).
+  const out = resolve(values.out)
+  await mkdir(dirname(out), { recursive: true })
+
+  // Ключ диспетчера — окремим файлом у форматі solana, щоб `drive --dispatcher`
+  // узяв його без перекладу. Це ключ локального стенду й нічого більше.
+  const dispatcherKeyPath = join(dirname(out), 'dispatcher.json')
+  await writeFile(dispatcherKeyPath, JSON.stringify(Array.from(dispatcher.secretKey)), 'utf8')
+
+  const report = {
+    rpc: values.rpc,
+    programId: PROGRAM_ID.toBase58(),
+    mint: platform.mint.toBase58(),
+    buyer: buyer.publicKey.toBase58(),
+    dispatcher: dispatcher.publicKey.toBase58(),
+    dispatcherKeyPath,
+    nonce: nonce.toString(10),
+    run: scenario.order.run.toBase58(),
+    reportSecretKey: Buffer.from(scenario.order.reportSecretKey).toString('hex'),
+    storageDir,
+    datasets: scenario.datasets.map((dataset) => ({
+      id: dataset.id,
+      owner: dataset.owner.toBase58(),
+      address: dataset.address.toBase58(),
+      recordCount: dataset.recordCount,
+      contentHash: dataset.contentHash,
+      envelopePath: dataset.envelopePath,
+    })),
+    orderMs: scenario.order.elapsedMs,
+  }
+
+  const write = async (extra: Record<string, unknown>): Promise<void> => {
+    await writeFile(out, `${JSON.stringify({ ...report, ...extra }, null, 2)}\n`, 'utf8')
+  }
+  await write({ status: 'accepted' })
+  log(`звіт: ${out}`)
+
   log('\nведемо прогін:')
   const result = await drive({
     connection,
@@ -188,37 +234,11 @@ async function main(): Promise<void> {
     onProgress: logProgress,
   })
 
-  // Звіт кладеться на диск, а не друкується: його читає `tools/audit-verify`,
-  // і читає він **адреси**, а не наші висновки. Приватна половина ключа звіту
-  // теж тут — без неї покупець не прочитає того, за що заплатив, а іншого
-  // місця, де вона зберігається, немає за побудовою (`T029`).
-  const report = {
-    rpc: values.rpc,
-    programId: PROGRAM_ID.toBase58(),
-    mint: platform.mint.toBase58(),
-    buyer: buyer.publicKey.toBase58(),
-    dispatcher: dispatcher.publicKey.toBase58(),
-    nonce: nonce.toString(10),
-    run: scenario.order.run.toBase58(),
-    reportSecretKey: Buffer.from(scenario.order.reportSecretKey).toString('hex'),
-    storageDir,
-    datasets: scenario.datasets.map((dataset) => ({
-      id: dataset.id,
-      owner: dataset.owner.toBase58(),
-      address: dataset.address.toBase58(),
-      recordCount: dataset.recordCount,
-      contentHash: dataset.contentHash,
-      envelopePath: dataset.envelopePath,
-    })),
+  await write({
     status: result.run.status,
     folds: result.folds,
     driveMs: result.elapsedMs,
-    orderMs: scenario.order.elapsedMs,
-  }
-
-  const out = resolve(values.out)
-  await mkdir(dirname(out), { recursive: true })
-  await writeFile(out, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+  })
 
   log(`\nстатус: ${result.run.status} · згорток: ${result.folds} · ${result.elapsedMs} мс`)
   log(`звіт: ${out}`)

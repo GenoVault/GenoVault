@@ -17,6 +17,7 @@ import type { AnchorProvider } from '@anchor-lang/core'
 import { uploadCircuit } from '@arcium-hq/client'
 import type { GenoVaultProgram } from '@genovault/sdk'
 import {
+  fetchPlatformConfig,
   initializeIx,
   platformConfigAddress,
   TOKEN_2022_PROGRAM_ID,
@@ -31,7 +32,12 @@ import {
   MINT_SIZE,
 } from '@solana/spl-token'
 import type { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js'
-import { SystemProgram, TransactionMessage, VersionedTransaction } from '@solana/web3.js'
+import {
+  ComputeBudgetProgram,
+  SystemProgram,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js'
 import type { ArciumContext, CircuitName } from './arcium.ts'
 import { CIRCUITS } from './arcium.ts'
 
@@ -60,22 +66,35 @@ export interface BootstrapPlatformOptions {
 
 const DEFAULT_DECIMALS = 6
 
+/** Бюджет обчислень на розгортання визначення. Стеля транзакції — 1 400 000. */
+const COMP_DEF_COMPUTE_UNITS = 1_000_000
+
 /**
  * Створює розрахунковий токен і розгортає платформу.
  *
  * Мінт — Token-2022, як і всюди в програмі: `PlatformConfig` звіряє програму
  * токена, і мінт зі старої програми відхилиться вже на `request_run`, коли
  * покупець уже підписав.
+ *
+ * Платформа, яка вже є, **береться як є**, а не перестворюється: `initialize`
+ * її не пересоздасть (`PlatformConfig` — синглтон-PDA), а головне — так і має
+ * бути. У мережі платформу розгортають один раз, і сценарій, який вимагав би
+ * чистого ланцюга, не міг би прогнатись двічі поспіль на тому самому стенді.
  */
 export async function bootstrapPlatform(options: BootstrapPlatformOptions): Promise<Platform> {
   const decimals = options.decimals ?? DEFAULT_DECIMALS
   const config = platformConfigAddress(options.program.programId).address
   const vault = vaultAddress(options.program.programId).address
 
-  if ((await options.connection.getAccountInfo(config)) !== null) {
-    throw new BootstrapError(
-      `платформа вже розгорнута (${config.toBase58()}) — стенд піднімається на чистому ланцюгу`,
-    )
+  const existing = await fetchPlatformConfig(options.program, config)
+  if (existing !== null) {
+    if (!existing.authority.equals(options.authority.publicKey)) {
+      throw new BootstrapError(
+        `платформа вже розгорнута під авторитетом ${existing.authority.toBase58()}, ` +
+          `а стенд працює ключем ${options.authority.publicKey.toBase58()}`,
+      )
+    }
+    return { mint: existing.mint, config, vault, feeBps: existing.feeBps }
   }
 
   const rent = await getMinimumBalanceForRentExemptMint(options.connection)
@@ -179,11 +198,18 @@ export async function bootstrapCircuits(options: BootstrapCircuitsOptions): Prom
     const compDef = options.arcium.compDef(circuit)
 
     if ((await options.provider.connection.getAccountInfo(compDef)) === null) {
+      // Стандартні 200 000 CU на транзакцію тут не вистачає: сам
+      // `InitComputationDefinition` в Arcium з'їдає ~160 000, і без явного
+      // бюджету транзакція падає з «exceeded CUs meter at BPF instruction» —
+      // тобто виглядає як помилка нашої програми, хоча це межа рантайму.
       await send(
         options.provider.connection,
         options.payer,
         [],
-        [await initCompDefIx(options, circuit)],
+        [
+          ComputeBudgetProgram.setComputeUnitLimit({ units: COMP_DEF_COMPUTE_UNITS }),
+          await initCompDefIx(options, circuit),
+        ],
       )
       options.onProgress?.(circuit, 'визначення створене')
     } else {

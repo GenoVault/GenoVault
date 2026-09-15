@@ -17,6 +17,16 @@ export const RUN_DISCRIMINATOR = [199, 54, 155, 86, 235, 115, 246, 189] as const
 export const RUN_RESULT_DISCRIMINATOR = [201, 22, 203, 115, 112, 189, 94, 243] as const
 
 export const RUN_STATUSES = ['accepted', 'running', 'completed', 'rejected', 'failed'] as const
+
+/**
+ * Скільки шифротекстів везе звіт.
+ *
+ * Стеля не наша: вивід MPC повертається однією транзакцією, і для callback'а
+ * розкриття це `597 + 32 × N ≤ 1232`, тобто `N ≤ 19`. Число видно з IDL, який
+ * лежить у публічному репозиторії, — звіряч бере його звідти, як і решту
+ * розкладки.
+ */
+export const REPORT_CIPHERTEXTS = 13
 export type RunStatus = (typeof RUN_STATUSES)[number]
 
 export interface RunDataset {
@@ -108,7 +118,7 @@ export function decodeRunResult(data: Uint8Array): RunResult {
     run: reader.pubkey(),
     encryptionKey: reader.bytesOf(32),
     nonce: reader.u128(),
-    ciphertexts: Array.from({ length: 24 }, () => reader.bytesOf(32)),
+    ciphertexts: Array.from({ length: REPORT_CIPHERTEXTS }, () => reader.bytesOf(32)),
     recordsIncluded: reader.u32(),
     suppressed: reader.bool(),
     bump: reader.u8(),

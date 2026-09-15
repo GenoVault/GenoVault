@@ -106,7 +106,6 @@ fn reveal(accumulator: Enc<Mxe, Pack<Frequencies>>) -> (Frequencies, u32, u32, u
             affected: report.affected,
             age_at_least: report.age_at_least,
             allele_sum: report.allele_sum,
-            allele_square_sum: report.allele_square_sum,
         },
         report.suppressed,
         disclosed,
@@ -132,18 +131,6 @@ fn cohort(count: usize, sex: u8, age: u8, affected: u8, genotypes: &[u8]) -> Vec
     (0..count)
         .map(|_| record(sex, age, affected, genotypes))
         .collect()
-}
-
-/// Розподіл генотипів {0, 1, 2} з пари достатніх статистик.
-///
-/// Це та сама формула, за якою результат читатиме `apps/web`; тест на ній і
-/// тримається — без неї `Σg` і `Σg²` це два числа без сенсу.
-fn genotype_counts(included: u32, sum: u32, square_sum: u32) -> (u32, u32, u32) {
-    assert!(square_sum >= sum, "Σg² не може бути меншим за Σg при g ∈ {{0,1,2}}");
-    let homozygous = (square_sum - sum) / 2;
-    let heterozygous = sum - 2 * homozygous;
-    let reference = included - heterozygous - homozygous;
-    (reference, heterozygous, homozygous)
 }
 
 #[test]
@@ -240,17 +227,11 @@ fn genotype_distribution_is_exact_from_two_sums() {
     let (report, _, _) = close_and_reveal(acc);
 
     assert_eq!(report.included, 23);
+    // Σg = 11·1 + 5·2. Розкласти це назад на трійку {0, 1, 2} нічим: `Σg²`
+    // прибрано з рецепта (`T030`), бо вивід MPC мусить вміститись в одну
+    // транзакцію. Покупець отримує середнє число копій алеля, а не розподіл
+    // генотипів, і це сказано в каталозі, а не сховано.
     assert_eq!(report.allele_sum[0], 11 + 2 * 5);
-    assert_eq!(report.allele_square_sum[0], 11 + 4 * 5);
-    assert_eq!(
-        genotype_counts(
-            report.included,
-            report.allele_sum[0],
-            report.allele_square_sum[0]
-        ),
-        (7, 11, 5),
-        "розподіл {{0,1,2}} відновлюється з Σg і Σg² точно"
-    );
 }
 
 #[test]
@@ -325,7 +306,6 @@ fn cohort_below_the_threshold_discloses_nothing() {
     assert_eq!(report.male, 0);
     assert_eq!(report.affected, 0);
     assert_eq!(report.allele_sum[0], 0);
-    assert_eq!(report.allele_square_sum[0], 0);
     assert_eq!(report.age_at_least, [0; AGE_BINS]);
 }
 
@@ -380,7 +360,6 @@ fn padded_markers_report_zero() {
     }
     for marker in 3..MARKERS {
         assert_eq!(report.allele_sum[marker], 0, "маркер {marker} поза датасетом");
-        assert_eq!(report.allele_square_sum[marker], 0);
     }
 }
 

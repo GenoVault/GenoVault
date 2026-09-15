@@ -151,7 +151,7 @@ pub struct RunDataset {
 pub struct Run {
     pub buyer: Pubkey,
     /// Хто має право подавати шифротекст і ставити обчислення в чергу
-    /// (`T025`). Називає його **покупець** при замовленні: 313 підписів на
+    /// (`T025`). Називає його **покупець** при замовленні: 2500 підписів на
     /// прогін у вкладці браузера — не продукт, а повноваження, взяте
     /// платформою собі, — не те, що покупець комусь давав. Диспетчер не
     /// рухає грошей, не міняє згоди й не змінює складу прогону: усе, що він
@@ -744,7 +744,8 @@ mod tests {
         // побудовою — вони вимагають результату, а прогін упав до нього.
         let mut r = run(2);
         r.start().unwrap();
-        r.record_fold(&Pubkey::new_unique(), 32, &[1u8; 32]).unwrap();
+        r.record_fold(&Pubkey::new_unique(), RECIPE_BATCH as u8, &[1u8; 32])
+            .unwrap();
         r.fail().unwrap();
 
         assert_eq!(r.refund_failed().unwrap(), r.escrow_amount);
@@ -812,22 +813,24 @@ mod tests {
         let a = Pubkey::new_unique();
         let b = Pubkey::new_unique();
 
+        let full = RECIPE_BATCH as u8;
+
         let mut base = run(2);
         base.start().unwrap();
-        base.record_fold(&a, 32, &bytes).unwrap();
+        base.record_fold(&a, full, &bytes).unwrap();
 
         let mut other_dataset = run(2);
         other_dataset.start().unwrap();
-        other_dataset.record_fold(&b, 32, &bytes).unwrap();
+        other_dataset.record_fold(&b, full, &bytes).unwrap();
 
         let mut other_live = run(2);
         other_live.start().unwrap();
-        other_live.record_fold(&a, 31, &bytes).unwrap();
+        other_live.record_fold(&a, full - 1, &bytes).unwrap();
 
         let mut twice = run(2);
         twice.start().unwrap();
-        twice.record_fold(&a, 32, &bytes).unwrap();
-        twice.record_fold(&a, 32, &bytes).unwrap();
+        twice.record_fold(&a, full, &bytes).unwrap();
+        twice.record_fold(&a, full, &bytes).unwrap();
 
         assert_ne!(base.folded_hash, other_dataset.folded_hash);
         assert_ne!(base.folded_hash, other_live.folded_hash);

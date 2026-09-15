@@ -296,7 +296,9 @@ const RESULT_FIELDS = {
   // u128, а не u64: нонс шифру ширший за все інше в програмі, і `toBn` сюди
   // не годиться — він відхиляє все, що не вміщається в u64.
   nonce: new BN((1n << 100n).toString(10), 10),
-  ciphertexts: Array.from({ length: 24 }, (_, i) => Array.from({ length: 32 }, () => i)),
+  // Тринадцять, а не двадцять чотири: вивід MPC повертається однією
+  // транзакцією, і `T030` зрізав звіт до 76 польових елементів.
+  ciphertexts: Array.from({ length: 13 }, (_, i) => Array.from({ length: 32 }, () => i)),
   recordsIncluded: 8_120,
   suppressed: false,
   bump: 251,
@@ -373,7 +375,7 @@ describe('декодування прогону', () => {
     expect(run.refunded).toBe(true)
   })
 
-  it('звіт несе ключ, нонс u128 і всі 24 шифротексти', async () => {
+  it('звіт несе ключ, нонс u128 і всі шифротексти', async () => {
     const encoded = await program.coder.accounts.encode('runResult', RESULT_FIELDS)
     const result = decodeRunResult(program.coder.accounts.decode('runResult', encoded))
 
@@ -381,10 +383,10 @@ describe('декодування прогону', () => {
     // Нонс ширший за u64: через `Number()` тут утратилась би сама можливість
     // розшифрувати звіт.
     expect(result.nonce).toBe(1n << 100n)
-    expect(result.ciphertexts).toHaveLength(24)
+    expect(result.ciphertexts).toHaveLength(13)
     expect(result.ciphertexts.every((c) => c.length === 32)).toBe(true)
-    expect(Array.from(result.ciphertexts[23] as Uint8Array)).toEqual(
-      Array.from({ length: 32 }, () => 23),
+    expect(Array.from(result.ciphertexts[12] as Uint8Array)).toEqual(
+      Array.from({ length: 32 }, () => 12),
     )
     expect(Array.from(result.encryptionKey)).toEqual(Array.from({ length: 32 }, () => 0x5c))
     expect(result.recordsIncluded).toBe(8_120)

@@ -3,6 +3,7 @@ import type { DatasetRecord } from '@genovault/crypto'
 import { encryptDataset } from '@genovault/crypto'
 import { HEADER_BYTES, inspectEnvelope, LIMB_BYTES, NONCE_BYTES } from '@genovault/shared'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { montgomeryToEdwards } from '../src/curve.ts'
 import {
   BATCH_BUFFER_BYTES,
   BATCH_PAYLOAD_BYTES,
@@ -68,16 +69,19 @@ describe('розкладка дзеркалить рецепт', () => {
   // Той самий набір тверджень, що `mirrors_the_recipe_shape` у
   // `state/dispatch.rs`: розійтись цим числам означає поставити в чергу
   // обчислення, яке не складеться, і дізнатись про це від вузлів.
-  it('дає 69 слів на запис і 70 656 байтів на батч', () => {
+  it('дає 69 слів на запис і 8 832 байти на батч', () => {
     expect(RECORD_WORDS).toBe(69)
-    expect(BATCH_PAYLOAD_BYTES).toBe(70_656)
-    expect(RECIPE_BATCH * RECORD_WORDS).toBe(2_208)
+    expect(BATCH_PAYLOAD_BYTES).toBe(8_832)
+    expect(RECIPE_BATCH * RECORD_WORDS).toBe(276)
     expect(BATCH_PAYLOAD_BYTES % WORD_BYTES).toBe(0)
-    expect(BATCH_BUFFER_BYTES).toBe(70_720)
+    expect(BATCH_BUFFER_BYTES).toBe(8_896)
   })
 
-  it('доростає до батча рівно за шість кроків', () => {
-    expect(growSteps()).toBe(6)
+  it('буфер створюється одразу цілим, без дорощувань', () => {
+    // Нуль кроків — наслідок `RECIPE_BATCH = 4`, а не властивість програми.
+    // Якщо стеля Arcium колись дозволить більший батч, це число має вирости
+    // само, а `grow_batch_buffer` лишається на місці саме для цього.
+    expect(growSteps()).toBe(0)
   })
 })
 
@@ -94,9 +98,10 @@ describe('конверт проти рецепта', () => {
 describe('нарізка на батчі', () => {
   it('рахує згортки з довжини датасету', () => {
     expect(batchCount(1)).toBe(1)
-    expect(batchCount(32)).toBe(1)
-    expect(batchCount(33)).toBe(2)
-    expect(batchCount(10_000)).toBe(313)
+    expect(batchCount(4)).toBe(1)
+    expect(batchCount(5)).toBe(2)
+    // Стандартний датасет `SC-003` — 2500 послідовних кругів до MPC.
+    expect(batchCount(10_000)).toBe(2_500)
   })
 
   it('відмовляє порожньому датасету', () => {
@@ -106,13 +111,17 @@ describe('нарізка на батчі', () => {
   it('останній батч неповного датасету оголошує менше живих записів', () => {
     const batches = transcodeDataset(envelope)
 
-    expect(batches.map((batch) => batch.live)).toEqual([32, 32, 6])
-    expect(batches.map((batch) => batch.firstRecord)).toEqual([0, 32, 64])
+    // 70 записів по чотири — сімнадцять повних батчів і хвіст на два.
+    expect(batches).toHaveLength(18)
+    expect(batches.map((batch) => batch.live)).toEqual([...Array(17).fill(4), 2])
+    expect(batches.map((batch) => batch.firstRecord)).toEqual(
+      Array.from({ length: 18 }, (_, index) => index * 4),
+    )
     for (const batch of batches) expect(batch.payload.length).toBe(BATCH_PAYLOAD_BYTES)
   })
 
   it('не віддає батча поза межами датасету', () => {
-    expect(() => transcodeBatch(envelope, 3)).toThrow(TranscodeError)
+    expect(() => transcodeBatch(envelope, 18)).toThrow(TranscodeError)
     expect(() => transcodeBatch(envelope, -1)).toThrow(TranscodeError)
   })
 })
@@ -127,7 +136,11 @@ describe('розкладка слів у батчі', () => {
       const record = slot < batch.live ? slot : 0
       const frame = HEADER_BYTES + record * (NONCE_BYTES + header.fieldsPerRecord * LIMB_BYTES)
 
-      expect(batch.payload.subarray(at, at + WORD_BYTES)).toEqual(header.ephemeralPublicKey)
+      // Слово ключа — біраціональний образ, а не u-координата з конверта:
+      // черга розбирає його як стиснену точку Едвардса (`curve.ts`).
+      expect(batch.payload.subarray(at, at + WORD_BYTES)).toEqual(
+        montgomeryToEdwards(header.ephemeralPublicKey),
+      )
 
       // Нонс лягає little-endian у повне слово: шістнадцять байтів кадру й
       // шістнадцять нулів. Зсув на пів слова тут не впав би ніде.
@@ -155,16 +168,17 @@ describe('розкладка слів у батчі', () => {
   it(
     'слова батча розшифровуються в ті самі записи',
     () => {
-      const batch = transcodeBatch(envelope, 2)
-      expect(batch.live).toBe(6)
+      // Останній батч: два живі записи й два слоти хвоста. Саме він і цікавий
+      // — на повному батчі падінь заповнення просто не видно.
+      const batch = transcodeBatch(envelope, 17)
+      expect(batch.live).toBe(2)
 
-      // Чотири слоти, а не всі 32: байти кожного слота вже звірені сусіднім
-      // тестом, а тут перевіряється не розкладка, а її прочитання — два живі
-      // слоти й два з хвоста. Розшифрувати всі 32 коштує ще п'ятнадцять
-      // секунд гейта й не додає жодного твердження.
-      for (const slot of [0, 5, 6, RECIPE_BATCH - 1]) {
+      for (let slot = 0; slot < RECIPE_BATCH; slot += 1) {
         const at = slot * RECORD_WORDS * WORD_BYTES
-        const shared = batch.payload.subarray(at, at + WORD_BYTES)
+        // Секрет виводиться з ключа **конверта**: у буфері лежить його образ в
+        // Едвардсі, а Діффі-Гелман x25519 працює з u-координатою. Кластер
+        // робить те саме перетворення у зворотний бік.
+        const shared = inspectEnvelope(envelope).ephemeralPublicKey
         const nonce = batch.payload.subarray(at + WORD_BYTES, at + WORD_BYTES + NONCE_BYTES)
         const limbs: number[][] = []
         for (let field = 0; field < 3 + MARKERS; field += 1) {

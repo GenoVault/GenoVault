@@ -111,7 +111,7 @@ pub enum GenoVaultError {
     BatchBufferNotGrowing,
     #[msg("Запис виходить за межі буферного акаунта")]
     BatchWriteOutOfBounds,
-    #[msg("У батчі має бути від 1 до 32 живих записів")]
+    #[msg("У батчі має бути від 1 до RECIPE_BATCH живих записів")]
     BatchLiveOutOfRange,
     #[msg("Усі датасети прогону вже закриті")]
     RunPoolExhausted,
