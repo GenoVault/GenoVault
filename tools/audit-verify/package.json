@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@genovault/crypto": "workspace:*",
+    "@genovault/gen-dataset": "workspace:*",
     "@genovault/run-dispatcher": "workspace:*",
     "@genovault/sdk": "workspace:*",
     "typescript": "5.9.3",

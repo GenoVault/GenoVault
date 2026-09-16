@@ -221,6 +221,9 @@ importers:
       '@genovault/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
+      '@genovault/gen-dataset':
+        specifier: workspace:*
+        version: link:../gen-dataset
       '@genovault/run-dispatcher':
         specifier: workspace:*
         version: link:../run-dispatcher
@@ -258,6 +261,9 @@ importers:
       '@genovault/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
+      '@genovault/gen-dataset':
+        specifier: workspace:*
+        version: link:../gen-dataset
       '@genovault/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -9237,7 +9243,7 @@ snapshots:
 
   isomorphic-ws@4.0.1(ws@7.5.13):
     dependencies:
-      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
   isows@1.0.6(ws@8.18.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)):
     dependencies:
@@ -9264,7 +9270,7 @@ snapshots:
       json-stringify-safe: 5.0.1
       stream-json: 1.9.1
       uuid: 8.3.2
-      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate

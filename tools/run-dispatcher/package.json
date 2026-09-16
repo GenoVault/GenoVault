@@ -17,6 +17,7 @@
     "@anchor-lang/core": "1.2.0",
     "@arcium-hq/client": "0.14.1",
     "@genovault/crypto": "workspace:*",
+    "@genovault/gen-dataset": "workspace:*",
     "@genovault/sdk": "workspace:*",
     "@genovault/shared": "workspace:*",
     "@noble/curves": "1.9.6",

@@ -29,6 +29,7 @@ import { bootstrapCircuits, bootstrapPlatform, fundBuyer } from './bootstrap.ts'
 import { buildCorpus } from './corpus.ts'
 import type { Progress } from './drive.ts'
 import { drive } from './drive.ts'
+import { buildParityCorpus } from './parity-corpus.ts'
 import { prepareScenario } from './scenario.ts'
 
 const { values, positionals } = parseArgs({
@@ -46,6 +47,19 @@ const { values, positionals } = parseArgs({
     'callback-timeout': { type: 'string', default: '120000' },
     /** `sc001`: чи додавати одинадцятий, повнорозмірний прогін. */
     full: { type: 'boolean', default: true },
+    /** `sc002`: розмір датасету звірки й параметри причинних маркерів. */
+    records: { type: 'string', default: '400' },
+    causal: { type: 'string', default: '5' },
+    seed: { type: 'string', default: '7' },
+    /**
+     * Сила ефекту причинних маркерів.
+     *
+     * 0,4, а не 0,8: при 0,8 скан упирається в стелю (AUC 1,0000, повнота
+     * 100%), і метрика, що стоїть на стелі, не вміє показати розрив — розрив
+     * нуль вийшов би й тоді, коли MPC зіпсував число. При 0,4 скан дає
+     * повноту 60% і AUC 0,949, тобто має запас в обидва боки.
+     */
+    effect: { type: 'string', default: '0.4' },
   },
 })
 
@@ -91,6 +105,90 @@ async function fund(connection: Connection, keys: PublicKey[], sol: number): Pro
   }
 }
 
+/**
+ * Датасет звірки якості й два прогони скану (`T032`).
+ *
+ * ```bash
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts sc002 \
+ *   --out artifacts/parity/corpus.json --storage artifacts/parity/storage
+ * ```
+ *
+ * Ця команда, як і `sc001`, нічого не перевіряє: вона створює умови й доводить
+ * обидва плечі до кінця. Міряє `tools/audit-verify parity`, і робить це без
+ * нашого коду в рантаймі.
+ */
+async function sc002(
+  connection: Connection,
+  provider: AnchorProvider,
+  program: GenoVaultProgram,
+  payer: Keypair,
+  storageDir: string,
+): Promise<void> {
+  const owner = Keypair.generate()
+  const buyer = Keypair.generate()
+  const dispatcher = Keypair.generate()
+  const mint = Keypair.generate()
+
+  log('роздаємо SOL учасникам стенду…')
+  await fund(connection, [owner.publicKey, buyer.publicKey], 2)
+  await fund(connection, [dispatcher.publicKey], 10)
+
+  log('розгортаємо платформу…')
+  const platform = await bootstrapPlatform({
+    connection,
+    program,
+    authority: payer,
+    mint,
+    feeBps: Number(values['fee-bps']),
+  })
+  log(`  мінт ${platform.mint.toBase58()} · комісія ${platform.feeBps} б.п.`)
+
+  log('розгортаємо визначення обчислень…')
+  const arcium = await loadArciumContext(provider, PROGRAM_ID)
+  await bootstrapCircuits({
+    provider,
+    program,
+    arcium,
+    payer,
+    circuitsDir: resolve('build'),
+    onProgress: (circuit, note) => log(`  ${circuit}: ${note}`),
+  })
+
+  const maxEscrow = 1_000_000_000n
+  await fundBuyer(connection, payer, platform.mint, buyer.publicKey, maxEscrow * 4n)
+
+  const out = resolve(values.out)
+  const corpus = await buildParityCorpus({
+    connection,
+    provider,
+    program,
+    arcium,
+    rpc: values.rpc,
+    owner,
+    buyer,
+    dispatcher,
+    mint: platform.mint,
+    storageDir,
+    recordsPath: join(dirname(out), 'records.ndjson'),
+    out,
+    nonce: BigInt(Date.now()),
+    maxEscrow,
+    records: Number(values.records),
+    causalMarkers: Number(values.causal),
+    seed: Number(values.seed),
+    effectSize: Number(values.effect),
+    writeConcurrency: Number(values.concurrency),
+    callbackTimeoutMs: Number(values['callback-timeout']),
+    onProgress: log,
+  })
+
+  log(`\nкорпус: ${out}`)
+  log(`датасет ${corpus.dataset} · ${corpus.recordCount} записів`)
+  log(`причинні маркери: ${corpus.causalMarkers.join(', ')}`)
+  log('\nтепер звірка, і вона нашого коду не бачить:')
+  log(`  node --experimental-strip-types tools/audit-verify/src/cli.ts parity --corpus ${out}`)
+}
+
 async function main(): Promise<void> {
   const connection = new Connection(values.rpc, 'confirmed')
   const payer = await loadWallet(values.wallet)
@@ -126,8 +224,13 @@ async function main(): Promise<void> {
     return
   }
 
+  if (command === 'sc002') {
+    await sc002(connection, provider, program, payer, storageDir)
+    return
+  }
+
   if (command !== 'e2e') {
-    throw new Error(`невідома команда «${command}»: буває e2e, drive або sc001`)
+    throw new Error(`невідома команда «${command}»: буває e2e, drive, sc001 або sc002`)
   }
 
   const sizes = values.sizes?.split(',').map((part) => Number(part.trim()))

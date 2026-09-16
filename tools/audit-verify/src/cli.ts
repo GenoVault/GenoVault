@@ -28,6 +28,7 @@ import { auditBuyerPath, fetchMxePublicKey } from './e2e-buyer.ts'
 import { hex } from './fold-chain.ts'
 import type { PlainRecord, RunSweep } from './no-plaintext.ts'
 import { auditNoPlaintext, recordNeedles, sweepProgramAccounts } from './no-plaintext.ts'
+import { auditParity, RECIPE_MARKERS, readRecords } from './parity.ts'
 import { loadReportLayout } from './report.ts'
 
 const { values, positionals } = parseArgs({
@@ -43,6 +44,15 @@ const { values, positionals } = parseArgs({
     circuits: { type: 'string', default: 'build/circuits.ts' },
     /** Бюджет `SC-010` у секундах. Задається, а не зашивається: критерій живе в SPEC. */
     budget: { type: 'string', default: '180' },
+    /** Бюджет `SC-002` у відсоткових пунктах. */
+    'parity-budget': { type: 'string', default: '2' },
+    /**
+     * Нижня межа абсолютної якості скану, під якою порівняння порожнє.
+     *
+     * Це не критерій SPEC, а сторож: розрив нуль між двома сканами, які нічого
+     * не знаходять, теж нуль. Число задається, щоб його було видно у виклику.
+     */
+    'scan-floor': { type: 'string', default: '0.75' },
   },
 })
 
@@ -372,11 +382,147 @@ async function buyerPath(): Promise<void> {
   }
 }
 
+/** Корпус звірки якості: адреси двох плечей і те, що власник знає про себе. */
+interface ParityCorpusFile {
+  rpc: string
+  programId: string
+  recordsPath: string
+  causalMarkers: number[]
+  cases: { label: string; run: string; reportSecretKey: string }
+  controls: { label: string; run: string; reportSecretKey: string }
+}
+
+function corpusArm(
+  raw: unknown,
+  name: string,
+): { label: string; run: string; reportSecretKey: string } {
+  if (!isRecord(raw)) throw new Error(`у корпусі немає плеча «${name}»`)
+  return {
+    label: text(raw, 'label'),
+    run: text(raw, 'run'),
+    reportSecretKey: text(raw, 'reportSecretKey'),
+  }
+}
+
+async function loadParityCorpus(path: string): Promise<ParityCorpusFile> {
+  const raw: unknown = JSON.parse(await readFile(path, 'utf8'))
+  if (!isRecord(raw)) throw new Error(`корпус має бути об'єктом`)
+
+  const causal = raw.causalMarkers
+  if (!Array.isArray(causal) || causal.some((value) => !Number.isInteger(value))) {
+    throw new Error('у корпусі немає причинних маркерів')
+  }
+
+  return {
+    rpc: text(raw, 'rpc'),
+    programId: text(raw, 'programId'),
+    recordsPath: text(raw, 'recordsPath'),
+    causalMarkers: causal.map((value: number) => value),
+    cases: corpusArm(raw.cases, 'cases'),
+    controls: corpusArm(raw.controls, 'controls'),
+  }
+}
+
+function points(value: number): string {
+  return `${value.toFixed(1)} п.п.`
+}
+
+/**
+ * `SC-002` на двох плечах скану.
+ *
+ * Друкуються **обидва** числа: розрив, якого вимагає критерій, і абсолютна
+ * якість скану. Друге не менш важливе за перше: розрив нуль між двома
+ * мовчазними сканами теж нуль, і саме про це попереджав `T031`.
+ */
+async function parityCheck(): Promise<void> {
+  if (values.corpus === undefined) throw new Error('потрібен корпус звірки: --corpus <шлях>')
+  const corpus = await loadParityCorpus(resolve(values.corpus))
+
+  const connection = new Connection(corpus.rpc, 'confirmed')
+  const programId = new PublicKey(corpus.programId)
+  const budgetPoints = Number(values['parity-budget'])
+  const scanFloor = Number(values['scan-floor'])
+
+  const records = await readRecords(resolve(corpus.recordsPath))
+
+  const audit = await auditParity({
+    connection,
+    programId,
+    cases: {
+      label: corpus.cases.label,
+      run: new PublicKey(corpus.cases.run),
+      buyerSecretKey: fromHex(corpus.cases.reportSecretKey),
+    },
+    controls: {
+      label: corpus.controls.label,
+      run: new PublicKey(corpus.controls.run),
+      buyerSecretKey: fromHex(corpus.controls.reportSecretKey),
+    },
+    mxePublicKey: await fetchMxePublicKey(connection, programId),
+    layout: await loadReportLayout(resolve(values.circuits)),
+    records,
+    causalMarkers: corpus.causalMarkers,
+    scanFloor,
+    budgetPoints,
+  })
+
+  log('')
+  log('══ SC-002: звірка якості з відкритим прогоном ═══════════')
+  log(`  записів у власника:   ${audit.records}`)
+  log(`  причинні маркери:     ${audit.causalMarkers.join(', ')} з ${RECIPE_MARKERS}`)
+
+  for (const arm of [audit.cases, audit.controls]) {
+    log('')
+    log(`── плече «${arm.label}» ──────────────────────────────────`)
+    log(
+      `  ${arm.run.slice(0, 8)}… фільтр вік ${arm.filters.minAge}…${arm.filters.maxAge}, ` +
+        `стать ${arm.filters.sexFilter}, ураженість ${arm.filters.affectedFilter}`,
+    )
+    log(`  когорта: MPC ${arm.mpc.included}, відкрито ${arm.open.included}`)
+    log(`  чисел звірено: ${3 + 8 + RECIPE_MARKERS} · розбіжностей ${arm.differences.length}`)
+  }
+
+  log('')
+  log('── скан за різницею частот алеля ────────────────────────')
+  log(
+    `  повнота на топ-${audit.causalMarkers.length}: MPC ${(audit.scanMpc.recallAtK * 100).toFixed(1)}%, ` +
+      `відкрито ${(audit.scanOpen.recallAtK * 100).toFixed(1)}%`,
+  )
+  log(
+    `  AUC ранжування:       MPC ${audit.scanMpc.auc.toFixed(4)}, відкрито ${audit.scanOpen.auc.toFixed(4)}`,
+  )
+  log(
+    `  топ-${audit.causalMarkers.length} маркерів MPC: ${audit.scanMpc.ranking.slice(0, audit.causalMarkers.length).join(', ')}`,
+  )
+
+  log('')
+  log('══ вердикт ══════════════════════════════════════════════')
+  log(`  розрив повноти:  ${points(audit.recallGapPoints)}`)
+  log(`  розрив AUC:      ${points(audit.aucGapPoints)}`)
+  log(`  бюджет SC-002:   ${points(budgetPoints)}`)
+  log(
+    `  абсолютна якість скану на відкритих даних: AUC ${audit.scanOpen.auc.toFixed(4)} ` +
+      `(межа осмисленості ${scanFloor})`,
+  )
+  log('')
+
+  if (audit.problems.length === 0) {
+    log('  розбіжностей немає — звіт MPC тотожний відкритому перерахунку')
+  } else {
+    for (const problem of audit.problems) log(`  • ${problem}`)
+    log('')
+    log('  SC-002 НЕ ВИКОНАНО')
+    process.exitCode = 1
+  }
+  log('')
+}
+
 async function main(): Promise<void> {
   const command = positionals.at(0) ?? 'e2e-buyer'
   if (command === 'e2e-buyer') return buyerPath()
   if (command === 'no-plaintext') return noPlaintext()
-  throw new Error(`невідома команда «${command}»: буває e2e-buyer або no-plaintext`)
+  if (command === 'parity') return parityCheck()
+  throw new Error(`невідома команда «${command}»: буває e2e-buyer, no-plaintext або parity`)
 }
 
 main().catch((error: unknown) => {
