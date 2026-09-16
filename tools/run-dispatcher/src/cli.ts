@@ -21,10 +21,12 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { AnchorProvider, Wallet } from '@anchor-lang/core'
+import type { GenoVaultProgram } from '@genovault/sdk'
 import { createProgram, PROGRAM_ID } from '@genovault/sdk'
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js'
 import { loadArciumContext } from './arcium.ts'
 import { bootstrapCircuits, bootstrapPlatform, fundBuyer } from './bootstrap.ts'
+import { buildCorpus } from './corpus.ts'
 import type { Progress } from './drive.ts'
 import { drive } from './drive.ts'
 import { prepareScenario } from './scenario.ts'
@@ -42,6 +44,8 @@ const { values, positionals } = parseArgs({
     'fee-bps': { type: 'string', default: '250' },
     concurrency: { type: 'string', default: '8' },
     'callback-timeout': { type: 'string', default: '120000' },
+    /** `sc001`: чи додавати одинадцятий, повнорозмірний прогін. */
+    full: { type: 'boolean', default: true },
   },
 })
 
@@ -117,7 +121,14 @@ async function main(): Promise<void> {
     return
   }
 
-  if (command !== 'e2e') throw new Error(`невідома команда «${command}»: буває e2e або drive`)
+  if (command === 'sc001') {
+    await sc001(connection, provider, program, payer, storageDir)
+    return
+  }
+
+  if (command !== 'e2e') {
+    throw new Error(`невідома команда «${command}»: буває e2e, drive або sc001`)
+  }
 
   const sizes = values.sizes?.split(',').map((part) => Number(part.trim()))
   const poolSize = sizes?.length ?? 3
@@ -242,6 +253,95 @@ async function main(): Promise<void> {
 
   log(`\nстатус: ${result.run.status} · згорток: ${result.folds} · ${result.elapsedMs} мс`)
   log(`звіт: ${out}`)
+}
+
+/**
+ * Корпус прогонів під `SC-001` (`T031`).
+ *
+ * ```bash
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts sc001 \
+ *   --out artifacts/no-plaintext/corpus.json --storage artifacts/no-plaintext/storage
+ * ```
+ *
+ * Ця команда **не перевіряє** нічого: вона створює умови й доводить одинадцять
+ * прогонів до кінця. Перевіряє `tools/audit-verify no-plaintext`, і робить це
+ * без жодного нашого пакета в рантаймі — інакше «розшифрування не було»
+ * означало б рівно те, що наш код так каже.
+ */
+async function sc001(
+  connection: Connection,
+  provider: AnchorProvider,
+  program: GenoVaultProgram,
+  payer: Keypair,
+  storageDir: string,
+): Promise<void> {
+  const full = values.full !== false
+  // П'ятеро власників: троє на малий пул і двоє на повнорозмірний.
+  const owners = Array.from({ length: full ? 5 : 3 }, () => Keypair.generate())
+  const buyer = Keypair.generate()
+  const dispatcher = Keypair.generate()
+  const mint = Keypair.generate()
+
+  log('роздаємо SOL учасникам стенду…')
+  await fund(connection, [...owners.map((owner) => owner.publicKey), buyer.publicKey], 2)
+  // Диспетчеру більше: одинадцять прогонів — це одинадцять буферів і
+  // накопичувачів, і rent за кожен вносить саме він.
+  await fund(connection, [dispatcher.publicKey], 20)
+
+  log('розгортаємо платформу…')
+  const platform = await bootstrapPlatform({
+    connection,
+    program,
+    authority: payer,
+    mint,
+    feeBps: Number(values['fee-bps']),
+  })
+  log(`  мінт ${platform.mint.toBase58()} · комісія ${platform.feeBps} б.п.`)
+
+  log('розгортаємо визначення обчислень…')
+  const arcium = await loadArciumContext(provider, PROGRAM_ID)
+  await bootstrapCircuits({
+    provider,
+    program,
+    arcium,
+    payer,
+    circuitsDir: resolve('build'),
+    onProgress: (circuit, note) => log(`  ${circuit}: ${note}`),
+  })
+
+  const maxEscrow = 1_000_000_000n
+  // Депозит вноситься на кожен прогін окремо, і невитрачена частина
+  // повертається аж наприкінці: покупцю треба стільки, скільки прогонів.
+  await fundBuyer(connection, payer, platform.mint, buyer.publicKey, maxEscrow * 20n)
+
+  const out = resolve(values.out)
+  const corpus = await buildCorpus({
+    connection,
+    provider,
+    program,
+    arcium,
+    rpc: values.rpc,
+    owners,
+    buyer,
+    dispatcher,
+    mint: platform.mint,
+    storageDir,
+    out,
+    nonce: BigInt(Date.now()),
+    maxEscrow,
+    full,
+    writeConcurrency: Number(values.concurrency),
+    callbackTimeoutMs: Number(values['callback-timeout']),
+    onProgress: log,
+  })
+
+  log(`\nкорпус: ${out}`)
+  log(`прогонів: ${corpus.runs.length} · датасетів: ${corpus.datasets.length}`)
+  log(`канарка: ${corpus.canary.dataset} (${corpus.canary.records.length} відкритих записів)`)
+  log('\nтепер звіряч, і він нашого коду не бачить:')
+  log(
+    `  node --experimental-strip-types tools/audit-verify/src/cli.ts no-plaintext --corpus ${out}`,
+  )
 }
 
 main().catch((error: unknown) => {

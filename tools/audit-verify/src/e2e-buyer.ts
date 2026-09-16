@@ -162,14 +162,21 @@ export async function auditBuyerPath(options: AuditOptions): Promise<Audit> {
  * код, а не про криптографію взагалі. Гаманець провайдеру потрібен формально —
  * тут нічого не підписується, тож пара одноразова.
  */
-async function mxeKey(options: AuditOptions): Promise<Uint8Array> {
-  const provider = new AnchorProvider(options.connection, new Wallet(Keypair.generate()), {
+export async function fetchMxePublicKey(
+  connection: Connection,
+  programId: PublicKey,
+): Promise<Uint8Array> {
+  const provider = new AnchorProvider(connection, new Wallet(Keypair.generate()), {
     commitment: 'confirmed',
   })
-  const key = await getMXEPublicKey(provider, options.programId)
+  const key = await getMXEPublicKey(provider, programId)
   if (key === null)
     throw new AuditError('у MXE немає публічного ключа — кластер не завершив keygen')
   return key
+}
+
+async function mxeKey(options: AuditOptions): Promise<Uint8Array> {
+  return fetchMxePublicKey(options.connection, options.programId)
 }
 
 /**
