@@ -31,6 +31,7 @@ import type { Progress } from './drive.ts'
 import { drive } from './drive.ts'
 import { buildParityCorpus } from './parity-corpus.ts'
 import { prepareScenario } from './scenario.ts'
+import { buildTimingCorpus } from './timing-corpus.ts'
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -60,8 +61,30 @@ const { values, positionals } = parseArgs({
      * повноту 60% і AUC 0,949, тобто має запас в обидва боки.
      */
     effect: { type: 'string', default: '0.4' },
+    /**
+     * `sc003`: щаблі драбини в записах, розмір датасету хвиль і рівні
+     * паралельності.
+     *
+     * Щаблі кратні батчу: неповний останній батч коштує стільки ж, скільки
+     * повний, і зіпсував би саме те число, заради якого драбина існує.
+     */
+    ladder: { type: 'string', default: '40,80,160' },
+    'wave-records': { type: 'string', default: '80' },
+    'wave-levels': { type: 'string', default: '1,2,4' },
+    /** `sc003`: негативний контроль — відома затримка в циклі згортки. */
+    'stall-ms': { type: 'string', default: '0' },
   },
 })
+
+/** Список чисел із параметра «через кому». Порожній елемент — помилка, не нуль. */
+function numbers(raw: string, what: string): number[] {
+  const parts = raw.split(',').map((part) => part.trim())
+  const parsed = parts.map((part) => Number(part))
+  if (parsed.some((value) => !Number.isFinite(value) || value <= 0)) {
+    throw new Error(`${what}: «${raw}» — потрібні додатні числа через кому`)
+  }
+  return parsed
+}
 
 const command = positionals.at(0) ?? 'e2e'
 
@@ -189,6 +212,93 @@ async function sc002(
   log(`  node --experimental-strip-types tools/audit-verify/src/cli.ts parity --corpus ${out}`)
 }
 
+/**
+ * Умови для виміру часу прогону (`T033`, `SC-003`).
+ *
+ * ```bash
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts sc003 \
+ *   --out artifacts/timing/corpus.json --storage artifacts/timing/storage
+ * ```
+ */
+async function sc003(
+  connection: Connection,
+  provider: AnchorProvider,
+  program: GenoVaultProgram,
+  payer: Keypair,
+  storageDir: string,
+): Promise<void> {
+  const owner = Keypair.generate()
+  const buyer = Keypair.generate()
+  const dispatcher = Keypair.generate()
+  const mint = Keypair.generate()
+
+  const ladderSizes = numbers(values.ladder, 'щаблі драбини')
+  const waveLevels = numbers(values['wave-levels'], 'рівні паралельності')
+  const waveRecords = Number(values['wave-records'])
+
+  log('роздаємо SOL учасникам стенду…')
+  await fund(connection, [owner.publicKey, buyer.publicKey], 2)
+  // Диспетчеру помітно більше, ніж у `sc002`: у хвилі на чотири прогони живуть
+  // чотири буферні акаунти одночасно, а це ~0,49 SOL rent кожен.
+  await fund(connection, [dispatcher.publicKey], 10 + 3 * Math.max(...waveLevels))
+
+  log('розгортаємо платформу…')
+  const platform = await bootstrapPlatform({
+    connection,
+    program,
+    authority: payer,
+    mint,
+    feeBps: Number(values['fee-bps']),
+  })
+  log(`  мінт ${platform.mint.toBase58()} · комісія ${platform.feeBps} б.п.`)
+
+  log('розгортаємо визначення обчислень…')
+  const arcium = await loadArciumContext(provider, PROGRAM_ID)
+  await bootstrapCircuits({
+    provider,
+    program,
+    arcium,
+    payer,
+    circuitsDir: resolve('build'),
+    onProgress: (circuit, note) => log(`  ${circuit}: ${note}`),
+  })
+
+  const maxEscrow = 1_000_000_000n
+  const runCount = ladderSizes.length + waveLevels.reduce((sum, level) => sum + level, 0)
+  await fundBuyer(connection, payer, platform.mint, buyer.publicKey, maxEscrow * BigInt(runCount))
+
+  const out = resolve(values.out)
+  const stallMs = Number(values['stall-ms'])
+  const corpus = await buildTimingCorpus({
+    connection,
+    provider,
+    program,
+    arcium,
+    rpc: values.rpc,
+    owner,
+    buyer,
+    dispatcher,
+    mint: platform.mint,
+    storageDir,
+    out,
+    nonce: BigInt(Date.now()),
+    maxEscrow,
+    ladderSizes,
+    waveRecords,
+    waveLevels,
+    ...(stallMs > 0 ? { stallMs } : {}),
+    writeConcurrency: Number(values.concurrency),
+    callbackTimeoutMs: Number(values['callback-timeout']),
+    onProgress: log,
+  })
+
+  log(`\nкорпус: ${out}`)
+  log(`драбина: ${corpus.ladder.map((run) => `${run.records}→${run.folds}`).join(', ')}`)
+  log(`хвилі: ${corpus.waves.map((wave) => `×${wave.concurrency}`).join(', ')}`)
+  log('\nтепер вимір, і він нашого коду не бачить:')
+  log(`  node --experimental-strip-types tools/audit-verify/src/cli.ts timing --corpus ${out}`)
+}
+
 async function main(): Promise<void> {
   const connection = new Connection(values.rpc, 'confirmed')
   const payer = await loadWallet(values.wallet)
@@ -229,8 +339,13 @@ async function main(): Promise<void> {
     return
   }
 
+  if (command === 'sc003') {
+    await sc003(connection, provider, program, payer, storageDir)
+    return
+  }
+
   if (command !== 'e2e') {
-    throw new Error(`невідома команда «${command}»: буває e2e, drive, sc001 або sc002`)
+    throw new Error(`невідома команда «${command}»: буває e2e, drive, sc001, sc002 або sc003`)
   }
 
   const sizes = values.sizes?.split(',').map((part) => Number(part.trim()))

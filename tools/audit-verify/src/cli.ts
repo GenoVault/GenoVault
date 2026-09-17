@@ -30,6 +30,7 @@ import type { PlainRecord, RunSweep } from './no-plaintext.ts'
 import { auditNoPlaintext, recordNeedles, sweepProgramAccounts } from './no-plaintext.ts'
 import { auditParity, RECIPE_MARKERS, readRecords } from './parity.ts'
 import { loadReportLayout } from './report.ts'
+import { auditTiming, LINEARITY_TOLERANCE, RECIPE_BATCH, SPEEDUP_FLOOR } from './timing.ts'
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -53,6 +54,9 @@ const { values, positionals } = parseArgs({
      * не знаходять, теж нуль. Число задається, щоб його було видно у виклику.
      */
     'scan-floor': { type: 'string', default: '0.75' },
+    /** Бюджет `SC-003` у секундах і розмір стандартного датасету. Обидва з SPEC. */
+    'timing-budget': { type: 'string', default: '16200' },
+    'timing-records': { type: 'string', default: '10000' },
   },
 })
 
@@ -517,12 +521,196 @@ async function parityCheck(): Promise<void> {
   log('')
 }
 
+/** Корпус `sc003`: адреси прогонів драбини й хвиль, і більш нічого. */
+interface TimingCorpusFile {
+  rpc: string
+  programId: string
+  stallMs: number
+  ladder: string[]
+  waves: { label: string; concurrency: number; runs: string[] }[]
+}
+
+async function loadTimingCorpus(path: string): Promise<TimingCorpusFile> {
+  const raw: unknown = JSON.parse(await readFile(path, 'utf8'))
+  if (!isRecord(raw)) throw new Error(`корпус має бути об'єктом`)
+
+  const ladder = raw.ladder
+  if (!Array.isArray(ladder) || ladder.length === 0) {
+    throw new Error('у корпусі немає драбини прогонів')
+  }
+  const waves = raw.waves
+  if (!Array.isArray(waves)) throw new Error('у корпусі немає хвиль')
+
+  return {
+    rpc: text(raw, 'rpc'),
+    programId: text(raw, 'programId'),
+    stallMs: typeof raw.stallMs === 'number' ? raw.stallMs : 0,
+    ladder: ladder.map((entry: unknown, index: number) => {
+      if (!isRecord(entry)) throw new Error(`щабель ${index} драбини не об'єкт`)
+      return text(entry, 'run')
+    }),
+    waves: waves.map((entry: unknown, index: number) => {
+      if (!isRecord(entry)) throw new Error(`хвиля ${index} не об'єкт`)
+      const runs = entry.runs
+      if (!Array.isArray(runs)) throw new Error(`у хвилі ${index} немає прогонів`)
+      const concurrency = entry.concurrency
+      if (typeof concurrency !== 'number') throw new Error(`у хвилі ${index} немає паралельності`)
+      return {
+        label: text(entry, 'label'),
+        concurrency,
+        runs: runs.map((run: unknown, at: number) => {
+          if (!isRecord(run)) throw new Error(`прогін ${at} хвилі ${index} не об'єкт`)
+          return text(run, 'run')
+        }),
+      }
+    }),
+  }
+}
+
+/** Мілісекунди в читабельне: секунди до хвилини, далі хвилини й години. */
+function duration(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} с`
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} хв`
+  return `${(ms / 3_600_000).toFixed(2)} год`
+}
+
+/**
+ * `SC-003`: скільки коштує згортка і що з цього виходить на 10 000 записів.
+ *
+ * Друкується не одне число, а три твердження, і кожне окремо перевірне:
+ * розкладка циклу (чия саме вага), драбина (чи можна екстраполювати) і хвилі
+ * (чи вміє кластер рахувати паралельно). Вердикт без будь-якого з них не
+ * виводиться взагалі — число, яке нема на чому тримати, гірше за його
+ * відсутність.
+ */
+async function timingCheck(): Promise<void> {
+  if (values.corpus === undefined) throw new Error('потрібен корпус виміру: --corpus <шлях>')
+  const corpus = await loadTimingCorpus(resolve(values.corpus))
+
+  const connection = new Connection(corpus.rpc, 'confirmed')
+  const programId = new PublicKey(corpus.programId)
+  const budgetSeconds = Number(values['timing-budget'])
+  const records = Number(values['timing-records'])
+
+  const audit = await auditTiming({
+    connection,
+    programId,
+    ladder: corpus.ladder.map((run) => new PublicKey(run)),
+    waves: corpus.waves.map((wave) => ({
+      label: wave.label,
+      concurrency: wave.concurrency,
+      runs: wave.runs.map((run) => new PublicKey(run)),
+    })),
+    budgetSeconds,
+    records,
+  })
+
+  log('')
+  log('══ SC-003: час прогону на 10 000 записів ════════════════')
+  log(`  годинник:             слот ≈ ${audit.msPerSlot.toFixed(1)} мс (виміряно по blockTime)`)
+  if (corpus.stallMs > 0) {
+    log(`  негативний контроль:  у цикл вставлено ${corpus.stallMs} мс затримки`)
+  }
+
+  log('')
+  log('── розкладка циклу згортки ─────────────────────────────')
+  const share = (value: number): string =>
+    audit.foldMs === 0 ? '—' : `${((value / audit.foldMs) * 100).toFixed(0)} %`
+  log(
+    `  MPC (dispatch → callback):   ${audit.phases.mpc.toFixed(0).padStart(6)} мс   ${share(audit.phases.mpc)}`,
+  )
+  log(
+    `  простій драйвера:            ${audit.phases.idle.toFixed(0).padStart(6)} мс   ${share(audit.phases.idle)}`,
+  )
+  log(
+    `  запис батча:                 ${audit.phases.write.toFixed(0).padStart(6)} мс   ${share(audit.phases.write)}`,
+  )
+  log(
+    `  підтвердження згортки:       ${audit.phases.arm.toFixed(0).padStart(6)} мс   ${share(audit.phases.arm)}`,
+  )
+  log(`  цикл цілком:                 ${audit.foldMs.toFixed(0).padStart(6)} мс`)
+
+  log('')
+  log('── драбина: чи стала вартість згортки ──────────────────')
+  for (const point of audit.ladder.points) {
+    log(
+      `  ${point.run.slice(0, 8)}…  ${point.folds.toString().padStart(4)} згорток  ` +
+        `${point.foldMs.toFixed(0).padStart(6)} мс на згортку`,
+    )
+  }
+  log(
+    `  розкид ${(audit.ladder.spread * 100).toFixed(1)} % при допуску ` +
+      `${(LINEARITY_TOLERANCE * 100).toFixed(0)} % — ` +
+      (audit.ladder.linear ? 'екстраполювати можна' : 'ЕКСТРАПОЛЮВАТИ НЕМА НА ЧОМУ'),
+  )
+
+  if (audit.waves.length > 0) {
+    log('')
+    log('── хвилі: чи вміє кластер рахувати паралельно ──────────')
+    for (const wave of audit.waves) {
+      log(
+        `  ×${wave.concurrency.toString().padEnd(2)} ${wave.folds.toString().padStart(4)} згорток  ` +
+          `${wave.foldMs.toFixed(0).padStart(6)} мс на згортку  ` +
+          (wave.speedup === null ? '' : `прискорення ×${wave.speedup.toFixed(2)}`),
+      )
+    }
+    log(
+      `  поріг важеля ×${SPEEDUP_FLOOR} — ` +
+        (audit.parallelismHelps === null
+          ? 'хвиль для висновку не було'
+          : audit.parallelismHelps
+            ? 'важіль паралельних накопичувачів реальний'
+            : 'ВАЖЕЛЯ НЕМАЄ: кластер рахує по черзі'),
+    )
+  }
+
+  log('')
+  log('══ вердикт ══════════════════════════════════════════════')
+  log(`  згорток на ${records} записів: ${audit.foldsFor10k} (батч ${RECIPE_BATCH})`)
+  if (audit.projectedSeconds === null) {
+    log('  проєкція:             не рахується — див. розбіжності нижче')
+  } else {
+    log(`  проєкція:             ${duration(audit.projectedSeconds * 1000)}`)
+    log(`  бюджет SC-003:        ${duration(budgetSeconds * 1000)}`)
+    // «Промах ×0,7» читається як промах, хоч означає запас. Слово міняється
+    // разом зі знаком, бо звіт читають очима, а не парсером.
+    const ratio = audit.overBudget ?? 0
+    log(
+      ratio > 1
+        ? `  промах:               ×${ratio.toFixed(1)}`
+        : `  запас:                ×${(1 / ratio).toFixed(1)}`,
+    )
+  }
+  log(`  за бюджетні ${budgetSeconds} с архітектура встигає ${audit.recordsInBudget} записів`)
+  if (audit.accumulatorsNeeded > 0) {
+    log(
+      `  одночасних накопичувачів під бюджет: ≥ ${audit.accumulatorsNeeded} ` +
+        '(нижня оцінка — вона припускає, що паралельна згортка коштує як одинока)',
+    )
+  }
+  log('')
+
+  if (audit.problems.length > 0) {
+    for (const problem of audit.problems) log(`  • ${problem}`)
+    log('')
+  }
+
+  if (audit.passed) {
+    log('  SC-003 виконано')
+  } else {
+    log('  SC-003 НЕ ВИКОНАНО')
+    process.exitCode = 1
+  }
+  log('')
+}
+
 async function main(): Promise<void> {
   const command = positionals.at(0) ?? 'e2e-buyer'
   if (command === 'e2e-buyer') return buyerPath()
   if (command === 'no-plaintext') return noPlaintext()
   if (command === 'parity') return parityCheck()
-  throw new Error(`невідома команда «${command}»: буває e2e-buyer, no-plaintext або parity`)
+  if (command === 'timing') return timingCheck()
+  throw new Error(`невідома команда «${command}»: буває e2e-buyer, no-plaintext, parity або timing`)
 }
 
 main().catch((error: unknown) => {
