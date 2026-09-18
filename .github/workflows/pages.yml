@@ -1,0 +1,91 @@
+# Deploys `apps/web` to GitHub Pages.
+#
+# What ends up on Pages is the web app alone: the API, the program and the MPC
+# cluster do not run there. Without `VITE_API_URL` the app runs on its built-in
+# fixtures and says so on screen — that is the M0 prototype, and it is an honest
+# thing to publish. Point `VITE_API_URL` at a live API (repository variable) to
+# switch the screens that already talk to it.
+#
+# One-time setup by the repository owner:
+#   Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#   Optional repository variables (Settings → Secrets and variables → Actions →
+#   Variables): VITE_API_URL, VITE_PRIVY_APP_ID, VITE_RPC_URL, PAGES_BASE_PATH.
+#   These are baked into the public bundle, so they are variables, not secrets.
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/web/**
+      - packages/shared/**
+      - packages/crypto/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push supersedes a build still in flight.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version comes from `packageManager` in package.json — one place to bump.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `vite build` does not type-check. A bundle that builds but does not
+      # type-check is exactly the kind of thing that deploys green and then
+      # renders a blank page.
+      - run: pnpm --filter @genovault/web typecheck
+      - run: pnpm --filter @genovault/web test
+
+      # Project pages live under the repository name; a custom domain lives at
+      # the root. `PAGES_BASE_PATH` overrides the default for the latter case.
+      - name: Build
+        env:
+          BASE_PATH: ${{ vars.PAGES_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_PRIVY_APP_ID: ${{ vars.VITE_PRIVY_APP_ID }}
+          VITE_RPC_URL: ${{ vars.VITE_RPC_URL }}
+        run: pnpm --filter @genovault/web build
+
+      # GitHub Pages has no SPA fallback: a deep link such as /runs/abc/1 is a
+      # file that does not exist, and Pages answers with 404.html. Serving the
+      # app itself as that page lets the router pick the path up. The status
+      # code stays 404, which is fine for an app and irrelevant for a demo.
+      - name: SPA fallback
+        run: cp apps/web/dist/index.html apps/web/dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
