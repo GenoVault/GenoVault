@@ -463,3 +463,29 @@ fn a_completed_run_is_not_settled_again() {
         "різницю повертають один раз"
     );
 }
+
+#[test]
+fn settlement_does_not_consult_the_consent() {
+    // `FR-007`: відкликання не скасовує вже завершених прогонів. Тут це
+    // доводиться не поведінкою, а складом: жодна інструкція розподілу не бере
+    // акаунта згоди, тож стан згоди — чинна, відкликана, прострочена — на
+    // нарахування вплинути не може. Фікстура згоди не має взагалі, і розподіл
+    // проходить до `Completed`.
+    let mut f = Fixture::standard();
+
+    for index in 0..f.datasets.len() {
+        let ix = f.settle_ix(index as u32, f.datasets[index], f.owners[index]);
+        for dataset in &f.datasets {
+            for version in 0..4u32 {
+                let consent = consent_pda(dataset, version);
+                assert!(
+                    ix.accounts.iter().all(|meta| meta.pubkey != consent),
+                    "розподіл не читає згоду"
+                );
+            }
+        }
+        assert!(is_success(&f.settle(index)));
+    }
+    assert!(is_success(&f.finalize()));
+    assert_eq!(f.run_state().status, RunStatus::Completed);
+}
