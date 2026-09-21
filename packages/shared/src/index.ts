@@ -127,7 +127,7 @@ export {
   runQuoteRequestSchema,
   runQuoteSchema,
 } from './quote.ts'
-export type { FrequenciesParams, Recipe } from './recipes.ts'
+export type { FrequenciesParams, Recipe, RecipeCatalog, RecipeView } from './recipes.ts'
 export {
   AGE_MAX,
   AGE_MIN,
@@ -140,7 +140,11 @@ export {
   frequenciesParamsSchema,
   RECIPE_PARAMS_LEN,
   RECIPES,
+  recipeCatalog,
+  recipeCatalogSchema,
   recipeIdSchema,
+  recipeView,
+  recipeViewSchema,
 } from './recipes.ts'
 export type {
   PlatformView,

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { BUYER_CATEGORY_NAMES, CONSENT_VIOLATIONS, USE_TYPE_NAMES } from '../src/consent.ts'
 import { MAX_MARKERS, MIN_COHORT } from '../src/dataset-metadata.ts'
 import {
   AGE_MAX,
@@ -15,6 +16,8 @@ import {
   frequenciesParamsSchema,
   RECIPE_PARAMS_LEN,
   RECIPES,
+  recipeCatalog,
+  recipeCatalogSchema,
 } from '../src/recipes.ts'
 
 const circuit = readFileSync(
@@ -172,5 +175,79 @@ describe('розбір `Run.recipe_params` назад', () => {
     raw[3] = 9
 
     expect(decodeFrequenciesParams(raw)).toMatchObject({ sex: 'any', affected: 'any' })
+  })
+})
+
+describe('каталог для клієнта (`GET /recipes`)', () => {
+  const catalog = recipeCatalog()
+
+  it('проходить власну схему і повертає той самий об’єкт щоразу', () => {
+    expect(recipeCatalogSchema.parse(catalog)).toEqual(catalog)
+    expect(recipeCatalog()).toBe(catalog)
+  })
+
+  it('перелічує рівно ті рецепти, що в `RECIPES`, у тому ж порядку', () => {
+    expect(catalog.recipes.map((recipe) => recipe.id)).toEqual(RECIPES.map((recipe) => recipe.id))
+    expect(catalog.recipes.map((recipe) => recipe.name)).toEqual(
+      RECIPES.map((recipe) => recipe.name),
+    )
+  })
+
+  it('словники згоди — це `USE_TYPE_NAMES` і `BUYER_CATEGORY_NAMES`, а не копія', () => {
+    // Тип, доданий у `consent.ts`, з’являється тут сам. Копія списку в цьому
+    // файлі була б третім місцем, де словник може розійтись із програмою.
+    expect(catalog.useTypes).toEqual(USE_TYPE_NAMES)
+    expect(catalog.buyerCategories).toEqual(BUYER_CATEGORY_NAMES)
+    expect(catalog.consentViolations).toEqual(CONSENT_VIOLATIONS)
+  })
+
+  it('не віддає бітів — на межі API їздять назви', () => {
+    expect(JSON.stringify(catalog)).not.toMatch(/"bit"|"mask"/)
+  })
+
+  it('параметри «частот» — JSON Schema у формі вводу: кожне поле має default', () => {
+    const view = catalog.recipes.find((recipe) => recipe.id === FREQUENCIES_RECIPE_ID)
+    const params = view?.params as {
+      type: string
+      properties: Record<string, { default?: unknown }>
+      required?: string[]
+      additionalProperties: boolean
+    }
+
+    // Ті самі поля, що підставляє `prefault`: клієнт може побудувати форму з
+    // самої схеми, і значення за замовчуванням у ній ті ж, що на сервері.
+    const defaults = frequenciesParamsSchema.parse({})
+    expect(Object.keys(params.properties).sort()).toEqual(Object.keys(defaults).sort())
+    for (const [field, value] of Object.entries(defaults)) {
+      expect(params.properties[field]?.default).toEqual(value)
+    }
+    expect(params.required).toBeUndefined()
+    // Параметр поза словником — 400 на квоті, і схема каже це заздалегідь.
+    expect(params.additionalProperties).toBe(false)
+  })
+
+  it('опущено рівно перехресне правило віку — і нічого більше', () => {
+    // `z.toJSONSchema` мовчки викидає `refine`. Тест тримає межу чесності
+    // каталогу: він не обіцяє, що вікно з `minAge > maxAge` пройде, і не
+    // втрачає жодного поля. Якщо рецепт колись отримає друге перехресне
+    // правило, цей тест його назве, а не пропустить.
+    const view = catalog.recipes.find((recipe) => recipe.id === FREQUENCIES_RECIPE_ID)
+    const params = view?.params as { properties: Record<string, unknown> }
+
+    const reversed = { minAge: 40, maxAge: 30 }
+    // Кожне поле окремо — у межах схеми…
+    for (const [field, value] of Object.entries(reversed)) {
+      const property = params.properties[field] as { minimum: number; maximum: number }
+      expect(value).toBeGreaterThanOrEqual(property.minimum)
+      expect(value).toBeLessThanOrEqual(property.maximum)
+    }
+    // …а разом сервер їх відхиляє, і саме це у каталозі не сказано.
+    expect(frequenciesParamsSchema.safeParse(reversed).success).toBe(false)
+  })
+
+  it('рецепт із невідомим номером у каталог не потрапляє', () => {
+    for (const view of catalog.recipes) {
+      expect(findRecipe(view.id)?.name).toBe(view.name)
+    }
   })
 })

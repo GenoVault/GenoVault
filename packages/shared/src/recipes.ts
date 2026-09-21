@@ -1,4 +1,11 @@
 import { z } from 'zod'
+import {
+  BUYER_CATEGORY_NAMES,
+  buyerCategorySchema,
+  CONSENT_VIOLATIONS,
+  USE_TYPE_NAMES,
+  useTypeSchema,
+} from './consent.ts'
 import { MAX_MARKERS, MIN_COHORT } from './dataset-metadata.ts'
 
 /**
@@ -157,4 +164,84 @@ export function decodeFrequenciesParams(raw: Uint8Array): FrequenciesParams {
     sex: sex === 0 ? 'female' : sex === 1 ? 'male' : 'any',
     affected: affected === 0 ? 'unaffected' : affected === 1 ? 'affected' : 'any',
   }
+}
+
+/**
+ * Каталог, яким рецепти й словники згоди їдуть клієнту — `GET /recipes`
+ * (`T035`, `FR-005`, `FR-011`).
+ *
+ * # Чому словники згоди лежать поруч із рецептами
+ *
+ * Форма замовлення й форма згоди складаються з тих самих трьох списків: що
+ * рахувати, навіщо і хто. Без цього маршруту клієнт тримав би копію словника в
+ * собі — і саме так живе `apps/web` на моках, де `USE_TYPES` переписані
+ * вручну. Копія розходиться з програмою не тоді, коли її пишуть, а тоді, коли
+ * в програму додають тип: власник у застарілому клієнті не зможе його
+ * дозволити, а покупець — замовити. Один маршрут, одне джерело.
+ *
+ * # Чому назви, а не біти
+ *
+ * На межі API їздить назва, не бітмаска (див. `useTypeSchema`), і каталог
+ * тримається того самого правила: біт — деталь розкладки акаунта, і клієнту
+ * він не потрібен ні для згоди, ні для замовлення. Хто читає ланцюг напряму,
+ * бере біти з `USE_TYPES`, а не з відповіді сервера.
+ *
+ * # Параметри рецепта — JSON Schema у формі **вводу**
+ *
+ * Клієнту потрібно побудувати форму, а не перевірити відповідь, тож схема
+ * віддається з `default` і без `required`: поле, якого не прислали, підставить
+ * `prefault` на сервері. Що в цій формі **не** видно — перехресні правила на
+ * кшталт «нижня межа віку ≤ верхньої»: JSON Schema їх не виражає, і
+ * `z.toJSONSchema` мовчки їх опускає. Їх перевіряє `POST /runs/quote` і
+ * називає в `400`; каталог цього не обіцяє, і тест нижче тримає, що опущено
+ * рівно це, а не якесь поле.
+ */
+export const recipeViewSchema = z.strictObject({
+  id: recipeIdSchema,
+  name: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  markers: z.number().int().positive(),
+  minCohort: z.number().int().positive(),
+  params: z.record(z.string(), z.unknown()),
+})
+
+export type RecipeView = z.infer<typeof recipeViewSchema>
+
+export const recipeCatalogSchema = z.strictObject({
+  recipes: z.array(recipeViewSchema).min(1),
+  useTypes: z.array(useTypeSchema).min(1),
+  buyerCategories: z.array(buyerCategorySchema).min(1),
+  consentViolations: z.array(z.enum(CONSENT_VIOLATIONS)).min(1),
+})
+
+export type RecipeCatalog = z.infer<typeof recipeCatalogSchema>
+
+export function recipeView(recipe: Recipe): RecipeView {
+  return {
+    id: recipe.id,
+    name: recipe.name,
+    title: recipe.title,
+    description: recipe.description,
+    markers: recipe.markers,
+    minCohort: recipe.minCohort,
+    params: z.toJSONSchema(recipe.params, { io: 'input' }),
+  }
+}
+
+/**
+ * Каталог складається з констант і не залежить ані від мережі, ані від часу,
+ * тож рахується один раз. `parse` тут — не перестраховка: він тримає, що те,
+ * що ми віддаємо, проходить ту саму схему, якою клієнт це читатиме.
+ */
+let cached: RecipeCatalog | undefined
+
+export function recipeCatalog(): RecipeCatalog {
+  cached ??= recipeCatalogSchema.parse({
+    recipes: RECIPES.map(recipeView),
+    useTypes: [...USE_TYPE_NAMES],
+    buyerCategories: [...BUYER_CATEGORY_NAMES],
+    consentViolations: [...CONSENT_VIOLATIONS],
+  })
+  return cached
 }

@@ -6,6 +6,7 @@ import { fail } from './errors.ts'
 import type { AuthVariables } from './middleware/auth.ts'
 import { datasetRoutes } from './routes/datasets.ts'
 import { platformRoutes } from './routes/platform.ts'
+import { recipeRoutes } from './routes/recipes.ts'
 import { runRoutes } from './routes/runs.ts'
 import { sessionRoutes } from './routes/session.ts'
 import type { TokenVerifier } from './services/auth.ts'
@@ -89,6 +90,7 @@ export function createApp(deps: AppDeps = {}) {
     }),
   )
   app.route('/', platformRoutes({ readPlatform: deps.readPlatform, dispatcher: deps.dispatcher }))
+  app.route('/', recipeRoutes())
 
   app.notFound((c) => fail(c, 'NOT_FOUND', 'маршрут не знайдено'))
 

@@ -403,6 +403,11 @@ function probes(): { label: string; route: string; run: () => Promise<Response> 
       run: async () => app.request('/platform'),
     },
     {
+      label: 'каталог рецептів і словники згоди',
+      route: 'GET /recipes',
+      run: async () => app.request('/recipes'),
+    },
+    {
       label: 'замовлення прогону',
       route: 'POST /runs',
       run: async () =>
