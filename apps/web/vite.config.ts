@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 /**
@@ -10,6 +10,24 @@ import { defineConfig } from 'vite'
  * жорсткіше: `vite@8.0.8` залежить від `rolldown`, а його нативний бінарник
  * блокує Smart App Control цієї машини — рівно те, через що ми тримаємо
  * Vitest на 3.x.
+ */
+/**
+ * Плагін React на Babel, а не на SWC (`T038`, 2026-09-23).
+ *
+ * `@vitejs/plugin-react-swc` тягне нативний `@swc/core-win32-x64-msvc`, і з
+ * 2026-09-22 Smart App Control цієї машини його блокує
+ * (`An Application Control policy has blocked this file`). Падав не окремий
+ * крок, а завантаження **цього файла**: ні `vite build`, ні `vite dev`, ні
+ * `vitest` в `apps/web` не стартували взагалі. Третій випадок поспіль після
+ * Vitest 4 (rolldown) і Vite 8.
+ *
+ * Вимкнути Smart App Control — не варіант: він не має вибіркового дозволу, а
+ * після вимкнення вмикається лише перевстановленням Windows. Babel-версія
+ * нативного бінарника не має зовсім, дає той самий Fast Refresh і той самий
+ * автоматичний JSX-рантайм, і коштує лише швидкості перетворення. Версія 5.2.0,
+ * а не 6.x: шоста вимагає Vite 8, який ми не беремо.
+ *
+ * CI від цього не залежав і не залежить — на Linux блокування немає.
  */
 /**
  * Базовий шлях збірки.

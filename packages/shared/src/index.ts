@@ -106,6 +106,15 @@ export {
   u64StringSchema,
   u128StringSchema,
 } from './primitives.ts'
+export type { ProgramErrorName, ProgramRefusal } from './program-errors.ts'
+export {
+  consentViolationOf,
+  customProgramErrorCode,
+  PROGRAM_ADDRESS,
+  PROGRAM_ERRORS,
+  programErrorByCode,
+  programRefusal,
+} from './program-errors.ts'
 export type {
   QuoteBlocker,
   QuoteIneligibleReason,

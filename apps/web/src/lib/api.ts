@@ -4,7 +4,9 @@ import {
   type DatasetList,
   datasetListSchema,
   type PlatformView,
+  type ProgramRefusal,
   platformViewSchema,
+  programRefusal,
   type RunOrder,
   type RunQuote,
   type RunView,
@@ -13,6 +15,7 @@ import {
   runViewSchema,
 } from '@genovault/shared'
 import type { z } from 'zod'
+import { BLOCKER_TEXT, REASON_TEXT } from '@/lib/format'
 
 /**
  * Клієнт `apps/api` (`T029`).
@@ -208,12 +211,62 @@ export async function getDatasets(options: ApiOptions = {}): Promise<DatasetList
 }
 
 /**
+ * Відмова самого ланцюга — названим обмеженням, а не кодом (`FR-008`, `T038`).
+ *
+ * Гаманець кидає `custom program error: 0x177c`, і до `T038` це доходило до
+ * екрана як `INTERNAL` із сирим текстом: обмеження називала програма, а продукт
+ * — ні. Ім'я береться з таблиці IDL (`programRefusal`), текст — із того самого
+ * словника причин, яким квота пояснює непридатний датасет. Другого словника тут
+ * навмисно немає: покупець має читати про відкликану згоду однаково і до
+ * підпису, і після.
+ *
+ * Код відповіді вибирається лише заради поведінки екрана — `ErrorBlock`
+ * пропонує повтор на одних кодах і не пропонує на інших. Відмова програми не
+ * лікується повтором **жодна**, тож усе, що не `CONSENT_VIOLATION` і не
+ * `PLATFORM_PAUSED`, лишається `INTERNAL`: вигадувати під кожен варіант окремий
+ * код означало б обіцяти екрану розрізнення, якого в ньому немає.
+ */
+function fromRefusal(refusal: ProgramRefusal): ApiError['error'] {
+  const details: Record<string, unknown> = {
+    refusal: 'program-error',
+    code: `0x${refusal.code.toString(16)}`,
+    name: refusal.name,
+    // Повідомлення самої програми — те, що покаже й експлорер.
+    msg: refusal.msg,
+  }
+
+  if (refusal.violation !== null) {
+    details.constraint = refusal.violation
+    return {
+      code: 'CONSENT_VIOLATION',
+      message: `The chain refused the order. ${REASON_TEXT[refusal.violation]}.`,
+      details,
+    }
+  }
+
+  if (refusal.name === 'platformPaused') {
+    return { code: 'PLATFORM_PAUSED', message: `${BLOCKER_TEXT['platform-paused']}.`, details }
+  }
+
+  return {
+    code: 'INTERNAL',
+    message: `The chain refused the transaction: ${refusal.name}.`,
+    details,
+  }
+}
+
+/**
  * Будь-яка невдача → форма, яку вміє показати `ErrorBlock`.
  *
  * Екрани показують помилки одним компонентом, і він розрізняє коди: на
  * `UPSTREAM_UNAVAILABLE` пропонує повтор, на `CONSENT_VIOLATION` — ні. Тому
  * назовні з клієнта йде не рядок, а код із повідомленням: рядок змусив би
  * екран вгадувати, що саме сталося, за текстом.
+ *
+ * Порядок розбору: спершу відповідь API (вона вже несе код), потім відмова
+ * ланцюга, і лише потім усе інше. Навпаки не можна — `ApiRequestError` теж
+ * буває з текстом, у якому трапляється код програми, і розбір ланцюга затер би
+ * код, який сервер уже назвав.
  */
 export function toApiError(error: unknown): ApiError['error'] {
   if (error instanceof ApiRequestError) {
@@ -222,6 +275,10 @@ export function toApiError(error: unknown): ApiError['error'] {
       ? { code, message: error.message }
       : { code, message: error.message, details: error.details }
   }
+
+  const refusal = programRefusal(error)
+  if (refusal !== null) return fromRefusal(refusal)
+
   return {
     code: 'INTERNAL',
     message: error instanceof Error ? error.message : 'невідома помилка',
