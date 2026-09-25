@@ -418,6 +418,22 @@ describe('непридатний датасет позначається, а н�
     expect(line?.eligible === false ? line.reason : undefined).toBe(reason)
   })
 
+  it('the deadline is judged by chain time, not by the server clock', async () => {
+    // The negative control for the expired case above: there the deadline lies
+    // in the past for both clocks, so swapping `state.now` for `Date.now()`
+    // would have gone unnoticed. Here it lies inside the gap between them — the
+    // chain says still valid, the machine's clock would say lapsed.
+    const body = await withBeta({
+      ...chainDataset(BETA),
+      consent: { ...CONSENT, expiresAt: NOW + 1n },
+    })
+
+    expect(body.datasets[1]?.eligible).toBe(true)
+    // The premise, not a spare assertion: move NOW into the future and the gap
+    // is gone, and the line above starts passing on either clock.
+    expect(NOW).toBeLessThan(BigInt(Math.floor(Date.now() / 1000)))
+  })
+
   it('зареєстрований датасет без байтів не рахується', async () => {
     // Прогін по ньому впав би на публікації в MPC, а не на перевірці згоди.
     readQuoteChain.mockImplementation(async () =>
