@@ -23,6 +23,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Connection, PublicKey } from '@solana/web3.js'
+import { auditConsentMatrix, readFixture, readReport } from './consent-matrix.ts'
 import type { Audit } from './e2e-buyer.ts'
 import { auditBuyerPath, fetchMxePublicKey } from './e2e-buyer.ts'
 import { hex } from './fold-chain.ts'
@@ -36,6 +37,8 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     report: { type: 'string' },
+    /** `sc004`: the consent matrix the report was driven from. */
+    matrix: { type: 'string', default: 'fixtures/consent-matrix.json' },
     corpus: { type: 'string' },
     rpc: { type: 'string' },
     run: { type: 'string' },
@@ -704,13 +707,72 @@ async function timingCheck(): Promise<void> {
   log('')
 }
 
+/**
+ * `SC-004`: the consent matrix, judged from the chain (`T041`).
+ *
+ * ```bash
+ * node --experimental-strip-types tools/audit-verify/src/cli.ts sc004 \
+ *   --report artifacts/sc004/report.json --rpc http://127.0.0.1:8899
+ * ```
+ */
+async function consentMatrix(): Promise<void> {
+  if (values.report === undefined) throw new Error('need the driver report: --report <path>')
+  const fixture = readFixture(JSON.parse(await readFile(resolve(values.matrix), 'utf8')))
+  const report = readReport(JSON.parse(await readFile(resolve(values.report), 'utf8')))
+  const connection = new Connection(values.rpc ?? 'http://127.0.0.1:8899', 'confirmed')
+
+  const audit = await auditConsentMatrix(connection, fixture, report)
+
+  log('')
+  log('== SC-004: consent matrix =================================')
+  log(`  program:   ${report.programId}`)
+  log(`  examined:  ${audit.examined} of ${audit.expected} scenarios (count from the fixture)`)
+  log('')
+  log('  scenario                                   label    chain    reason                API')
+  for (const judgement of audit.judgements) {
+    const flags = [
+      judgement.falsePass ? 'FALSE PASS' : null,
+      judgement.falseRefusal ? 'FALSE REFUSAL' : null,
+      judgement.wrongReason ? `WRONG REASON (want ${judgement.expectedReason})` : null,
+      judgement.apiFalsePass ? 'API FALSE PASS' : null,
+      judgement.apiFalseRefusal ? 'API FALSE REFUSAL' : null,
+      judgement.apiWrongReason ? `API WRONG REASON (${judgement.apiReasons.join(',')})` : null,
+    ].filter((flag) => flag !== null)
+    log(
+      `  ${judgement.id.padEnd(42)} ${judgement.label.padEnd(8)} ` +
+        `${(judgement.chain ?? '—').padEnd(8)} ${(judgement.chainReason ?? '').padEnd(21)} ` +
+        `${judgement.api.padEnd(8)} ${flags.join(' · ')}`,
+    )
+    for (const gap of judgement.gaps) log(`      not examined: ${gap}`)
+  }
+  log('')
+  log(
+    `  chain:  false passes ${audit.chain.falsePasses} · false refusals ${audit.chain.falseRefusals}` +
+      ` · wrong reasons ${audit.chain.wrongReasons}`,
+  )
+  log(
+    `  API:    false passes ${audit.api.falsePasses} · false refusals ${audit.api.falseRefusals}` +
+      ` · wrong reasons ${audit.api.wrongReasons}  (reported by the driver)`,
+  )
+  log('')
+  if (audit.passed) log('  SC-004 MET')
+  else {
+    log('  SC-004 NOT MET')
+    process.exitCode = 1
+  }
+  log('')
+}
+
 async function main(): Promise<void> {
   const command = positionals.at(0) ?? 'e2e-buyer'
+  if (command === 'sc004') return consentMatrix()
   if (command === 'e2e-buyer') return buyerPath()
   if (command === 'no-plaintext') return noPlaintext()
   if (command === 'parity') return parityCheck()
   if (command === 'timing') return timingCheck()
-  throw new Error(`невідома команда «${command}»: буває e2e-buyer, no-plaintext, parity або timing`)
+  throw new Error(
+    `unknown command "${command}": expected e2e-buyer, no-plaintext, parity, timing or sc004`,
+  )
 }
 
 main().catch((error: unknown) => {

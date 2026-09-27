@@ -22,6 +22,7 @@
     "@genovault/gen-dataset": "workspace:*",
     "@genovault/run-dispatcher": "workspace:*",
     "@genovault/sdk": "workspace:*",
+    "@genovault/shared": "workspace:*",
     "typescript": "5.9.3",
     "vitest": "3.2.7"
   }

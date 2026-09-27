@@ -57,6 +57,25 @@ import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3
  */
 export type { UnsignedAccount, UnsignedInstruction }
 
+/**
+ * Commitment of every chain read in this module — `confirmed`, and named.
+ *
+ * Everything the API reads here feeds an answer given *before* the buyer or
+ * the owner signs: the quote, the order, the registration. The program then
+ * judges the transaction against the bank it executes in, and the closest
+ * state the API can read of that bank is `confirmed`. Left unnamed, web3.js
+ * falls back to `finalized`, which trails it by ~31 slots — on the stand that
+ * was 13 s during which a revoked consent still quoted as allowed, an expired
+ * one still produced an order, and a fresh consent version was ordered against
+ * the old one (`T041`). Finality protects against a fork, and the API decides
+ * nothing a fork could undo: the program decides, on its own bank.
+ */
+export const CHAIN_READ_COMMITMENT = 'confirmed' as const
+
+export function chainConnection(rpcUrl: string): Connection {
+  return new Connection(rpcUrl, CHAIN_READ_COMMITMENT)
+}
+
 export interface RegistrationParams {
   owner: SolanaAddress
   datasetId: DatasetId
@@ -108,7 +127,7 @@ export function encodeInstruction(instruction: TransactionInstruction): Unsigned
  * частина провайдера, і саме тому провайдер тут без гаманця (`ReadProvider`).
  */
 export function createRegistrationBuilder(rpcUrl: string): RegistrationBuilder {
-  const program = createProgram({ connection: new Connection(rpcUrl) })
+  const program = createProgram({ connection: chainConnection(rpcUrl) })
 
   return async (params) => {
     const owner = new PublicKey(params.owner)
@@ -142,7 +161,7 @@ export function createRegistrationBuilder(rpcUrl: string): RegistrationBuilder {
 export type ChainReader = (owner: SolanaAddress, datasetId: DatasetId) => Promise<ChainView>
 
 export function createChainReader(rpcUrl: string): ChainReader {
-  const program = createProgram({ connection: new Connection(rpcUrl) })
+  const program = createProgram({ connection: chainConnection(rpcUrl) })
 
   return async (owner, datasetId) => {
     const address = datasetAddress(new PublicKey(owner), datasetId, program.programId).address
@@ -264,7 +283,7 @@ export interface QuoteChainState {
 export type QuoteChainReader = (refs: readonly RunDatasetRef[]) => Promise<QuoteChainState>
 
 export function createQuoteChainReader(rpcUrl: string): QuoteChainReader {
-  const connection = new Connection(rpcUrl)
+  const connection = chainConnection(rpcUrl)
   const program = createProgram({ connection })
 
   return async (refs) => {
@@ -373,7 +392,7 @@ export interface PlatformState {
 export type PlatformReader = () => Promise<PlatformState>
 
 export function createPlatformReader(rpcUrl: string): PlatformReader {
-  const program = createProgram({ connection: new Connection(rpcUrl) })
+  const program = createProgram({ connection: chainConnection(rpcUrl) })
 
   return async () => {
     let config: Awaited<ReturnType<typeof fetchPlatformConfig>>
@@ -434,7 +453,7 @@ export type RunOrderBuilder = (params: RunOrderParams) => Promise<RunOrderBuild>
  * інструкція, мусять бути одним читанням.
  */
 export function createRunOrderBuilder(rpcUrl: string): RunOrderBuilder {
-  const program = createProgram({ connection: new Connection(rpcUrl) })
+  const program = createProgram({ connection: chainConnection(rpcUrl) })
 
   return async (params) => {
     const buyer = new PublicKey(params.buyer)
@@ -484,7 +503,7 @@ export type RunReader = (buyer: SolanaAddress, nonce: bigint) => Promise<RunChai
  * на відміну від картки датасету, показати з дзеркала нема чого.
  */
 export function createRunReader(rpcUrl: string): RunReader {
-  const program = createProgram({ connection: new Connection(rpcUrl) })
+  const program = createProgram({ connection: chainConnection(rpcUrl) })
 
   return async (buyer, nonce) => {
     const address = runAddress(new PublicKey(buyer), nonce, program.programId).address

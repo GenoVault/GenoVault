@@ -24,8 +24,10 @@ import { AnchorProvider, Wallet } from '@anchor-lang/core'
 import type { GenoVaultProgram } from '@genovault/sdk'
 import { createProgram, PROGRAM_ID } from '@genovault/sdk'
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js'
+import { startApiStand } from './api-stand.ts'
 import { loadArciumContext } from './arcium.ts'
 import { bootstrapCircuits, bootstrapPlatform, fundBuyer } from './bootstrap.ts'
+import { consentMatrixSchema, runConsentMatrix } from './consent-matrix.ts'
 import { buildCorpus } from './corpus.ts'
 import type { Progress } from './drive.ts'
 import { drive } from './drive.ts'
@@ -73,6 +75,9 @@ const { values, positionals } = parseArgs({
     'wave-levels': { type: 'string', default: '1,2,4' },
     /** `sc003`: негативний контроль — відома затримка в циклі згортки. */
     'stall-ms': { type: 'string', default: '0' },
+    /** `sc004`: the consent matrix and the port of the API server it starts. */
+    matrix: { type: 'string', default: 'fixtures/consent-matrix.json' },
+    'api-port': { type: 'string', default: '8879' },
   },
 })
 
@@ -299,8 +304,58 @@ async function sc003(
   log(`  node --experimental-strip-types tools/audit-verify/src/cli.ts timing --corpus ${out}`)
 }
 
+/**
+ * The consent matrix, `SC-004` (`T041`).
+ *
+ * ```bash
+ * # a bare validator first: scripts/validator.sh (no Arcium, no Docker)
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts sc004 \
+ *   --out artifacts/sc004/report.json
+ * ```
+ *
+ * Starts the real API server against the validator, seeds every dataset of the
+ * matrix through it and orders every scenario on both layers. Like the other
+ * `sc*` commands it measures nothing: `tools/audit-verify sc004` does, from the
+ * chain. The platform authority is generated here — the ledger is fresh, and a
+ * wallet from disk would tie the run to a machine for no reason.
+ */
+async function sc004(connection: Connection): Promise<void> {
+  const matrix = consentMatrixSchema.parse(
+    JSON.parse(await readFile(resolve(values.matrix), 'utf8')),
+  )
+  const out = resolve(values.out)
+  const api = await startApiStand({
+    repoRoot: resolve('.'),
+    workDir: join(dirname(out), 'api'),
+    rpcUrl: values.rpc,
+    port: Number(values['api-port']),
+    onLog: (line) => log(`  api: ${line}`),
+  })
+  log(`API server up at ${api.url}`)
+
+  try {
+    const report = await runConsentMatrix({
+      connection,
+      program: createProgram({ connection }),
+      api,
+      matrix,
+      authority: Keypair.generate(),
+      onProgress: (note) => log(`  ${note}`),
+    })
+    await mkdir(dirname(out), { recursive: true })
+    await writeFile(out, `${JSON.stringify(report, null, 2)}\n`)
+    log(`\nreport: ${out} · ${report.scenarios.length} scenarios`)
+  } finally {
+    await api.stop()
+  }
+}
+
 async function main(): Promise<void> {
   const connection = new Connection(values.rpc, 'confirmed')
+  if (command === 'sc004') {
+    await sc004(connection)
+    return
+  }
   const payer = await loadWallet(values.wallet)
   const provider = new AnchorProvider(connection, new Wallet(payer), {
     commitment: 'confirmed',
@@ -345,7 +400,9 @@ async function main(): Promise<void> {
   }
 
   if (command !== 'e2e') {
-    throw new Error(`невідома команда «${command}»: буває e2e, drive, sc001, sc002 або sc003`)
+    throw new Error(
+      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003 or sc004`,
+    )
   }
 
   const sizes = values.sizes?.split(',').map((part) => Number(part.trim()))

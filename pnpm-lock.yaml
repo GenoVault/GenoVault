@@ -230,6 +230,9 @@ importers:
       '@genovault/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@genovault/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       typescript:
         specifier: 5.9.3
         version: 5.9.3

@@ -1,0 +1,445 @@
+{
+  "criterion": "SC-004",
+  "note": "Twenty consent scenarios, ten allowed and ten refused. Every label is written from the owner's intent in words, not computed by any code in this repository: a label derived from checkConsent or Consent::check would only prove that the code agrees with itself. `reason` is the constraint a refusal must name (FR-008), in the vocabulary of packages/shared CONSENT_VIOLATIONS. Every dataset in a scenario is its own: no two scenarios share a consent, so one scenario cannot pass on another's setup. `expiresInSeconds` is counted from the chain clock at the moment the consent is written; `orderAfterDeadline` makes the order wait until the chain clock has passed every deadline written in the scenario.",
+  "scenarios": [
+    {
+      "id": "exact-match",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner allows oncology research by academic buyers. An academic buyer orders oncology.",
+      "pool": [
+        {
+          "dataset": "sc004-exact",
+          "history": [
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "one-of-several-uses",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner allows oncology, cardiology and rare disease research by academics. An academic buyer orders cardiology.",
+      "pool": [
+        {
+          "dataset": "sc004-several-uses",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["oncology", "cardiology", "rareDisease"],
+                "forbidden": [],
+                "categories": ["academic"]
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "cardiology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "everything-but-pharma",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner allows every use to every buyer except commercial pharma. A commercial buyer orders rare disease research.",
+      "pool": [
+        {
+          "dataset": "sc004-all-but-pharma",
+          "history": [
+            {
+              "consent": {
+                "allowed": [
+                  "oncology",
+                  "cardiology",
+                  "rareDisease",
+                  "populationGenetics",
+                  "pharmaCommercial"
+                ],
+                "forbidden": ["pharmaCommercial"],
+                "categories": ["academic", "nonProfit", "commercial", "government"]
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "rareDisease", "buyerCategory": "commercial" }
+    },
+    {
+      "id": "before-the-deadline",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner allows population genetics to academics for one hour. An academic buyer orders it inside that hour.",
+      "pool": [
+        {
+          "dataset": "sc004-before-deadline",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["populationGenetics"],
+                "forbidden": [],
+                "categories": ["academic"],
+                "expiresInSeconds": 3600
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "populationGenetics", "buyerCategory": "academic" }
+    },
+    {
+      "id": "one-of-several-categories",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner allows oncology to academic and non-profit buyers. A non-profit buyer orders oncology.",
+      "pool": [
+        {
+          "dataset": "sc004-several-categories",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["oncology"],
+                "forbidden": [],
+                "categories": ["academic", "nonProfit"]
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "nonProfit" }
+    },
+    {
+      "id": "consent-given-again-after-revocation",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner revoked consent, then gave it again on the same terms. An academic buyer orders oncology after that.",
+      "pool": [
+        {
+          "dataset": "sc004-given-again",
+          "history": [
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } },
+            { "revoke": true },
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "widened-by-a-new-version",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner first allowed only oncology, then published a version that adds cardiology. An academic buyer orders cardiology.",
+      "pool": [
+        {
+          "dataset": "sc004-widened",
+          "history": [
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } },
+            {
+              "consent": {
+                "allowed": ["oncology", "cardiology"],
+                "forbidden": [],
+                "categories": ["academic"]
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "cardiology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "three-owners-agree",
+      "label": "allowed",
+      "reason": null,
+      "intent": "Three owners, three different consents, and every one of them allows population genetics to government buyers. A government buyer orders a run over all three.",
+      "pool": [
+        {
+          "dataset": "sc004-agree-a",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["populationGenetics"],
+                "forbidden": [],
+                "categories": ["government"]
+              }
+            }
+          ]
+        },
+        {
+          "dataset": "sc004-agree-b",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["populationGenetics", "oncology"],
+                "forbidden": [],
+                "categories": ["government", "academic"]
+              }
+            }
+          ]
+        },
+        {
+          "dataset": "sc004-agree-c",
+          "history": [
+            {
+              "consent": {
+                "allowed": [
+                  "oncology",
+                  "cardiology",
+                  "rareDisease",
+                  "populationGenetics",
+                  "pharmaCommercial"
+                ],
+                "forbidden": ["pharmaCommercial"],
+                "categories": ["government", "nonProfit"]
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "populationGenetics", "buyerCategory": "government" }
+    },
+    {
+      "id": "a-prohibition-that-does-not-apply",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner allows oncology and cardiology to commercial buyers and forbids commercial pharma outright. A commercial buyer orders cardiology.",
+      "pool": [
+        {
+          "dataset": "sc004-other-prohibition",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["oncology", "cardiology"],
+                "forbidden": ["pharmaCommercial"],
+                "categories": ["commercial"]
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "cardiology", "buyerCategory": "commercial" }
+    },
+    {
+      "id": "deadline-lifted-by-a-new-version",
+      "label": "allowed",
+      "reason": null,
+      "intent": "The owner first gave consent with a short deadline, then replaced it with a version without one. An academic buyer orders after the old deadline has passed.",
+      "pool": [
+        {
+          "dataset": "sc004-deadline-lifted",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["oncology"],
+                "forbidden": [],
+                "categories": ["academic"],
+                "expiresInSeconds": 30
+              }
+            },
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "academic", "orderAfterDeadline": true }
+    },
+    {
+      "id": "use-not-allowed",
+      "label": "refused",
+      "reason": "use-not-allowed",
+      "intent": "The owner allows oncology to academics and said nothing about cardiology. An academic buyer orders cardiology.",
+      "pool": [
+        {
+          "dataset": "sc004-use-not-allowed",
+          "history": [
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        }
+      ],
+      "order": { "useType": "cardiology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "use-forbidden",
+      "label": "refused",
+      "reason": "use-forbidden",
+      "intent": "The owner allows everything to everyone except commercial pharma, which is forbidden outright. A commercial buyer orders commercial pharma.",
+      "pool": [
+        {
+          "dataset": "sc004-use-forbidden",
+          "history": [
+            {
+              "consent": {
+                "allowed": [
+                  "oncology",
+                  "cardiology",
+                  "rareDisease",
+                  "populationGenetics",
+                  "pharmaCommercial"
+                ],
+                "forbidden": ["pharmaCommercial"],
+                "categories": ["academic", "nonProfit", "commercial", "government"]
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "pharmaCommercial", "buyerCategory": "commercial" }
+    },
+    {
+      "id": "category-not-allowed",
+      "label": "refused",
+      "reason": "category-not-allowed",
+      "intent": "The owner allows oncology to academics only. A commercial buyer orders oncology.",
+      "pool": [
+        {
+          "dataset": "sc004-category",
+          "history": [
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "commercial" }
+    },
+    {
+      "id": "revoked",
+      "label": "refused",
+      "reason": "revoked",
+      "intent": "The owner allowed oncology to academics and then revoked consent. An academic buyer orders oncology after the revocation.",
+      "pool": [
+        {
+          "dataset": "sc004-revoked",
+          "history": [
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } },
+            { "revoke": true }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "expired",
+      "label": "refused",
+      "reason": "expired",
+      "intent": "The owner allowed oncology to academics with a short deadline. An academic buyer orders after the deadline has passed.",
+      "pool": [
+        {
+          "dataset": "sc004-expired",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["oncology"],
+                "forbidden": [],
+                "categories": ["academic"],
+                "expiresInSeconds": 30
+              }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "academic", "orderAfterDeadline": true }
+    },
+    {
+      "id": "no-consent",
+      "label": "refused",
+      "reason": "no-consent",
+      "intent": "The owner registered the dataset and never gave consent for anything. An academic buyer orders oncology.",
+      "pool": [{ "dataset": "sc004-no-consent", "history": [] }],
+      "order": { "useType": "oncology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "narrowed-by-a-new-version",
+      "label": "refused",
+      "reason": "use-not-allowed",
+      "intent": "The owner first allowed oncology and cardiology, then published a version that keeps only oncology. An academic buyer orders cardiology.",
+      "pool": [
+        {
+          "dataset": "sc004-narrowed",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["oncology", "cardiology"],
+                "forbidden": [],
+                "categories": ["academic"]
+              }
+            },
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        }
+      ],
+      "order": { "useType": "cardiology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "one-owner-in-the-pool-says-no",
+      "label": "refused",
+      "reason": "use-not-allowed",
+      "intent": "Two owners in one pool: the first allows oncology to academics, the second allows only cardiology. An academic buyer orders oncology over both.",
+      "pool": [
+        {
+          "dataset": "sc004-mixed-yes",
+          "history": [
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        },
+        {
+          "dataset": "sc004-mixed-no",
+          "history": [
+            {
+              "consent": { "allowed": ["cardiology"], "forbidden": [], "categories": ["academic"] }
+            }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "latest-version-revoked",
+      "label": "refused",
+      "reason": "revoked",
+      "intent": "The owner first allowed everything to everyone, then narrowed it to oncology for academics, then revoked. An academic buyer orders oncology; the permissive first version is still on the chain.",
+      "pool": [
+        {
+          "dataset": "sc004-latest-revoked",
+          "history": [
+            {
+              "consent": {
+                "allowed": [
+                  "oncology",
+                  "cardiology",
+                  "rareDisease",
+                  "populationGenetics",
+                  "pharmaCommercial"
+                ],
+                "forbidden": [],
+                "categories": ["academic", "nonProfit", "commercial", "government"]
+              }
+            },
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } },
+            { "revoke": true }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "academic" }
+    },
+    {
+      "id": "category-withdrawn-by-a-new-version",
+      "label": "refused",
+      "reason": "category-not-allowed",
+      "intent": "The owner first allowed oncology to academic and commercial buyers, then published a version for academics only. A commercial buyer orders oncology.",
+      "pool": [
+        {
+          "dataset": "sc004-category-withdrawn",
+          "history": [
+            {
+              "consent": {
+                "allowed": ["oncology"],
+                "forbidden": [],
+                "categories": ["academic", "commercial"]
+              }
+            },
+            { "consent": { "allowed": ["oncology"], "forbidden": [], "categories": ["academic"] } }
+          ]
+        }
+      ],
+      "order": { "useType": "oncology", "buyerCategory": "commercial" }
+    }
+  ]
+}
