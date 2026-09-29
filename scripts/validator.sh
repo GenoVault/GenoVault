@@ -41,9 +41,22 @@ if [ ! -f "$SO_PATH" ]; then
 fi
 
 # Port 8899 is shared with `arcium localnet` and with other Arena projects.
-if ss -ltn 2>/dev/null | grep -q ':8899 '; then
-  echo 'port 8899 is taken — another local network is running; stop it first' >&2
+# `GENOVAULT_RPC_PORT` moves the whole stand aside instead of stopping a
+# network that is not ours: RPC on the port, WebSocket on the next one (web3.js
+# derives it so), the faucet and gossip in a range of their own.
+RPC_PORT="${GENOVAULT_RPC_PORT:-8899}"
+if ss -ltn 2>/dev/null | grep -Eq ":($RPC_PORT|$((RPC_PORT + 1))) "; then
+  echo "port $RPC_PORT is taken — another local network is running; stop it or set GENOVAULT_RPC_PORT" >&2
   exit 1
+fi
+PORT_ARGS=()
+if [ "$RPC_PORT" != 8899 ]; then
+  PORT_ARGS=(
+    --rpc-port "$RPC_PORT"
+    --faucet-port "$((RPC_PORT + 1001))"
+    --gossip-port "$((RPC_PORT + 2001))"
+    --dynamic-port-range "$((RPC_PORT + 2101))-$((RPC_PORT + 2200))"
+  )
 fi
 
 # The ledger lives in the WSL filesystem: on /mnt the admin socket cannot be
@@ -55,11 +68,12 @@ echo "solana:  $SOLANA_VERSION"
 echo "program: $PROGRAM_ID"
 echo "binary:  $SO_PATH ($(sha256sum "$SO_PATH" | cut -c1-16))"
 echo "ledger:  $LEDGER"
-echo "RPC:     http://127.0.0.1:8899"
+echo "RPC:     http://127.0.0.1:$RPC_PORT"
 echo
 
 exec solana-test-validator \
   --reset \
   --quiet \
   --ledger "$LEDGER" \
+  "${PORT_ARGS[@]}" \
   --bpf-program "$PROGRAM_ID" "$SO_PATH"

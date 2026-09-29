@@ -259,7 +259,10 @@ export interface ConsentMatrixOptions {
   onProgress?(note: string): void
 }
 
-interface SendResult {
+/** What `seedDataset` needs of the stand: the chain, the program and the API. */
+export type MatrixStand = Pick<ConsentMatrixOptions, 'connection' | 'program' | 'api'>
+
+export interface SendResult {
   signature: string
   failed: boolean
 }
@@ -271,7 +274,7 @@ interface SendResult {
  * the ledger, and the verifier, which reads only the ledger, would find
  * nothing to judge. Failed transactions land with their error and their logs.
  */
-async function send(
+export async function send(
   connection: Connection,
   payer: Keypair,
   instructions: TransactionInstruction[],
@@ -297,7 +300,7 @@ async function send(
   return { signature, failed: status.value.err !== null }
 }
 
-async function sendOrThrow(
+export async function sendOrThrow(
   connection: Connection,
   payer: Keypair,
   instructions: TransactionInstruction[],
@@ -308,21 +311,21 @@ async function sendOrThrow(
   return result.signature
 }
 
-async function airdrop(connection: Connection, to: PublicKey, sol: number): Promise<void> {
+export async function airdrop(connection: Connection, to: PublicKey, sol: number): Promise<void> {
   const signature = await connection.requestAirdrop(to, sol * LAMPORTS_PER_SOL)
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
   await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed')
 }
 
 /** The chain's clock, not ours: deadlines are judged by it (`FR-005`). */
-async function chainNow(connection: Connection): Promise<number> {
+export async function chainNow(connection: Connection): Promise<number> {
   const slot = await connection.getSlot('confirmed')
   const time = await connection.getBlockTime(slot)
   if (time === null) throw new ConsentMatrixError(`slot ${slot} has no block time`)
   return time
 }
 
-function expect2xx(response: ApiResponse, what: string): Record<string, unknown> {
+export function expect2xx(response: ApiResponse, what: string): Record<string, unknown> {
   if (response.status < 200 || response.status >= 300 || typeof response.body !== 'object') {
     throw new ConsentMatrixError(
       `${what}: HTTP ${response.status} ${JSON.stringify(response.body)}`,
@@ -339,7 +342,7 @@ const wireInstructionSchema = z.strictObject({
   data: z.string(),
 })
 
-function fromWire(raw: unknown): TransactionInstruction {
+export function fromWire(raw: unknown): TransactionInstruction {
   const wire = wireInstructionSchema.parse(raw)
   return new Instruction({
     programId: new PublicKey(wire.programId),
@@ -352,11 +355,11 @@ function fromWire(raw: unknown): TransactionInstruction {
   })
 }
 
-function toHex(bytes: Uint8Array): string {
+export function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('hex')
 }
 
-interface SeededDataset {
+export interface SeededDataset {
   owner: Keypair
   datasetId: string
   address: PublicKey
@@ -364,8 +367,8 @@ interface SeededDataset {
   deadlines: number[]
 }
 
-async function seedDataset(
-  options: ConsentMatrixOptions,
+export async function seedDataset(
+  options: MatrixStand,
   entry: MatrixScenario['pool'][number],
   ordinal: number,
 ): Promise<SeededDataset> {
@@ -468,7 +471,7 @@ async function seedDataset(
   }
 }
 
-function reasonsOf(body: unknown): string[] {
+export function reasonsOf(body: unknown): string[] {
   const details = (body as { error?: { details?: { ineligible?: unknown } } } | null)?.error
     ?.details
   if (!Array.isArray(details?.ineligible)) return []
@@ -478,9 +481,21 @@ function reasonsOf(body: unknown): string[] {
   })
 }
 
-function codeOf(body: unknown): string | null {
+export function codeOf(body: unknown): string | null {
   const code = (body as { error?: { code?: unknown } } | null)?.error?.code
   return typeof code === 'string' ? code : null
+}
+
+/**
+ * A validator that has just answered /health still drops the first
+ * transactions while its fees settle; wait until it has finalized a slot.
+ */
+export async function waitForFinalizedSlot(connection: Connection): Promise<void> {
+  const warmUp = Date.now() + 120_000
+  while ((await connection.getSlot('finalized')) < 1) {
+    if (Date.now() > warmUp) throw new ConsentMatrixError('the validator never finalized a slot')
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
 }
 
 export async function runConsentMatrix(options: ConsentMatrixOptions): Promise<MatrixReport> {
@@ -488,13 +503,7 @@ export async function runConsentMatrix(options: ConsentMatrixOptions): Promise<M
   const progress = options.onProgress ?? (() => {})
   const startedAt = new Date().toISOString()
 
-  // A validator that has just answered /health still drops the first
-  // transactions while its fees settle; wait until it has finalized a slot.
-  const warmUp = Date.now() + 120_000
-  while ((await connection.getSlot('finalized')) < 1) {
-    if (Date.now() > warmUp) throw new ConsentMatrixError('the validator never finalized a slot')
-    await new Promise((resolve) => setTimeout(resolve, 1_000))
-  }
+  await waitForFinalizedSlot(connection)
 
   await airdrop(connection, options.authority.publicKey, 100)
   const platform = await bootstrapPlatform({

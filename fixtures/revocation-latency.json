@@ -1,0 +1,21 @@
+{
+  "criterion": "SC-005",
+  "note": "A revocation takes effect on the next ordered run within the budget after it is confirmed. Each trial is one dataset with a consent in force and a stream of orders against it; the owner revokes in the middle of the stream. Orders before the revocation show the gate was open, orders after it show it closed, and the stream runs past the budget so that 'within the budget' is observed rather than assumed. The witness is a dataset nobody revokes: its orders keep passing while the trials are refused, which is what tells a closed gate from a broken stand.",
+  "trials": 10,
+  "budgetSeconds": 60,
+  "beforeSeconds": 5,
+  "afterSeconds": 65,
+  "probeIntervalMs": 400,
+  "witnessIntervalMs": 1000,
+  "staggerSeconds": 6,
+  "maxGapSeconds": 3,
+  "consent": {
+    "allowed": ["oncology"],
+    "forbidden": [],
+    "categories": ["academic"]
+  },
+  "order": {
+    "useType": "oncology",
+    "buyerCategory": "academic"
+  }
+}

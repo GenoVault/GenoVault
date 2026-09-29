@@ -31,6 +31,7 @@ import type { PlainRecord, RunSweep } from './no-plaintext.ts'
 import { auditNoPlaintext, recordNeedles, sweepProgramAccounts } from './no-plaintext.ts'
 import { auditParity, RECIPE_MARKERS, readRecords } from './parity.ts'
 import { loadReportLayout } from './report.ts'
+import { auditRevocationLatency, readPlan, readRevocationReport } from './revocation-latency.ts'
 import { auditTiming, LINEARITY_TOLERANCE, RECIPE_BATCH, SPEEDUP_FLOOR } from './timing.ts'
 
 const { values, positionals } = parseArgs({
@@ -39,6 +40,8 @@ const { values, positionals } = parseArgs({
     report: { type: 'string' },
     /** `sc004`: the consent matrix the report was driven from. */
     matrix: { type: 'string', default: 'fixtures/consent-matrix.json' },
+    /** `sc005`: the revocation latency plan the report was driven from. */
+    plan: { type: 'string', default: 'fixtures/revocation-latency.json' },
     corpus: { type: 'string' },
     rpc: { type: 'string' },
     run: { type: 'string' },
@@ -763,15 +766,110 @@ async function consentMatrix(): Promise<void> {
   log('')
 }
 
+/**
+ * `SC-005`: how long a revocation takes to close the gate, from the chain (`T042`).
+ *
+ * ```bash
+ * node --experimental-strip-types tools/audit-verify/src/cli.ts sc005 \
+ *   --report artifacts/sc005/report.json --rpc http://127.0.0.1:8899
+ * ```
+ */
+async function revocationLatency(): Promise<void> {
+  if (values.report === undefined) throw new Error('need the driver report: --report <path>')
+  const plan = readPlan(JSON.parse(await readFile(resolve(values.plan), 'utf8')))
+  const report = readRevocationReport(JSON.parse(await readFile(resolve(values.report), 'utf8')))
+  const connection = new Connection(values.rpc ?? 'http://127.0.0.1:8899', 'confirmed')
+
+  const audit = await auditRevocationLatency(connection, plan, report)
+  const ms = (seconds: number | null) =>
+    seconds === null ? '—' : `${Math.round(seconds * 1000)} ms`
+  const slot = audit.slotSeconds
+
+  log('')
+  log('== SC-005: revocation latency =============================')
+  log(`  program:   ${report.programId}`)
+  log(`  slot:      ${ms(slot)} (measured over this run's blocks)`)
+  log(`  examined:  ${audit.examined} of ${audit.expected} trials (count from the plan)`)
+  log(
+    `  census:    ${audit.census.runAccounts} run accounts on chain · ` +
+      `${audit.census.acceptedOrders} accepted orders in the report · ` +
+      `${audit.census.buyerTransactions} buyer transactions`,
+  )
+  log('')
+  log(
+    '  trial  slot       before  after  accepted-after  nearest   watched  gap      API lag   witness  opened',
+  )
+  for (const judgement of audit.judgements) {
+    log(
+      `  ${String(judgement.index).padEnd(6)} ${String(judgement.revocationSlot ?? '—').padEnd(10)} ` +
+        `${`${judgement.acceptedBefore}/${judgement.before}`.padEnd(7)} ${String(judgement.after).padEnd(6)} ` +
+        `${String(judgement.acceptedAfter).padEnd(15)} ` +
+        `${(judgement.nearestAfterSlots === null ? '—' : `+${judgement.nearestAfterSlots} sl`).padEnd(9)} ` +
+        `${`${judgement.coverageSeconds} s`.padEnd(8)} ${ms(judgement.maxGapSeconds).padEnd(8)} ` +
+        `${(judgement.api.lagSlots === null ? '—' : `${judgement.api.lagSlots} sl`).padEnd(9)} ` +
+        `${`${judgement.witnessAccepted}/${judgement.witnessAccepted + judgement.witnessRefused}`.padEnd(8)} ` +
+        `${judgement.opened ? 'yes' : 'NO'}` +
+        (judgement.passed ? '' : '   ✗'),
+    )
+    if (judgement.acceptedAfter > 0) {
+      log(
+        `      FR-007: ${judgement.acceptedAfter} orders accepted after the revocation, the last ${judgement.chainLatencySeconds} s after`,
+      )
+    }
+    if (judgement.wrongReasons > 0)
+      log(`      ${judgement.wrongReasons} refusals after it name another reason`)
+    if (judgement.api.staleSlots > 0) {
+      log(
+        `      API built an order ${judgement.api.staleSlots} slots after the revocation (the chain refused it)`,
+      )
+    }
+    if (judgement.api.flaps > 0)
+      log(`      API built ${judgement.api.flaps} orders after answering revoked`)
+    if (judgement.dropped > 0)
+      log(`      ${judgement.dropped} orders never landed (missing samples)`)
+    for (const gap of judgement.gaps.slice(0, 8)) log(`      not examined: ${gap}`)
+    if (judgement.gaps.length > 8) log(`      … and ${judgement.gaps.length - 8} more`)
+  }
+  for (const gap of audit.gaps.slice(0, 12)) log(`  discrepancy: ${gap}`)
+  if (audit.gaps.length > 12) log(`  … and ${audit.gaps.length - 12} more discrepancies`)
+
+  const judged = audit.judgements
+  const worst = (pick: (judgement: (typeof judged)[number]) => number | null) =>
+    judged.reduce<number | null>((max, judgement) => {
+      const value = pick(judgement)
+      return value === null ? max : max === null ? value : Math.max(max, value)
+    }, null)
+  log('')
+  log(
+    `  chain:  accepted after revocation ${judged.reduce((sum, j) => sum + j.acceptedAfter, 0)} · ` +
+      `latency ${worst((j) => j.chainLatencySeconds) ?? '—'} s · ` +
+      `nearest order after ≤ ${worst((j) => j.nearestAfterSlots) ?? '—'} slots · ` +
+      `watched ≥ ${judged.reduce<number | null>((min, j) => (min === null ? j.coverageSeconds : Math.min(min, j.coverageSeconds)), null) ?? '—'} s`,
+  )
+  const lag = worst((j) => j.api.lagSlots)
+  log(
+    `  API:    lag ≤ ${lag ?? '—'} slots (${ms(lag === null || slot === null ? null : lag * slot)}) · ` +
+      `stale builds up to ${worst((j) => j.api.staleSlots) ?? 0} slots · budget ${plan.budgetSeconds} s  (reported by the driver)`,
+  )
+  log('')
+  if (audit.passed) log('  SC-005 MET')
+  else {
+    log('  SC-005 NOT MET')
+    process.exitCode = 1
+  }
+  log('')
+}
+
 async function main(): Promise<void> {
   const command = positionals.at(0) ?? 'e2e-buyer'
   if (command === 'sc004') return consentMatrix()
+  if (command === 'sc005') return revocationLatency()
   if (command === 'e2e-buyer') return buyerPath()
   if (command === 'no-plaintext') return noPlaintext()
   if (command === 'parity') return parityCheck()
   if (command === 'timing') return timingCheck()
   throw new Error(
-    `unknown command "${command}": expected e2e-buyer, no-plaintext, parity, timing or sc004`,
+    `unknown command "${command}": expected e2e-buyer, no-plaintext, parity, timing, sc004 or sc005`,
   )
 }
 

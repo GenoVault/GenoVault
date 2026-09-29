@@ -32,6 +32,7 @@ import { buildCorpus } from './corpus.ts'
 import type { Progress } from './drive.ts'
 import { drive } from './drive.ts'
 import { buildParityCorpus } from './parity-corpus.ts'
+import { revocationPlanSchema, runRevocationLatency } from './revocation-latency.ts'
 import { prepareScenario } from './scenario.ts'
 import { buildTimingCorpus } from './timing-corpus.ts'
 
@@ -78,6 +79,8 @@ const { values, positionals } = parseArgs({
     /** `sc004`: the consent matrix and the port of the API server it starts. */
     matrix: { type: 'string', default: 'fixtures/consent-matrix.json' },
     'api-port': { type: 'string', default: '8879' },
+    /** `sc005`: the revocation latency plan. */
+    plan: { type: 'string', default: 'fixtures/revocation-latency.json' },
   },
 })
 
@@ -350,10 +353,61 @@ async function sc004(connection: Connection): Promise<void> {
   }
 }
 
+/**
+ * Revocation latency, `SC-005` (`T042`).
+ *
+ * ```bash
+ * # the same bare validator as sc004: scripts/validator.sh
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts sc005  *   --out artifacts/sc005/report.json
+ * ```
+ *
+ * Streams orders at every trial's dataset, revokes in the middle of each
+ * stream and keeps ordering past the budget. Measures nothing itself:
+ * `tools/audit-verify sc005` does, from the chain.
+ */
+async function sc005(connection: Connection): Promise<void> {
+  const plan = revocationPlanSchema.parse(JSON.parse(await readFile(resolve(values.plan), 'utf8')))
+  const out = resolve(values.out)
+  const api = await startApiStand({
+    repoRoot: resolve('.'),
+    workDir: join(dirname(out), 'api'),
+    rpcUrl: values.rpc,
+    port: Number(values['api-port']),
+    onLog: (line) => log(`  api: ${line}`),
+  })
+  log(`API server up at ${api.url}`)
+
+  try {
+    const report = await runRevocationLatency({
+      connection,
+      program: createProgram({ connection }),
+      api,
+      plan,
+      authority: Keypair.generate(),
+      onProgress: (note) => log(`  ${note}`),
+    })
+    await mkdir(dirname(out), { recursive: true })
+    await writeFile(
+      out,
+      `${JSON.stringify(report, null, 2)}
+`,
+    )
+    const landed = report.probes.filter((probe) => probe.chain.landed).length
+    log(`
+report: ${out} · ${report.trials.length} trials · ${landed}/${report.probes.length} orders landed`)
+  } finally {
+    await api.stop()
+  }
+}
+
 async function main(): Promise<void> {
   const connection = new Connection(values.rpc, 'confirmed')
   if (command === 'sc004') {
     await sc004(connection)
+    return
+  }
+  if (command === 'sc005') {
+    await sc005(connection)
     return
   }
   const payer = await loadWallet(values.wallet)
@@ -401,7 +455,7 @@ async function main(): Promise<void> {
 
   if (command !== 'e2e') {
     throw new Error(
-      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003 or sc004`,
+      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003, sc004 or sc005`,
     )
   }
 
