@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="205 180 560 600" width="560" height="600">
+  <title>GenoVault</title>
+  <style>@media (prefers-color-scheme: dark) { .plum { fill: #A35AAB } }</style>
+  <g fill="#72BBAA">
+    <ellipse cx="552" cy="208" rx="11" ry="10"/><ellipse cx="482" cy="276" rx="16" ry="17"/><ellipse cx="467" cy="315" rx="18" ry="20"/><ellipse cx="462" cy="360" rx="19" ry="22"/><ellipse cx="464" cy="410" rx="21" ry="24"/>
+    <ellipse cx="449" cy="685" rx="16" ry="17"/>
+    <ellipse cx="391" cy="509" rx="28" ry="24"/><ellipse cx="296" cy="562" rx="22" ry="21"/><ellipse cx="265" cy="598" rx="19" ry="20"/><ellipse cx="235" cy="672" rx="14" ry="16"/>
+    <ellipse cx="551" cy="463" rx="28" ry="24"/><ellipse cx="605" cy="443" rx="26" ry="22"/><ellipse cx="651" cy="418" rx="22" ry="21"/><ellipse cx="730" cy="254" rx="10" ry="11"/>
+  </g>
+  <g fill="#E89138">
+    <ellipse cx="574" cy="197" rx="9" ry="7"/><ellipse cx="471" cy="485" rx="43" ry="37"/><ellipse cx="479" cy="554" rx="21" ry="24"/><ellipse cx="467" cy="649" rx="18" ry="20"/><ellipse cx="374" cy="749" rx="11" ry="10"/>
+    <ellipse cx="230" cy="706" rx="12" ry="13"/><ellipse cx="686" cy="386" rx="19" ry="20"/><ellipse cx="722" cy="314" rx="14" ry="16"/>
+  </g>
+  <g fill="#92CA49">
+    <ellipse cx="528" cy="224" rx="13" ry="12"/><ellipse cx="503" cy="246" rx="15" ry="14"/><ellipse cx="245" cy="636" rx="16" ry="18"/><ellipse cx="728" cy="282" rx="12" ry="13"/>
+  </g>
+  <g class="plum" fill="#712079">
+    <ellipse cx="424" cy="713" rx="15" ry="14"/><ellipse cx="339" cy="532" rx="25" ry="22"/><ellipse cx="709" cy="350" rx="16" ry="18"/>
+  </g>
+  <g fill="#DA356E">
+    <ellipse cx="478" cy="604" rx="19" ry="22"/><ellipse cx="398" cy="734" rx="13" ry="12"/><ellipse cx="352" cy="760" rx="9" ry="8"/><ellipse cx="228" cy="734" rx="10" ry="11"/>
+  </g>
+</svg>

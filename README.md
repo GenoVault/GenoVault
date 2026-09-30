@@ -30,7 +30,7 @@ live data — a deliberately planted defect the check must catch.
 |---|---|---|---|
 | No raw record in the clear, anywhere | 0 hits on 10 runs | **0 on 11 runs** | `audit-verify no-plaintext` |
 | Quality gap vs. the same recipe on plaintext | ≤ 2 pp | **0.0 pp** (150 numbers, 0 mismatches) | `audit-verify parity` |
-| Run over 10 000 records | ≤ 4.5 h | **3.31 h and 3.71 h** (two corpora) | `audit-verify timing` |
+| Run over 10 000 records | ≤ 4.5 h | **3.31 h and 3.71 h**, projected from the measured fold cost (two corpora) | `audit-verify timing` |
 | Buyer's path, catalogue → result | ≤ 3 min | **0.1 s** active time | `audit-verify e2e-buyer` |
 
 The "no raw record" check is three checks, not one: a canary dataset whose

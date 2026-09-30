@@ -1,16 +1,23 @@
-# Deploys `apps/web` to GitHub Pages.
+# Deploys the landing page and `apps/web` to GitHub Pages, as one site:
 #
-# What ends up on Pages is the web app alone: the API, the program and the MPC
-# cluster do not run there. Without `VITE_API_URL` the app runs on its built-in
-# fixtures and says so on screen — that is the M0 prototype, and it is an honest
-# thing to publish. Point `VITE_API_URL` at a live API (repository variable) to
-# switch the screens that already talk to it.
+#   /<repo>/       apps/landing — static, no build step, no JavaScript
+#   /<repo>/app/   apps/web     — the app
+#
+# The landing is the first screen, so the app's bundle (Privy included) loads
+# only once a visitor opens the app.
+#
+# The API, the program and the MPC cluster do not run on Pages. Without
+# `VITE_API_URL` the app runs on its built-in fixtures and says so on screen —
+# the M0 prototype, and the landing says the same next to its link. Point
+# `VITE_API_URL` at a live API (repository variable) to switch the screens that
+# already talk to it.
 #
 # One-time setup by the repository owner:
 #   Settings → Pages → Build and deployment → Source: "GitHub Actions".
 #   Optional repository variables (Settings → Secrets and variables → Actions →
 #   Variables): VITE_API_URL, VITE_PRIVY_APP_ID, VITE_RPC_URL, PAGES_BASE_PATH.
 #   These are baked into the public bundle, so they are variables, not secrets.
+#   PAGES_BASE_PATH is the app's path: "/app/" on a custom domain.
 
 name: pages
 
@@ -19,6 +26,8 @@ on:
     branches: [main]
     paths:
       - apps/web/**
+      - apps/landing/**
+      - scripts/assemble-pages.sh
       - packages/shared/**
       - packages/crypto/**
       - package.json
@@ -60,25 +69,28 @@ jobs:
       - run: pnpm --filter @genovault/web test
 
       # Project pages live under the repository name; a custom domain lives at
-      # the root. `PAGES_BASE_PATH` overrides the default for the latter case.
-      - name: Build
+      # the root. The app sits one level down, in /app/. `PAGES_BASE_PATH`
+      # overrides the default for a custom domain ("/app/").
+      - name: Build the app
         env:
-          BASE_PATH: ${{ vars.PAGES_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          BASE_PATH: ${{ vars.PAGES_BASE_PATH || format('/{0}/app/', github.event.repository.name) }}
           VITE_API_URL: ${{ vars.VITE_API_URL }}
           VITE_PRIVY_APP_ID: ${{ vars.VITE_PRIVY_APP_ID }}
           VITE_RPC_URL: ${{ vars.VITE_RPC_URL }}
         run: pnpm --filter @genovault/web build
 
-      # GitHub Pages has no SPA fallback: a deep link such as /runs/abc/1 is a
-      # file that does not exist, and Pages answers with 404.html. Serving the
-      # app itself as that page lets the router pick the path up. The status
-      # code stays 404, which is fine for an app and irrelevant for a demo.
-      - name: SPA fallback
-        run: cp apps/web/dist/index.html apps/web/dist/404.html
+      # The landing at the root, the app under app/, and the landing's 404.html
+      # as the site's only 404 page: Pages reads 404.html from the site root
+      # alone. It hands deep links under /app/ back to the app (the app's router
+      # is history-based, not hash-based) and shows "not found" for the rest.
+      - name: Assemble the site
+        env:
+          BASE_PATH: ${{ vars.PAGES_BASE_PATH || format('/{0}/app/', github.event.repository.name) }}
+        run: bash scripts/assemble-pages.sh "$BASE_PATH" _site
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/dist
+          path: _site
 
   deploy:
     needs: build

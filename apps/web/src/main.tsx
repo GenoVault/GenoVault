@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 
 import App from './App.tsx'
+import { restoreDeepLink } from './lib/deepLink.ts'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Failed to find the root element')
@@ -16,6 +17,11 @@ if (!rootElement) throw new Error('Failed to find the root element')
  * проти оголошеного `/datasets` і падав би на сторінку «не знайдено».
  */
 const basename = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/'
+
+// A deep link bounced through the site's 404 page arrives as `?p=…`; put the
+// real address back before the router reads it (see `lib/deepLink.ts`).
+const restored = restoreDeepLink(window.location.search, window.location.hash, basename)
+if (restored !== null) window.history.replaceState(null, '', restored)
 
 createRoot(rootElement).render(
   <BrowserRouter basename={basename}>

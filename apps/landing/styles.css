@@ -1,0 +1,800 @@
+/* GenoVault landing. One page, no build step: CI copies this folder to the site root. */
+
+:root {
+  --ground: #ffffff;
+  --ink: #1b1722;
+  --ink-2: #3a3442;
+  --ink-3: #5e5868;
+  --rule: #e4e1e8;
+  --rule-strong: #cfcad6;
+  --panel: #f6f4f8;
+  --on-ink: #ffffff;
+
+  /* The logo's five bead colours, one meaning each. Never used for text. */
+  --teal: #72bbaa; /* confidential computation */
+  --orange: #e89138; /* time */
+  --plum: #712079; /* consent */
+  --magenta: #da356e; /* settlement */
+  --lime: #92ca49; /* proof to a third party */
+
+  --sans: Figtree, ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --page: 1120px;
+  --spine: 80px;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #17111c;
+    --ink: #f2eef5;
+    --ink-2: #d6d0dc;
+    --ink-3: #a79fb0;
+    --rule: #342b3b;
+    --rule-strong: #4a4052;
+    --panel: #231b29;
+    --on-ink: #17111c;
+    /* The plum bead would vanish on a plum-black ground. */
+    --plum: #a35aab;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 18px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--ink);
+}
+
+a:hover {
+  color: var(--plum);
+}
+
+:focus-visible {
+  outline: 3px solid var(--plum);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+h1,
+h2,
+h3,
+p,
+ol,
+ul {
+  margin: 0;
+}
+
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+.wrap {
+  width: min(var(--page), 100% - 32px);
+  margin-inline: auto;
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+
+.fig {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip:focus {
+  left: 16px;
+  top: 16px;
+  z-index: 10;
+  padding: 8px 12px;
+  background: var(--ground);
+}
+
+/* Beads ---------------------------------------------------------------- */
+
+.bead {
+  display: block;
+  flex-shrink: 0;
+  width: 48px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.bead.hollow {
+  background: var(--ground);
+  border: 3px solid var(--c);
+}
+
+.bead.sm {
+  width: 32px;
+  height: 28px;
+}
+
+.bead.xs {
+  width: 24px;
+  height: 21px;
+}
+
+.bead.hollow.xs {
+  border-width: 3px;
+}
+
+.teal {
+  --c: var(--teal);
+}
+.orange {
+  --c: var(--orange);
+}
+.plum {
+  --c: var(--plum);
+}
+.magenta {
+  --c: var(--magenta);
+}
+.lime {
+  --c: var(--lime);
+}
+.ink {
+  --c: var(--ink);
+}
+
+/* Buttons -------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 28px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn.primary {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.btn.primary:hover {
+  background: var(--plum);
+  color: #ffffff;
+}
+
+.btn.ghost {
+  border: 1px solid var(--rule-strong);
+}
+
+.btn.small {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: 16px;
+}
+
+/* Header --------------------------------------------------------------- */
+
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brand img {
+  width: 36px;
+  height: 38px;
+}
+
+.site-header nav {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  font-size: 16px;
+}
+
+.site-header nav a:not(.btn) {
+  text-decoration: none;
+}
+
+/* Hero ----------------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 96px 0 64px;
+}
+
+.hero h1 {
+  max-width: 960px;
+  font-size: clamp(40px, 6.4vw, 76px);
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.lead {
+  max-width: 720px;
+  font-size: 21px;
+  line-height: 1.55;
+  font-weight: 300;
+  color: var(--ink-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.aside {
+  margin-top: 12px;
+  font-size: 15px;
+  color: var(--ink-3);
+}
+
+/* The strand ----------------------------------------------------------- */
+
+.strand {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 24px 0 112px;
+}
+
+.strand-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px 24px;
+}
+
+.strand-head h2 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend .bead {
+  width: 14px;
+  height: 12px;
+}
+
+.legend .bead.hollow {
+  border-width: 2px;
+}
+
+.beads {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+}
+
+.beads::before {
+  content: '';
+  position: absolute;
+  left: 50px;
+  right: 50px;
+  top: 20px;
+  height: 2px;
+  background: var(--rule);
+}
+
+.beads li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.beads .tag:first-of-type {
+  margin-top: 10px;
+}
+
+/* Three lines reserved for every name, so values and dates line up across the strand. */
+.beads .name {
+  min-height: calc(3 * 1.3em);
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--ink-2);
+}
+
+.beads .value {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.beads .pending {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-3);
+}
+
+/* Spine: everything below the strand hangs off one vertical line -------- */
+
+.spine {
+  display: flex;
+  flex-direction: column;
+  gap: 120px;
+  padding-bottom: 120px;
+  background: linear-gradient(var(--rule), var(--rule)) no-repeat calc(var(--spine) / 2 - 1px) 0 /
+    2px 100%;
+}
+
+.node {
+  display: grid;
+  grid-template-columns: var(--spine) minmax(0, 1fr);
+}
+
+.node > .knot {
+  display: flex;
+  justify-content: center;
+  padding-top: 12px;
+}
+
+.knot .bead {
+  width: 18px;
+  height: 16px;
+}
+
+.knot .bead.hollow {
+  border-width: 3px;
+}
+
+.node > .body {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  min-width: 0;
+}
+
+.node h2 {
+  max-width: 760px;
+  font-size: clamp(30px, 3.4vw, 40px);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.intro {
+  max-width: 720px;
+  font-size: 18px;
+  color: var(--ink-2);
+}
+
+/* What it does */
+
+.three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 40px;
+}
+
+.three > div {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.three h3 {
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.three p {
+  font-size: 17px;
+  color: var(--ink-2);
+}
+
+.three strong {
+  color: var(--ink);
+}
+
+/* How a run works */
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 32px;
+  counter-reset: step;
+}
+
+.steps li {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 2px solid var(--ink);
+  font-size: 17px;
+}
+
+.steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  font-size: 32px;
+  font-weight: 300;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Measured */
+
+.measured {
+  margin-top: -84px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--spine) minmax(0, 1fr) 300px;
+  padding: 28px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.row:last-of-type {
+  border-bottom: 1px solid var(--rule);
+}
+
+.row > .bead {
+  justify-self: center;
+  margin-top: 4px;
+}
+
+.row .text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 48px;
+}
+
+.row h3 {
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.row .text p {
+  font-size: 16px;
+  color: var(--ink-3);
+}
+
+.row .text p.plain {
+  color: var(--ink);
+}
+
+.row .text p.note {
+  margin-top: 8px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.row .figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.row .big {
+  font-size: 44px;
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.row .second {
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 500;
+}
+
+.row .budget {
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.footnote {
+  margin: 20px 0 0 var(--spine);
+  font-size: 15px;
+  color: var(--ink-3);
+}
+
+/* Not yet */
+
+.pending-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 48px;
+}
+
+.pending-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  font-size: 17px;
+}
+
+.pending-list .bead {
+  margin-top: 4px;
+}
+
+/* Limits */
+
+.limits {
+  max-width: 860px;
+}
+
+.limits li {
+  padding: 18px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 17px;
+}
+
+.limits li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+/* FAQ */
+
+.faq {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px 48px;
+}
+
+.faq > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.faq h3 {
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.faq p {
+  font-size: 17px;
+  color: var(--ink-2);
+}
+
+/* Footer */
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 40px 0 56px;
+  border-top: 1px solid var(--rule);
+  font-size: 15px;
+  color: var(--ink-3);
+}
+
+.site-footer strong {
+  color: var(--ink);
+}
+
+/* Narrower screens ------------------------------------------------------ */
+
+@media (max-width: 1000px) {
+  /* The strand turns vertical: one bead per line, the same line through them. */
+  .beads {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .beads::before {
+    left: 23px;
+    right: auto;
+    top: 20px;
+    bottom: 20px;
+    width: 2px;
+    height: auto;
+  }
+
+  .beads li {
+    display: grid;
+    grid-template-columns: 48px 76px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0 14px;
+    padding: 0;
+    text-align: left;
+  }
+
+  .beads .tag:first-of-type {
+    margin-top: 0;
+  }
+
+  .beads .name {
+    min-height: 0;
+    font-size: 15px;
+  }
+
+  .beads li > .tag:last-child {
+    grid-column: 3 / -1;
+    grid-row: 2;
+    margin-top: -2px;
+  }
+
+  .beads .value,
+  .beads .pending {
+    text-align: right;
+  }
+
+  .three,
+  .faq,
+  .pending-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .row {
+    grid-template-columns: var(--spine) minmax(0, 1fr);
+    row-gap: 16px;
+  }
+
+  .row .text {
+    padding-right: 0;
+  }
+
+  .row .figure {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --spine: 40px;
+  }
+
+  body {
+    font-size: 17px;
+  }
+
+  .site-header {
+    gap: 12px;
+  }
+
+  .site-header nav a:not(.btn) {
+    display: none;
+  }
+
+  .btn.small {
+    padding: 0 16px;
+    font-size: 15px;
+  }
+
+  .hero {
+    padding: 56px 0 48px;
+    gap: 24px;
+  }
+
+  .lead {
+    font-size: 19px;
+  }
+
+  .spine {
+    gap: 88px;
+  }
+
+  .measured {
+    margin-top: -56px;
+  }
+
+  .knot .bead,
+  .row > .bead {
+    width: 16px;
+    height: 14px;
+  }
+
+  .row .big {
+    font-size: 36px;
+  }
+
+  .beads li {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+  }
+
+  .beads li > .tag:first-of-type {
+    grid-column: 2 / -1;
+    grid-row: 1;
+  }
+
+  .beads .name {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .beads .value,
+  .beads .pending {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .beads li > .tag:last-child {
+    grid-column: 2 / -1;
+    grid-row: 3;
+    margin-top: 0;
+  }
+
+  .beads .bead {
+    grid-row: 1 / span 3;
+  }
+}
+
+@media (max-width: 560px) {
+  .steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

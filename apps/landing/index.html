@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GenoVault: compute on genomic data without decrypting it</title>
+  <meta name="description" content="Multi-party computation over encrypted genomic data, with consent checked on-chain. What is measured, with dates, and what is not. Synthetic data only.">
+  <link rel="canonical" href="https://genovault.github.io/GenoVault/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="GenoVault">
+  <meta property="og:title" content="GenoVault: compute on genomic data without decrypting it">
+  <meta property="og:description" content="6 of 11 success criteria measured, each with its date. Synthetic data only, local cluster.">
+  <meta property="og:url" content="https://genovault.github.io/GenoVault/">
+  <meta property="og:image" content="https://genovault.github.io/GenoVault/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="GenoVault: a strand of eleven beads, six filled for measured criteria, five hollow for criteria not measured yet.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17111c" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;700&amp;display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header wrap">
+    <a class="brand" href="./" aria-label="GenoVault, home">
+      <img src="assets/logo.svg" alt="" width="36" height="38">
+      <span>GenoVault</span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="#measured">Measured</a>
+      <a href="#not-yet">Not yet</a>
+      <a href="#limits">Limits</a>
+      <a href="https://github.com/GenoVault/GenoVault">GitHub</a>
+      <a class="btn primary small" href="app/">Open the prototype</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-h">
+      <p class="tag">v0.1.0 · synthetic data only · measured on a local cluster: one Solana validator, two Arcium ARX nodes</p>
+      <h1 id="hero-h">Compute on genomic data without ever decrypting it.</h1>
+      <p class="lead">A marketplace where a clinic, biobank or individual puts a dataset to work without handing it over. Runs execute as multi-party computation over ciphertext, the owner's consent is checked on-chain before anything runs, and the encryption key never leaves the owner's browser.</p>
+      <div>
+        <div class="actions">
+          <a class="btn primary" href="app/">Open the prototype</a>
+          <a class="btn ghost" href="https://github.com/GenoVault/GenoVault">Read the source</a>
+        </div>
+        <p class="aside">The prototype runs on mock data; the numbers below come from the chain, not from it.</p>
+      </div>
+    </section>
+
+    <section class="strand wrap" aria-labelledby="strand-h">
+      <div class="strand-head">
+        <h2 id="strand-h">6 of 11 success criteria measured.</h2>
+        <p class="legend">
+          <span><i class="bead ink" aria-hidden="true"></i>Filled: measured, dated</span>
+          <span><i class="bead hollow ink" aria-hidden="true"></i>Hollow: not measured yet</span>
+        </p>
+      </div>
+      <ol class="beads">
+        <li aria-label="SC-001, no raw record in the clear. Measured: 0 on 11 runs, 8 September 2026.">
+          <i class="bead teal" aria-hidden="true"></i>
+          <span class="tag">SC-001</span>
+          <span class="name">No raw record in the clear</span>
+          <span class="value fig">0 on 11 runs</span>
+          <span class="tag">08 Sep 2026</span>
+        </li>
+        <li aria-label="SC-002, quality gap versus plaintext. Measured: 0.0 percentage points, 8 September 2026.">
+          <i class="bead teal" aria-hidden="true"></i>
+          <span class="tag">SC-002</span>
+          <span class="name">Gap vs. plaintext</span>
+          <span class="value fig">0.0 pp</span>
+          <span class="tag">08 Sep 2026</span>
+        </li>
+        <li aria-label="SC-003, a run over 10 000 records. Projected: 3.31 and 3.71 hours, 8 September 2026.">
+          <i class="bead orange" aria-hidden="true"></i>
+          <span class="tag">SC-003</span>
+          <span class="name">10 000 records, projected</span>
+          <span class="value fig">3.31–3.71&nbsp;h</span>
+          <span class="tag">08 Sep 2026</span>
+        </li>
+        <li aria-label="SC-004, runs outside consent refused. Measured: 20 of 20, 27 September 2026.">
+          <i class="bead plum" aria-hidden="true"></i>
+          <span class="tag">SC-004</span>
+          <span class="name">Outside consent refused</span>
+          <span class="value fig">20 of 20</span>
+          <span class="tag">27 Sep 2026</span>
+        </li>
+        <li aria-label="SC-005, revocation applies to the next run. Measured: 0 orders accepted after revocation, 29 September 2026.">
+          <i class="bead plum" aria-hidden="true"></i>
+          <span class="tag">SC-005</span>
+          <span class="name">Revocation, next run</span>
+          <span class="value fig">0 after</span>
+          <span class="tag">29 Sep 2026</span>
+        </li>
+        <li aria-label="SC-006, settlement adds up to the deposit. Not measured yet, milestone M3.">
+          <i class="bead hollow magenta" aria-hidden="true"></i>
+          <span class="tag">SC-006</span>
+          <span class="name">Split sums to deposit</span>
+          <span class="pending">not yet</span>
+          <span class="tag">M3</span>
+        </li>
+        <li aria-label="SC-007, split among 50 owners in under 30 seconds. Not measured yet, milestone M3.">
+          <i class="bead hollow magenta" aria-hidden="true"></i>
+          <span class="tag">SC-007</span>
+          <span class="name">50 owners &lt;&nbsp;30&nbsp;s</span>
+          <span class="pending">not yet</span>
+          <span class="tag">M3</span>
+        </li>
+        <li aria-label="SC-008, journal reconciled by a third party. Not measured yet, milestone M4.">
+          <i class="bead hollow lime" aria-hidden="true"></i>
+          <span class="tag">SC-008</span>
+          <span class="name">Journal reconciled</span>
+          <span class="pending">not yet</span>
+          <span class="tag">M4</span>
+        </li>
+        <li aria-label="SC-009, payment amounts private. Not measured yet, milestone M4.">
+          <i class="bead hollow lime" aria-hidden="true"></i>
+          <span class="tag">SC-009</span>
+          <span class="name">Private amounts</span>
+          <span class="pending">not yet</span>
+          <span class="tag">M4</span>
+        </li>
+        <li aria-label="SC-010, the buyer's path from catalogue to result. Measured: 0.1 seconds of active time, 8 September 2026.">
+          <i class="bead orange" aria-hidden="true"></i>
+          <span class="tag">SC-010</span>
+          <span class="name">Catalogue → result</span>
+          <span class="value fig">0.1 s active</span>
+          <span class="tag">08 Sep 2026</span>
+        </li>
+        <li aria-label="SC-011, catalogue first screen in under 2 seconds. Not measured yet, milestone M4.">
+          <i class="bead hollow orange" aria-hidden="true"></i>
+          <span class="tag">SC-011</span>
+          <span class="name">First screen &lt;&nbsp;2&nbsp;s</span>
+          <span class="pending">not yet</span>
+          <span class="tag">M4</span>
+        </li>
+      </ol>
+    </section>
+
+    <div class="spine wrap">
+      <section class="node" aria-labelledby="does-h">
+        <div class="knot"><i class="bead ink" aria-hidden="true"></i></div>
+        <div class="body">
+          <h2 id="does-h">Three guarantees, enforced by the system rather than by policy.</h2>
+          <div class="three">
+            <div>
+              <i class="bead sm teal" aria-hidden="true"></i>
+              <h3>Computation over ciphertext</h3>
+              <p>Data is secret-shared across MPC nodes; no node sees a record, and the operator holds no key. The key is created and kept in the owner's browser.</p>
+            </div>
+            <div>
+              <i class="bead sm plum" aria-hidden="true"></i>
+              <h3>Consent as a condition of execution</h3>
+              <p>Allowed uses, expiry and revocation live on-chain. A run outside them is refused by the program, including one sent straight to the chain, around the API.</p>
+            </div>
+            <div>
+              <i class="bead sm hollow magenta" aria-hidden="true"></i>
+              <h3>Settlement by contribution</h3>
+              <p>The number of records that entered a run is counted inside the computation, not declared by the owner. <strong>The split among several owners is not measured yet (M3).</strong></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="node" aria-labelledby="how-h">
+        <div class="knot"><i class="bead ink" aria-hidden="true"></i></div>
+        <div class="body">
+          <h2 id="how-h">Four steps, and where each is checked.</h2>
+          <ol class="steps">
+            <li>The owner encrypts the dataset in the browser. The key stays there.</li>
+            <li>The owner sets consent on-chain: purposes, buyer categories, expiry.</li>
+            <li>A buyer orders a run. The program checks consent and refuses anything outside it.</li>
+            <li>MPC nodes fold the ciphertext and reveal only the aggregate, above a cohort floor. An independent verifier checks the run against the chain.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="node" id="measured" aria-labelledby="measured-h">
+        <div class="knot"><i class="bead ink" aria-hidden="true"></i></div>
+        <div class="body">
+          <h2 id="measured-h">What has been measured, and when.</h2>
+          <p class="intro">Each figure is read from the chain on a live local cluster, and each check is proven by a negative control on live data: a planted defect the check must catch.</p>
+        </div>
+      </section>
+
+      <div class="measured">
+        <article class="row" aria-labelledby="sc001">
+          <i class="bead sm teal" aria-hidden="true"></i>
+          <div class="text">
+            <p class="tag">SC-001 · 08 Sep 2026</p>
+            <h3 id="sc001">No raw record in the clear, anywhere in a run's lifecycle</h3>
+            <p>A canary dataset searched in every account, transaction, log and storage object; 35 328 of 35 328 committed words inspected. The verifier runs without any GenoVault package.</p>
+          </div>
+          <div class="figure">
+            <p class="big fig">0 on 11</p>
+            <p class="budget">runs · budget 0 on 10</p>
+          </div>
+        </article>
+
+        <article class="row" aria-labelledby="sc002">
+          <i class="bead sm teal" aria-hidden="true"></i>
+          <div class="text">
+            <p class="tag">SC-002 · 08 Sep 2026</p>
+            <h3 id="sc002">Quality gap versus the same recipe on plaintext</h3>
+            <p>150 numbers compared, 0 mismatches: the MPC report equals the plaintext recount number for number.</p>
+          </div>
+          <div class="figure">
+            <p class="big fig">0.0 pp</p>
+            <p class="budget">budget ≤ 2 pp</p>
+          </div>
+        </article>
+
+        <article class="row" aria-labelledby="sc003">
+          <i class="bead sm orange" aria-hidden="true"></i>
+          <div class="text">
+            <p class="tag">SC-003 · 08 Sep 2026</p>
+            <h3 id="sc003">A run over 10 000 records</h3>
+            <p>Projected from the measured cost of one fold on two corpora; fold cost stays constant within 10 % across run lengths.</p>
+            <p class="note">This criterion was “≤ 5 minutes”. The measurement found that the cluster saturates at four concurrent computations (×4.08 on sixteen), so 10 000 records take about 55 minutes even with unbounded parallelism. The budget was rewritten after the measurement, not before it.</p>
+          </div>
+          <div class="figure">
+            <p class="big fig">3.31 h</p>
+            <p class="second fig">and 3.71 h</p>
+            <p class="budget">projected · budget ≤ 4.5 h</p>
+          </div>
+        </article>
+
+        <article class="row" aria-labelledby="sc010">
+          <i class="bead sm orange" aria-hidden="true"></i>
+          <div class="text">
+            <p class="tag">SC-010 · 08 Sep 2026</p>
+            <h3 id="sc010">The buyer's path, catalogue to result</h3>
+            <p>The buyer's active time: four reads and one decryption. Wall-clock from order to report was 186 s, on a demo pool of three datasets.</p>
+          </div>
+          <div class="figure">
+            <p class="big fig">0.1 s</p>
+            <p class="budget">active · budget ≤ 3 min</p>
+          </div>
+        </article>
+
+        <article class="row" aria-labelledby="sc004">
+          <i class="bead sm plum" aria-hidden="true"></i>
+          <div class="text">
+            <p class="tag">SC-004 · 27 Sep 2026</p>
+            <h3 id="sc004">Runs outside consent are refused</h3>
+            <p>10 allowed and 10 forbidden scenarios: 0 false passes and 0 false refusals, on the chain and on the API. Controls: a program without the category check, and the API reading a finalized, 13-second-old chain.</p>
+            <p class="plain">Measured against the buyer category the buyer <em>declares</em>. Verifying that category is planned.</p>
+          </div>
+          <div class="figure">
+            <p class="big fig">20 of 20</p>
+            <p class="budget">budget 0 false passes, 0 false refusals</p>
+          </div>
+        </article>
+
+        <article class="row" aria-labelledby="sc005">
+          <i class="bead sm plum" aria-hidden="true"></i>
+          <div class="text">
+            <p class="tag">SC-005 · 29 Sep 2026</p>
+            <h3 id="sc005">Revocation applies to the next run</h3>
+            <p>10 revocations. No order was accepted after one; the nearest was refused in the same slot, later in the block. The API sees a revocation within one slot (419 ms). Control: a program without the revocation check accepted 1 587 orders, and the check went red.</p>
+          </div>
+          <div class="figure">
+            <p class="big fig">0 accepted</p>
+            <p class="budget">after revocation · 10 of 10 · budget &lt; 60 s</p>
+          </div>
+        </article>
+
+        <p class="footnote">Measured on one machine. A production Arcium cluster is a different measurement and has not been made.</p>
+      </div>
+
+      <section class="node" id="not-yet" aria-labelledby="notyet-h">
+        <div class="knot"><i class="bead hollow ink" aria-hidden="true"></i></div>
+        <div class="body">
+          <h2 id="notyet-h">What is not there yet.</h2>
+          <ul class="pending-list">
+            <li><i class="bead xs hollow magenta" aria-hidden="true"></i><div><p class="tag">SC-006 · M3</p><p>Owners' shares, the fee and the refund add up to the deposit, on every run.</p></div></li>
+            <li><i class="bead xs hollow magenta" aria-hidden="true"></i><div><p class="tag">SC-007 · M3</p><p>A run's fee split among 50 owners in under 30 seconds.</p></div></li>
+            <li><i class="bead xs hollow lime" aria-hidden="true"></i><div><p class="tag">SC-008 · M4</p><p>An exported journal reconciled with the chain by a third-party script.</p></div></li>
+            <li><i class="bead xs hollow lime" aria-hidden="true"></i><div><p class="tag">SC-009 · M4</p><p>Payment amounts that cannot be read without a viewing key. Today they are public on-chain.</p></div></li>
+            <li><i class="bead xs hollow orange" aria-hidden="true"></i><div><p class="tag">SC-011 · M4</p><p>The catalogue's first screen in under 2 seconds.</p></div></li>
+            <li><i class="bead xs hollow ink" aria-hidden="true"></i><div><p class="tag">Prototype</p><p>The prototype on this site runs on mock data. There is no API or cluster behind it, and consent is not yet editable from the interface.</p></div></li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="node" id="limits" aria-labelledby="limits-h">
+        <div class="knot"><i class="bead ink" aria-hidden="true"></i></div>
+        <div class="body">
+          <h2 id="limits-h">Limits, said out loud.</h2>
+          <ul class="limits">
+            <li><strong>No protection yet against attacks on model privacy.</strong> Membership inference and training-set reconstruction are not addressed; only a computation that returns a record by construction is refused. This is the largest gap.</li>
+            <li><strong>Synthetic data only.</strong> No criterion shows fitness for real patient data.</li>
+            <li><strong>No legal or regulatory review.</strong> Cryptography is not certification.</li>
+            <li><strong>On-chain consent is technical enforcement,</strong> not a document an ethics committee recognises.</li>
+            <li><strong>A fixed catalogue of recipes.</strong> Buyers cannot run their own code over the data.</li>
+            <li><strong>Consent is per dataset,</strong> not per record inside someone else's dataset.</li>
+            <li><strong>No fiat off-ramp, no mobile app,</strong> English only.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="node" aria-labelledby="faq-h">
+        <div class="knot"><i class="bead ink" aria-hidden="true"></i></div>
+        <div class="body">
+          <h2 id="faq-h">Questions.</h2>
+          <div class="faq">
+            <div><h3>Is this real patient data?</h3><p>No. Every dataset is synthetic, and the system has not been through legal or regulatory review.</p></div>
+            <div><h3>Can the operator read my data?</h3><p>The key is created and kept in your browser; the platform never receives it. The nodes compute on secret shares.</p></div>
+            <div><h3>What stops a run I did not allow?</h3><p>The program checks consent before a run exists; without a run, the compute layer has nothing to execute (SC-004, SC-005).</p></div>
+            <div><h3>Why hours for 10 000 records?</h3><p>The cluster saturates at four concurrent computations. The time is a measured property of this setup (SC-003).</p></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer wrap">
+    <span><strong>GenoVault</strong> · v0.1.0 · All data on this site and in the prototype is synthetic.</span>
+    <a href="https://github.com/GenoVault/GenoVault">github.com/GenoVault/GenoVault</a>
+  </footer>
+</body>
+</html>

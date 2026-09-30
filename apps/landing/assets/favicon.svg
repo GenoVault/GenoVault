@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="300 300 340 360" width="32" height="32">
+  <style>@media (prefers-color-scheme: dark) { .plum { fill: #A35AAB } }</style>
+  <ellipse cx="464" cy="360" rx="24" ry="28" fill="#72BBAA"/>
+  <ellipse cx="464" cy="415" rx="26" ry="30" fill="#72BBAA"/>
+  <ellipse cx="385" cy="512" rx="36" ry="31" fill="#72BBAA"/>
+  <ellipse cx="555" cy="462" rx="36" ry="31" fill="#72BBAA"/>
+  <ellipse cx="610" cy="438" rx="28" ry="25" fill="#712079" class="plum"/>
+  <ellipse cx="330" cy="540" rx="28" ry="25" fill="#712079" class="plum"/>
+  <ellipse cx="471" cy="485" rx="52" ry="45" fill="#E89138"/>
+  <ellipse cx="479" cy="562" rx="27" ry="30" fill="#E89138"/>
+  <ellipse cx="478" cy="620" rx="24" ry="27" fill="#DA356E"/>
+</svg>

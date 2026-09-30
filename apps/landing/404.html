@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Not found · GenoVault</title>
+  <meta name="robots" content="noindex">
+  <script>
+    // GitHub Pages serves this one file for every missing path of the site, at
+    // any depth. The app lives in /app/ with a history router, so a deep link
+    // such as /app/runs/<buyer>/<nonce> is not a file and lands here. Hand it
+    // to the app as ?p=<path>&q=<query>; the app puts the address back before
+    // its router starts (apps/web/src/lib/deep-link.ts). Addresses from before
+    // the move (/datasets, /runs, /balance at the site root) go the same way.
+    // __SITE_BASE__ is replaced by CI with the site's base path, e.g. /GenoVault/.
+    ;(function () {
+      var base = '__SITE_BASE__'
+      var app = base + 'app/'
+      var path = location.pathname
+      var rest = null
+      if (path.indexOf(app) === 0) {
+        rest = path.slice(app.length)
+      } else if (path.indexOf(base) === 0 && /^(datasets|runs|balance)(\/|$)/.test(path.slice(base.length))) {
+        rest = path.slice(base.length)
+      }
+      if (rest === null) return
+      document.documentElement.className = 'redirecting'
+      var query = location.search ? '&q=' + encodeURIComponent(location.search.slice(1)) : ''
+      location.replace(app + '?p=' + encodeURIComponent('/' + rest) + query + location.hash)
+    })()
+  </script>
+  <link rel="icon" href="__SITE_BASE__assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;700&amp;display=swap">
+  <link rel="stylesheet" href="__SITE_BASE__styles.css">
+  <style>
+    .redirecting body { visibility: hidden; }
+    .missing { display: flex; flex-direction: column; gap: 24px; padding: 120px 0 160px; }
+    .missing h1 { font-size: clamp(36px, 5vw, 56px); line-height: 1.1; letter-spacing: -0.02em; }
+  </style>
+</head>
+<body>
+  <header class="site-header wrap">
+    <a class="brand" href="__SITE_BASE__" aria-label="GenoVault, home">
+      <img src="__SITE_BASE__assets/logo.svg" alt="" width="36" height="38">
+      <span>GenoVault</span>
+    </a>
+  </header>
+  <main class="missing wrap">
+    <i class="bead hollow ink" aria-hidden="true"></i>
+    <h1>There is nothing at this address.</h1>
+    <div class="actions">
+      <a class="btn primary" href="__SITE_BASE__">Go to the landing page</a>
+      <a class="btn ghost" href="__SITE_BASE__app/">Open the prototype</a>
+    </div>
+  </main>
+</body>
+</html>
