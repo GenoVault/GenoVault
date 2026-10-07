@@ -13,6 +13,7 @@ import {
   type DatasetId,
   datasetIdSchema,
   LIMB_BYTES,
+  MAX_MARKERS,
   NONCE_BYTES,
   platformViewSchema,
   pricePer1kSchema,
@@ -61,7 +62,9 @@ const USER = 'did:privy:clx0000000000000000000000'
 const ALPHA = datasetIdSchema.parse('cohort-alpha')
 const BETA = datasetIdSchema.parse('cohort-beta')
 const RECORDS = 12
-const MARKERS = 4
+// The recipe's own shape: a dataset with any other marker count is
+// ineligible (`recipe-mismatch`), and these fixtures are about everything else.
+const MARKERS = MAX_MARKERS
 const PRICE = pricePer1kSchema.parse(1_500_000n)
 const NOW = 1_735_689_600n
 const CONSENT_VERSION = 3
@@ -268,8 +271,8 @@ beforeEach(() => {
 })
 
 /** Заводить датасет так, як це робить власник: метадані, потім байти. */
-async function store(datasetId: DatasetId): Promise<void> {
-  const bytes = envelope()
+async function store(datasetId: DatasetId, markers = MARKERS): Promise<void> {
+  const bytes = envelope(RECORDS, markers)
   await app.request('/datasets', {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
@@ -283,8 +286,12 @@ async function store(datasetId: DatasetId): Promise<void> {
         description: 'Синтетична когорта для перевірок.',
         schema: [{ field: 'age', type: 'integer', description: 'Повних років' }],
         recordCount: RECORDS,
-        markerCount: MARKERS,
-        statistics: { affectedRate: 0.25, meanAge: 44, alleleFrequencies: [0.2, 0.3, 0.25, 0.4] },
+        markerCount: markers,
+        statistics: {
+          affectedRate: 0.25,
+          meanAge: 44,
+          alleleFrequencies: Array.from({ length: markers }, () => 0.25),
+        },
         provenance: { source: 'synthetic', collectedFrom: '2024-01-01', collectedTo: '2024-06-30' },
       },
     }),
@@ -443,6 +450,20 @@ describe('POST /runs', () => {
     expect(error.details?.ineligible).toEqual([
       { owner: OWNER, datasetId: ALPHA, reason: 'revoked' },
       { owner: OWNER, datasetId: BETA, reason: 'unregistered' },
+    ])
+  })
+
+  it('a dataset the recipe cannot compute is refused before anything is locked', async () => {
+    // Found on the demo rehearsal (2026-10-07): 20 markers against the
+    // recipe's 64 got a price, the buyer locked escrow, and the dispatcher
+    // could not transcode the envelope — the run hung after `init`.
+    await store(ALPHA, MARKERS - 1)
+    const response = await post(order())
+
+    expect(response.status).toBe(403)
+    const error = apiErrorSchema.parse(await response.json()).error
+    expect(error.details?.ineligible).toEqual([
+      { owner: OWNER, datasetId: ALPHA, reason: 'recipe-mismatch' },
     ])
   })
 

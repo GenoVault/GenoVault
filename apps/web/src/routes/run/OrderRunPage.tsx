@@ -73,11 +73,12 @@ const key = (dataset: { owner: string; datasetId: string }) =>
  */
 const ORDER_STEP_TEXT: Record<OrderPhase, string> = {
   idle:
-    'Two signatures, in this order. First a message — it derives the key your report is ' +
-    'encrypted to, and moves no money. Then the transaction that locks the quote in escrow. ' +
+    'Two signatures, in this order. First your wallet signs a fixed message without a ' +
+    'prompt — it derives the key your report is encrypted to, and moves no money. Then it ' +
+    'asks you to approve the transaction that locks the quote in escrow. ' +
     'The platform never signs on your behalf, and whatever the run does not use comes back ' +
     'to you at settlement.',
-  key: 'Waiting for the message signature — this one derives your report key.',
+  key: 'Your wallet is signing the message that derives your report key.',
   building: 'The API is composing the instruction from on-chain prices.',
   signing: 'Waiting for the transaction signature — this one locks the escrow.',
   sent: 'Sent. Opening the run…',

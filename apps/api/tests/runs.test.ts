@@ -5,6 +5,7 @@ import {
   type DatasetId,
   datasetIdSchema,
   LIMB_BYTES,
+  MAX_MARKERS,
   MAX_RUN_DATASETS,
   NONCE_BYTES,
   pricePer1kSchema,
@@ -43,7 +44,9 @@ const USER = 'did:privy:clx0000000000000000000000'
 const ALPHA = datasetIdSchema.parse('cohort-alpha')
 const BETA = datasetIdSchema.parse('cohort-beta')
 const RECORDS = 12
-const MARKERS = 4
+// The recipe's own shape: a dataset with any other marker count is
+// ineligible (`recipe-mismatch`), and these fixtures are about everything else.
+const MARKERS = MAX_MARKERS
 const PRICE = pricePer1kSchema.parse(1_500_000n)
 const NOW = 1_735_689_600n
 
@@ -159,8 +162,8 @@ beforeEach(() => {
 })
 
 /** Заводить датасет так, як це робить власник: метадані, потім байти. */
-async function store(datasetId: DatasetId, records = RECORDS): Promise<void> {
-  const bytes = envelope(records)
+async function store(datasetId: DatasetId, records = RECORDS, markers = MARKERS): Promise<void> {
+  const bytes = envelope(records, markers)
   await app.request('/datasets', {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
@@ -174,8 +177,12 @@ async function store(datasetId: DatasetId, records = RECORDS): Promise<void> {
         description: 'Синтетична когорта для перевірок.',
         schema: [{ field: 'age', type: 'integer', description: 'Повних років' }],
         recordCount: records,
-        markerCount: MARKERS,
-        statistics: { affectedRate: 0.25, meanAge: 44, alleleFrequencies: [0.2, 0.3, 0.25, 0.4] },
+        markerCount: markers,
+        statistics: {
+          affectedRate: 0.25,
+          meanAge: 44,
+          alleleFrequencies: Array.from({ length: markers }, () => 0.25),
+        },
         provenance: { source: 'synthetic', collectedFrom: '2024-01-01', collectedTo: '2024-06-30' },
       },
     }),
@@ -455,6 +462,30 @@ describe('непридатний датасет позначається, а н�
     const line = body.datasets[1]
 
     expect(line?.eligible === false ? line.reason : undefined).toBe('ciphertext-missing')
+  })
+
+  it('a dataset whose marker count the recipe does not take is not priced', async () => {
+    // The circuit takes exactly `Recipe.markers`; a price for anything else is
+    // a price for a run the dispatcher cannot carry past `init`.
+    const gamma = datasetIdSchema.parse('cohort-gamma')
+    await store(gamma, RECORDS, 20)
+    readQuoteChain.mockImplementation(async () =>
+      chainState([chainDataset(ALPHA), chainDataset(gamma)]),
+    )
+
+    const response = await quote(
+      request({
+        datasets: [
+          { owner: OWNER, datasetId: ALPHA },
+          { owner: OWNER, datasetId: gamma },
+        ],
+      }),
+    )
+    const body = runQuoteSchema.parse(await response.json())
+
+    expect(body.datasets[0]?.eligible).toBe(true)
+    const line = body.datasets[1]
+    expect(line?.eligible === false ? line.reason : undefined).toBe('recipe-mismatch')
   })
 
   it('стан датасету називається раніше за згоду', async () => {

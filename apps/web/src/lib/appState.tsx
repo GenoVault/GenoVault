@@ -155,7 +155,20 @@ const PrivySession = ({ children }: { children: ReactNode }) => {
       token,
       signMessage: async (message: Uint8Array) => {
         if (wallet === undefined) throw new NoWalletError('підпис повідомлення')
-        const { signature } = await signMessage({ message, wallet })
+        // Without Privy's own confirmation screen, on purpose. In
+        // `@privy-io/react-auth` 3.40 (and still in 3.47) that screen stays the
+        // modal's current route after it closes; the escrow transaction asked
+        // for right after it replaces the modal data, the stale screen
+        // re-renders without `signMessage` and takes the whole app down
+        // (`Cannot destructure property 'method' of 's.signMessage'`). The
+        // message moves no money — it derives the report key — and the order
+        // panel says so before the button; the transaction that locks money
+        // still goes through Privy's screen.
+        const { signature } = await signMessage({
+          message,
+          wallet,
+          options: { uiOptions: { showWalletUIs: false } },
+        })
         return signature
       },
       signAndSendTransaction: async (transaction: Uint8Array) => {

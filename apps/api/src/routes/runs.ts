@@ -172,7 +172,8 @@ function duplicateOf(refs: readonly RunDatasetRef[]): RunDatasetRef | undefined 
  */
 function ineligibleReason(
   state: QuoteDatasetState,
-  stored: boolean,
+  record: DatasetRecord | undefined,
+  recipe: Recipe,
   request: { useType: UseTypeName; buyerCategory: BuyerCategoryName },
   now: bigint,
 ): QuoteIneligibleReason | null {
@@ -180,7 +181,11 @@ function ineligibleReason(
   if (state.dataset.status === 'retired') return 'retired'
   // Зареєстрований датасет без байтів у сховищі порахувати нічим: прогін по
   // ньому впаде на публікації в MPC, а не на перевірці згоди.
-  if (!stored) return 'ciphertext-missing'
+  if (record?.status !== 'stored') return 'ciphertext-missing'
+  // The catalog's number, not the chain's, and it can be trusted: the upload
+  // checks the envelope header against the declared `markerCount` and takes
+  // no other envelope.
+  if (record.metadata.markerCount !== recipe.markers) return 'recipe-mismatch'
   return checkConsent(state.consent, { ...request, now })
 }
 
@@ -281,6 +286,7 @@ async function evaluatePool(
     useType: UseTypeName
     buyerCategory: BuyerCategoryName
   },
+  recipe: Recipe,
   chain: QuoteChainState,
 ): Promise<PoolEvaluation | undefined> {
   // Каталог питається пачкою з тієї ж причини, що й ланцюг: п'ятдесят
@@ -300,7 +306,8 @@ async function evaluatePool(
 
     const reason = ineligibleReason(
       state,
-      records[index]?.status === 'stored',
+      records[index],
+      recipe,
       { useType: request.useType, buyerCategory: request.buyerCategory },
       chain.now,
     )
@@ -387,7 +394,7 @@ export function runRoutes(deps: RunRoutesDeps) {
 
     let evaluation: PoolEvaluation | undefined
     try {
-      evaluation = await evaluatePool(services, request, chain)
+      evaluation = await evaluatePool(services, request, recipe, chain)
     } catch (error) {
       if (error instanceof PoolOverflowError) {
         return fail(c, 'INVALID_INPUT', error.message, { datasetId: error.datasetId })
@@ -520,7 +527,7 @@ export function runRoutes(deps: RunRoutesDeps) {
 
     let evaluation: PoolEvaluation | undefined
     try {
-      evaluation = await evaluatePool(services, request, chain)
+      evaluation = await evaluatePool(services, request, recipe, chain)
     } catch (error) {
       if (error instanceof PoolOverflowError) {
         return fail(c, 'INVALID_INPUT', error.message, { datasetId: error.datasetId })

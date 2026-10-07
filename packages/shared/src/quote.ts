@@ -129,11 +129,18 @@ export type RunQuoteRequest = z.infer<typeof runQuoteRequestSchema>
  * стосуються стану датасету, а не згоди. `ciphertext-missing` є тут, бо
  * зареєстрований датасет без байтів у сховищі неможливо порахувати: прогін по
  * ньому відхилиться на публікації в MPC, а не на перевірці згоди.
+ *
+ * `recipe-mismatch` is of the same family: the circuit takes exactly
+ * `Recipe.markers` markers, and the dispatcher cannot lay a dataset of another
+ * shape into the buffer. Without this reason the quote priced it, the buyer
+ * locked escrow, and the run hung after `init` (found on the demo rehearsal,
+ * 2026-10-07: 20 markers against 64).
  */
 export const QUOTE_INELIGIBLE_REASONS = [
   'unregistered',
   'retired',
   'ciphertext-missing',
+  'recipe-mismatch',
   ...CONSENT_VIOLATIONS,
 ] as const
 

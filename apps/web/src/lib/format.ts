@@ -101,6 +101,7 @@ export const REASON_TEXT: Record<IneligibleReason, string> = {
   unregistered: 'Not registered on-chain yet',
   retired: 'Retired by its owner',
   'ciphertext-missing': 'Encrypted data has not been uploaded',
+  'recipe-mismatch': 'Its marker count does not fit this recipe',
   'no-consent': 'No consent has been set',
   revoked: 'Consent was revoked',
   expired: 'Consent expired',

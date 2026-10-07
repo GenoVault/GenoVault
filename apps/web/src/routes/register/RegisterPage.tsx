@@ -66,7 +66,14 @@ import { type RegisterStage, useRegistration } from '@/lib/registration'
 import { RPC_URL } from '@/lib/rpc'
 import { LIVE_DATA } from '@/lib/runData'
 import { cn } from '@/lib/utils'
-import { DATASET_SOURCES, type DatasetSource, ENCRYPTION, LIMITS, STABLE_MINT } from '@/mockData'
+import {
+  DATASET_SOURCES,
+  type DatasetSource,
+  ENCRYPTION,
+  LIMITS,
+  RECIPES,
+  STABLE_MINT,
+} from '@/mockData'
 
 type Step = 'describe' | 'consent' | 'process'
 
@@ -218,8 +225,25 @@ const StageRow = ({
 /** The derived description: what the file says, before anything is encrypted. */
 const FileSummary = ({ file }: { file: RecordsFile }) => {
   const estimate = estimateEncryption(file.records.length, file.markerCount + 3)
+  // A warning, not a refusal: the dataset is still the owner's to register,
+  // but every recipe's circuit takes an exact marker count, so a quote would
+  // mark it ineligible (`recipe-mismatch`) and nobody could buy a run on it.
+  const fitting = RECIPES.filter((recipe) => recipe.maxMarkers === file.markerCount)
   return (
     <div className="mt-4 flex flex-col gap-4">
+      {fitting.length === 0 && (
+        <p className="flex items-start gap-1.5 text-[12.5px] leading-5 text-destructive">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            No recipe in the catalog computes a dataset with{' '}
+            <span className="num">{file.markerCount}</span> markers:{' '}
+            {RECIPES.map((recipe) => `${recipe.name} takes exactly ${recipe.maxMarkers}`).join(
+              '; ',
+            )}
+            . It can be registered, but no run can include it.
+          </span>
+        </p>
+      )}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <KeyValue label="Records">
           <Count value={file.records.length} />
