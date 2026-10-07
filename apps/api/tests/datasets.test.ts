@@ -23,7 +23,15 @@ import { z } from 'zod'
 import { createApp } from '../src/app.ts'
 import { AuthError, type TokenVerifier } from '../src/services/auth.ts'
 import { type CatalogStore, memoryCatalog } from '../src/services/catalog.ts'
-import { createRegistrationBuilder } from '../src/services/chain.ts'
+import {
+  ChainStateError,
+  createRegistrationBuilder,
+  deriveDatasetAddress,
+  type RegistrationChecker,
+} from '../src/services/chain.ts'
+
+type TestChecker = RegistrationChecker
+
 import type { StorageDriver } from '../src/services/storage.ts'
 
 const OWNER = solanaAddressSchema.parse('11111111111111111111111111111112')
@@ -104,6 +112,9 @@ function memoryStorage(): StorageDriver & { objects: Map<string, Uint8Array> } {
     },
     async exists(key) {
       return objects.has(key)
+    },
+    async remove(key) {
+      objects.delete(key)
     },
   }
 }
@@ -314,6 +325,44 @@ describe('POST /datasets', () => {
 
       expect(response.status).toBe(400)
       expect((await failure(response)).message).toContain('іншим відбитком')
+    })
+
+    it('another hash replaces a declaration that never reached the chain', async () => {
+      // Encryption makes a fresh envelope every time, so a retry after an
+      // abandoned attempt always brings a new hash (decision 2026-10-07).
+      const first = envelope()
+      await post(await body(first))
+      await put(first)
+      const oldKey = `datasets/${DATASET_ID}/${await contentHash(first)}.gvds`
+      expect(storage.objects.has(oldKey)).toBe(true)
+
+      readChain.mockResolvedValue(chainViewSchema.parse({ state: 'unregistered' }))
+      const second = envelope(RECORDS, MARKERS, 99)
+      const response = await post(await body(second))
+
+      expect(response.status).toBe(201)
+      const json = await registered(response)
+      expect(json.contentHash).toBe(await contentHash(second))
+      expect(json.status).toBe('pending')
+      // The bytes of the abandoned declaration are gone; nothing points at them.
+      expect(storage.objects.has(oldKey)).toBe(false)
+      const record = await catalog.getDataset(OWNER, DATASET_ID)
+      expect(record?.byteLength).toBeUndefined()
+      expect((await put(second)).status).toBe(200)
+    })
+
+    it('does not replace when the chain cannot be read — 503, nothing touched', async () => {
+      const first = envelope()
+      await post(await body(first))
+      await put(first)
+      readChain.mockResolvedValue(chainViewSchema.parse({ state: 'unavailable' }))
+
+      const response = await post(await body(envelope(RECORDS, MARKERS, 99)))
+      expect(response.status).toBe(503)
+      expect((await catalog.getDataset(OWNER, DATASET_ID))?.contentHash).toBe(
+        await contentHash(first),
+      )
+      expect(storage.objects.size).toBe(1)
     })
 
     it('повтор реєстрації після завантаження не скидає стан на pending', async () => {
@@ -592,6 +641,67 @@ describe('GET /datasets', () => {
     const raw: unknown = JSON.parse(await (await list()).text())
     const items = z.object({ items: z.array(z.object({ pricePer1k: z.unknown() })) }).parse(raw)
     expect(typeof items.items[0]?.pricePer1k).toBe('string')
+  })
+})
+
+describe('GET /datasets — only what is on chain (decision 2026-10-07)', () => {
+  /** `cohort-alpha` is on chain; `cohort-beta` has bytes but no signed registration. */
+  const onChainOnly = (registered: readonly string[]) =>
+    vi.fn(async (addresses: readonly SolanaAddress[]) => {
+      const alpha = deriveDatasetAddress(OWNER, DATASET_ID)
+      return new Map(addresses.map((a) => [a, a === alpha && registered.includes('alpha')]))
+    })
+
+  async function seedTwo(checkRegistered: TestChecker) {
+    app = createApp({
+      verifyAccessToken: verify,
+      catalog,
+      storage,
+      buildRegistration: createRegistrationBuilder('http://127.0.0.1:8899'),
+      readChain,
+      checkRegistered,
+      baseUrl: 'http://127.0.0.1:8879',
+    })
+    for (const [id, seed] of [
+      [DATASET_ID, 1],
+      ['cohort-beta', 5],
+    ] as const) {
+      const bytes = envelope(RECORDS, MARKERS, seed)
+      await post({ ...(await body(bytes)), datasetId: id })
+      await put(bytes, 'good', datasetIdSchema.parse(id))
+    }
+  }
+
+  it('shows a buyer only the dataset that is on chain, and counts only it', async () => {
+    await seedTwo(onChainOnly(['alpha']))
+    const page = datasetListSchema.parse(await (await app.request('/datasets')).json())
+    expect(page.items.map((item) => [item.datasetId, item.onChain])).toEqual([[DATASET_ID, true]])
+    expect(page.total).toBe(1)
+  })
+
+  it('shows the owner their unsigned one too, marked', async () => {
+    await seedTwo(onChainOnly(['alpha']))
+    const page = datasetListSchema.parse(await (await list('?owner=me')).json())
+    expect(page.items.map((item) => [item.datasetId, item.onChain]).sort()).toEqual([
+      [DATASET_ID, true],
+      ['cohort-beta', false],
+    ])
+  })
+
+  it('opens without the chain, saying it could not read it', async () => {
+    await seedTwo(
+      vi.fn(async () => {
+        throw new ChainStateError('unavailable', 'down')
+      }),
+    )
+    const page = datasetListSchema.parse(await (await app.request('/datasets')).json())
+    expect(page.items.map((item) => item.onChain)).toEqual([null, null])
+  })
+
+  it('pages after filtering, so a page is never short', async () => {
+    await seedTwo(onChainOnly([]))
+    const page = datasetListSchema.parse(await (await app.request('/datasets?limit=1')).json())
+    expect(page).toMatchObject({ items: [], total: 0 })
   })
 })
 

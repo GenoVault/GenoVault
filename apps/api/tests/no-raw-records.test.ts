@@ -122,6 +122,9 @@ function memoryStorage(): StorageDriver {
     async exists(key) {
       return objects.has(key)
     },
+    async remove(key) {
+      objects.delete(key)
+    },
   }
 }
 

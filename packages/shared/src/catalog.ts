@@ -53,6 +53,15 @@ export const datasetCardSchema = z.strictObject({
   pricePer1k: u64Schema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  /**
+   * Whether the dataset is registered on chain (decision 2026-10-07).
+   *
+   * A buyer's list holds no `false`: bytes without a signed registration
+   * cannot enter a run. The owner's own list does, so they can see what is
+   * still waiting for their signature. `null` — the chain could not be read
+   * just now; the catalog opens without the network, and says so.
+   */
+  onChain: z.boolean().nullable(),
 })
 
 export type DatasetCard = z.infer<typeof datasetCardSchema>

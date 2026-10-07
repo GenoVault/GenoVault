@@ -20,6 +20,7 @@ import type {
   PlatformReader,
   QuoteChainReader,
   RegistrationBuilder,
+  RegistrationChecker,
   RunOrderBuilder,
   RunReader,
 } from './services/chain.ts'
@@ -42,6 +43,8 @@ export interface AppDeps {
   storage?: StorageDriver | undefined
   buildRegistration?: RegistrationBuilder | undefined
   readChain?: ChainReader | undefined
+  /** Which datasets are on chain, for the catalog list (decision 2026-10-07). */
+  checkRegistered?: RegistrationChecker | undefined
   /**
    * Пакетний читач для квоти. Окремо від `readChain`, бо це інша форма
    * питання: картка питає про один датасет і переживає відсутню мережу,
@@ -104,6 +107,7 @@ export function createApp(deps: AppDeps = {}) {
       storage: deps.storage,
       buildRegistration: deps.buildRegistration,
       readChain: deps.readChain,
+      checkRegistered: deps.checkRegistered,
       baseUrl: deps.baseUrl,
       maxCiphertextBytes: deps.maxCiphertextBytes,
     }),

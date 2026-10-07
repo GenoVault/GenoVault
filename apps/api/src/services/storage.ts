@@ -30,6 +30,13 @@ export interface StorageDriver {
   put(key: string, bytes: Uint8Array): Promise<void>
   get(key: string): Promise<Uint8Array>
   exists(key: string): Promise<boolean>
+  /**
+   * Removes an object; a missing one is not an error. Called for exactly one
+   * case: bytes of a declaration the owner replaced before signing it, i.e.
+   * bytes no chain record and no run points at (`POST /datasets`, decision
+   * 2026-10-07).
+   */
+  remove(key: string): Promise<void>
 }
 
 export interface StoredCiphertext {
@@ -216,6 +223,16 @@ export function fsDriver(root: string): StorageDriver {
         return false
       }
     },
+
+    async remove(key) {
+      try {
+        await unlink(pathFor(key))
+      } catch (error) {
+        if (error instanceof StorageError) throw error
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+        throw new StorageError(`could not remove ${key}: ${describe(error)}`)
+      }
+    },
   }
 }
 
@@ -259,6 +276,13 @@ export function supabaseDriver(
     async exists(key) {
       const response = await fetch(endpoint(key), { method: 'HEAD', headers: auth })
       return response.ok
+    },
+
+    async remove(key) {
+      const response = await fetch(endpoint(key), { method: 'DELETE', headers: auth })
+      if (!response.ok && response.status !== 404) {
+        throw new StorageError(`storage refused to remove ${key}: ${response.status}`)
+      }
     },
   }
 }

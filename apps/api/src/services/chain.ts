@@ -675,3 +675,54 @@ export function createConsentIxBuilder(rpcUrl: string): ConsentIxBuilder {
     }
   }
 }
+
+// ── Catalog: which datasets are on chain (decision 2026-10-07) ────────────────
+
+/**
+ * Which of these datasets are registered on chain. `true` / `false` per
+ * address; throws `ChainStateError` when the node does not answer.
+ */
+export type RegistrationChecker = (
+  addresses: readonly SolanaAddress[],
+) => Promise<Map<SolanaAddress, boolean>>
+
+/**
+ * The catalog shows a buyer only what is on chain: a declaration with bytes
+ * but no signed registration cannot enter a run, and listed among the rest it
+ * reads as one that can.
+ *
+ * One batched read per page (`fetchDatasets` splits it into what the node
+ * takes), and a registration, once seen, is remembered for the life of the
+ * process: a dataset account is never closed — retiring keeps it — so "on
+ * chain" cannot become false again. In the steady state the first screen of
+ * `SC-011` makes no chain read at all; only datasets not yet seen cost one.
+ */
+export function createRegistrationChecker(rpcUrl: string): RegistrationChecker {
+  const program = createProgram({ connection: chainConnection(rpcUrl) })
+  const seen = new Set<SolanaAddress>()
+
+  return async (addresses) => {
+    const answer = new Map<SolanaAddress, boolean>()
+    const unknown = addresses.filter((address) => {
+      if (seen.has(address)) answer.set(address, true)
+      return !seen.has(address)
+    })
+    if (unknown.length === 0) return answer
+
+    let accounts: Awaited<ReturnType<typeof fetchDatasets>>
+    try {
+      accounts = await fetchDatasets(
+        program,
+        unknown.map((address) => new PublicKey(address)),
+      )
+    } catch {
+      throw new ChainStateError('unavailable', 'the network node did not answer')
+    }
+    unknown.forEach((address, index) => {
+      const registered = accounts[index] !== null && accounts[index] !== undefined
+      if (registered) seen.add(address)
+      answer.set(address, registered)
+    })
+    return answer
+  }
+}

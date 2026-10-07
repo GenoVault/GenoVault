@@ -16,10 +16,12 @@ import type { TokenVerifier } from '../services/auth.ts'
 import { type CatalogStore, type DatasetRecord, now } from '../services/catalog.ts'
 import {
   type ChainReader,
+  ChainStateError,
   deriveDatasetAddress,
   type RegistrationBuilder,
+  type RegistrationChecker,
 } from '../services/chain.ts'
-import { type StorageDriver, storeCiphertext } from '../services/storage.ts'
+import { ciphertextKey, type StorageDriver, storeCiphertext } from '../services/storage.ts'
 
 /**
  * Реєстрація датасету і завантаження шифротексту (`FR-001`, `FR-004`).
@@ -51,6 +53,11 @@ export interface DatasetRoutesDeps {
   storage?: StorageDriver | undefined
   buildRegistration?: RegistrationBuilder | undefined
   readChain?: ChainReader | undefined
+  /**
+   * Which datasets are on chain, for the catalog list (decision 2026-10-07).
+   * Without it every card says `onChain: null` and nothing is filtered.
+   */
+  checkRegistered?: RegistrationChecker | undefined
   /** Звідки збирається `uploadUrl` у відповіді. */
   baseUrl?: string | undefined
   maxCiphertextBytes?: number | undefined
@@ -136,17 +143,37 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
       )
     }
 
-    const existing = await services.catalog.getDataset(request.owner, request.datasetId)
-    if (existing !== undefined && existing.contentHash !== request.contentHash) {
-      // Новий вміст під тим самим ідентифікатором — це нова версія датасету
-      // (`update_dataset_content`, `FR-003`), а не повторна реєстрація. Тихо
-      // перезаписати відбиток означало б відв'язати завершені прогони від
-      // того, по чому вони насправді йшли.
-      return fail(
-        c,
-        'INVALID_INPUT',
-        `датасет ${request.datasetId} уже зареєстрований з іншим відбитком вмісту`,
-      )
+    const found = await services.catalog.getDataset(request.owner, request.datasetId)
+    let existing = found
+    if (found !== undefined && found.contentHash !== request.contentHash) {
+      // Another hash under the same id. Once the dataset is on chain, that is
+      // a new version (`update_dataset_content`, `FR-003`): quietly rewriting
+      // the hash would cut finished runs off what they actually ran over.
+      // Before that, it is a declaration the owner never signed — encryption
+      // makes a fresh envelope every time, so an abandoned attempt would
+      // otherwise hold the id forever (decision 2026-10-07). The chain is
+      // read at `confirmed`, like every read before a signature (`T041`).
+      const chain = await services.readChain(request.owner, request.datasetId)
+      if (chain.state === 'unavailable') {
+        return fail(
+          c,
+          'UPSTREAM_UNAVAILABLE',
+          'the network is not answering right now — try again later',
+        )
+      }
+      if (chain.state === 'registered') {
+        return fail(
+          c,
+          'INVALID_INPUT',
+          `датасет ${request.datasetId} уже зареєстрований з іншим відбитком вмісту`,
+        )
+      }
+      // Bytes nobody points at: no chain record, so no run. They go, rather
+      // than sit in storage as a second copy of the owner's data.
+      if (found.status === 'stored') {
+        await services.storage.remove(ciphertextKey(found.datasetId, found.contentHash))
+      }
+      existing = undefined
     }
 
     const registration = await services.buildRegistration({
@@ -169,7 +196,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
       // заявлено той самий, тож стан лишається таким, якого він уже досяг.
       status: existing?.status ?? 'pending',
       ...(existing?.byteLength === undefined ? {} : { byteLength: existing.byteLength }),
-      createdAt: existing?.createdAt ?? timestamp,
+      createdAt: found?.createdAt ?? timestamp,
       updatedAt: timestamp,
     }
     await services.catalog.putDataset(record)
@@ -301,20 +328,46 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
       return c.json({ items: [], total: 0, limit: query.limit, offset: query.offset })
     }
 
-    const page = await services.catalog.listDatasets({
+    // The owner's own list holds their drafts and their unsigned
+    // registrations; everyone else's holds only what can enter a run.
+    const own = requested !== undefined && requested === self
+    // The chain filter runs before paging, so the whole selection is taken
+    // and paged here: a page filtered after the store paged it would come
+    // back short, and `total` would count what nobody can see.
+    const selection = await services.catalog.listDatasets({
       ...(requested === undefined ? {} : { owner: requested }),
       ...(query.source === undefined ? {} : { source: query.source }),
       ...(query.minRecords === undefined ? {} : { minRecords: query.minRecords }),
       ...(query.maxPricePer1k === undefined ? {} : { maxPricePer1k: query.maxPricePer1k }),
       ...(query.q === undefined ? {} : { q: query.q.toLowerCase() }),
-      includePending: requested !== undefined && requested === self,
-      limit: query.limit,
-      offset: query.offset,
+      includePending: own,
+      limit: Number.MAX_SAFE_INTEGER,
+      offset: 0,
     })
 
+    const addresses = selection.items.map((record) =>
+      deriveDatasetAddress(record.owner, record.datasetId),
+    )
+    let registered: Map<SolanaAddress, boolean> | null = null
+    if (deps.checkRegistered !== undefined) {
+      try {
+        registered = await deps.checkRegistered(addresses)
+      } catch (error) {
+        // No chain, no verdict: the catalog still opens (`FR-002`), and every
+        // card says the chain could not be read rather than guessing.
+        if (!(error instanceof ChainStateError)) throw error
+      }
+    }
+
+    const cards = selection.items.map((record, index) => {
+      const address = addresses[index]
+      return toCard(record, address === undefined ? null : (registered?.get(address) ?? null))
+    })
+    const visible = own ? cards : cards.filter((card) => card.onChain !== false)
+
     return c.json({
-      items: page.items.map(toCard),
-      total: page.total,
+      items: visible.slice(query.offset, query.offset + query.limit),
+      total: visible.length,
       limit: query.limit,
       offset: query.offset,
     })
@@ -349,7 +402,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
     const chain = await services.readChain(record.owner, record.datasetId)
 
     return c.json({
-      ...toCard(record),
+      ...toCard(record, chain.state === 'unavailable' ? null : chain.state === 'registered'),
       schema: record.metadata.schema,
       statistics:
         record.metadata.statistics === undefined
@@ -390,7 +443,7 @@ export async function resolveOwnDataset(
  * Ціна їде рядком — `JSON.parse` зводить числа до `double` і мовчки округлює
  * усе, що більше за 2^53, а `price_per_1k` це u64.
  */
-function toCard(record: DatasetRecord): DatasetCard {
+function toCard(record: DatasetRecord, onChain: boolean | null): DatasetCard {
   return {
     datasetId: record.datasetId,
     owner: record.owner,
@@ -403,6 +456,7 @@ function toCard(record: DatasetRecord): DatasetCard {
     pricePer1k: record.pricePer1k.toString(),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    onChain,
   }
 }
 

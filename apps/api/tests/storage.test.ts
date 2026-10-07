@@ -213,6 +213,16 @@ describe('драйвер fs', () => {
 
     expect((await readFile(join(root, stored.key))).length).toBe(stored.byteLength)
   })
+
+  it('removes an object, and a missing one is not an error', async () => {
+    const driver = fsDriver(root)
+    const stored = await storeCiphertext(driver, DATASET_ID, envelope())
+
+    await driver.remove(stored.key)
+    expect(await driver.exists(stored.key)).toBe(false)
+    await expect(driver.remove(stored.key)).resolves.toBeUndefined()
+    await expect(driver.remove('../../../etc/passwd')).rejects.toThrow(StorageError)
+  })
 })
 
 describe('драйвер supabase', () => {
@@ -246,6 +256,25 @@ describe('драйвер supabase', () => {
     await expect(storeCiphertext(supabaseDriver(SUPABASE), DATASET_ID, envelope())).rejects.toThrow(
       /сховище відмовило на записі/,
     )
+  })
+
+  it('removes with DELETE, takes 404 as already gone, refuses on anything else', async () => {
+    const key = `datasets/${DATASET_ID}/${'a'.repeat(64)}.gvds`
+    const respond = (status: number) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(null, { status })),
+      )
+
+    respond(200)
+    await supabaseDriver(SUPABASE).remove(key)
+    const calls = vi.mocked(fetch).mock.calls
+    expect(calls.at(-1)?.[1]?.method).toBe('DELETE')
+
+    respond(404)
+    await expect(supabaseDriver(SUPABASE).remove(key)).resolves.toBeUndefined()
+    respond(403)
+    await expect(supabaseDriver(SUPABASE).remove(key)).rejects.toThrow(StorageError)
   })
 })
 

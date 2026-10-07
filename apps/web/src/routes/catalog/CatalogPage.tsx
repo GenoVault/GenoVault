@@ -50,7 +50,14 @@ const DatasetCard = ({ dataset }: { dataset: DatasetCardView }) => {
   return (
     <article className="panel group flex flex-col p-4 transition-shadow hover:shadow-[0_2px_2px_hsl(30_20%_40%/0.05),0_14px_28px_-14px_hsl(30_24%_30%/0.28)]">
       <div className="flex items-start justify-between gap-3">
-        <Tag tone="brand">{SOURCE_LABEL[dataset.source]}</Tag>
+        <div className="flex flex-wrap gap-1.5">
+          <Tag tone="brand">{SOURCE_LABEL[dataset.source]}</Tag>
+          {/* Only the owner's own list holds `false`; `null` is "could not read". */}
+          {dataset.onChain === false && (
+            <Tag tone="warning">not on chain — sign its registration</Tag>
+          )}
+          {dataset.onChain === null && <Tag tone="neutral">chain state unknown</Tag>}
+        </div>
         <Button
           variant="ghost"
           size="sm"

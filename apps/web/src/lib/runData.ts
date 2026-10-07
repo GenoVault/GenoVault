@@ -81,6 +81,8 @@ export function mockCard(dataset: Dataset): DatasetCard {
     pricePer1k: String(dataset.pricePer1k),
     createdAt: `${dataset.collectedFrom}T00:00:00.000Z`,
     updatedAt: `${dataset.updatedAt}T00:00:00.000Z`,
+    // Every prototype dataset is registered (`mockData`).
+    onChain: dataset.chain.state === 'registered',
   })
 }
 

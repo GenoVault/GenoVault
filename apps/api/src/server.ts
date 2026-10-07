@@ -11,6 +11,7 @@ import {
   createPlatformReader,
   createQuoteChainReader,
   createRegistrationBuilder,
+  createRegistrationChecker,
   createRunOrderBuilder,
   createRunReader,
 } from './services/chain.ts'
@@ -54,6 +55,7 @@ const app = createApp({
   storage: createStorage(storage),
   buildRegistration: createRegistrationBuilder(rpcUrl),
   readChain: createChainReader(rpcUrl),
+  checkRegistered: createRegistrationChecker(rpcUrl),
   readQuoteChain: createQuoteChainReader(rpcUrl),
   buildRunOrder: createRunOrderBuilder(rpcUrl),
   readRun: createRunReader(rpcUrl),
