@@ -11,7 +11,7 @@ import {
 } from '@genovault/shared'
 import { Hono } from 'hono'
 import { fail } from '../errors.ts'
-import { type AuthVariables, requireAuth } from '../middleware/auth.ts'
+import { type AuthVariables, optionalAuth, requireAuth } from '../middleware/auth.ts'
 import type { TokenVerifier } from '../services/auth.ts'
 import { type CatalogStore, type DatasetRecord, now } from '../services/catalog.ts'
 import {
@@ -281,14 +281,18 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
    * рядків зробило б `SC-011` («перший екран каталогу < 2 с») недосяжним за
    * побудовою. Згода й бейдж живуть у картці окремого датасету.
    */
-  routes.get('/datasets', requireAuth(deps.verify), async (c) => {
+  routes.get('/datasets', optionalAuth(deps.verify), async (c) => {
     if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
 
     const query = datasetQuerySchema.parse(
       Object.fromEntries(new URL(c.req.url).searchParams.entries()),
     )
-    const actor = c.get('actor')
-    const self = await services.catalog.ownerOf(actor.userId)
+    const viewer = c.get('viewer')
+    // `owner=me` names the session, so without one there is no "me".
+    if (query.owner === 'me' && viewer === null) {
+      return fail(c, 'UNAUTHORIZED', 'owner=me needs a session token')
+    }
+    const self = viewer === null ? undefined : await services.catalog.ownerOf(viewer.userId)
 
     // `owner=me` — це не адреса, а «мої». Сесія без прив'язаної адреси нічим
     // не володіє, і перелік для неї порожній, а не «усі датасети».
@@ -326,15 +330,15 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
    * URL без власника вимагав би зворотного індексу «ідентифікатор → власник»,
    * тобто ще одного місця, де правда може розійтися з ланцюгом.
    */
-  routes.get('/datasets/:owner/:id', requireAuth(deps.verify), async (c) => {
+  routes.get('/datasets/:owner/:id', optionalAuth(deps.verify), async (c) => {
     if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
 
     const owner = solanaAddressSchema.parse(c.req.param('owner'))
     const datasetId = datasetIdSchema.parse(c.req.param('id'))
 
     const record = await services.catalog.getDataset(owner, datasetId)
-    const actor = c.get('actor')
-    const self = await services.catalog.ownerOf(actor.userId)
+    const viewer = c.get('viewer')
+    const self = viewer === null ? undefined : await services.catalog.ownerOf(viewer.userId)
 
     // Незавантажений датасет видно тільки власнику — тією ж відповіддю, що й
     // неіснуючий, бо інакше 404 і 403 разом дають перелік чужих чернеток.
@@ -369,7 +373,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
  * покупцю, які ідентифікатори зайняті в чужих власників, а каталог відповідає
  * на це окремим маршрутом і за окремими правилами (`FR-002`).
  */
-async function resolveOwnDataset(
+export async function resolveOwnDataset(
   catalog: CatalogStore,
   userId: string,
   datasetId: DatasetId,

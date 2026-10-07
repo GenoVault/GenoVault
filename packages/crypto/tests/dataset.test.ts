@@ -169,3 +169,22 @@ describe('вхід перевіряється до шифру', () => {
     expect(() => encryptDataset(RECORDS, mxe.publicKey.slice(0, 31))).toThrow(/32 байт/)
   })
 })
+
+describe('progress (T066)', () => {
+  it('reports every record count up to the total, ending on it', () => {
+    const records = Array.from({ length: 250 }, (_, i) => record(i))
+    const seen: [number, number][] = []
+    encryptDataset(records, mxeKeypair().publicKey, (done, total) => seen.push([done, total]))
+
+    expect(seen.at(-1)).toEqual([250, 250])
+    // Every 1% of 250 is every 2 records: monotone, never past the total.
+    expect(seen.every(([done], i) => i === 0 || done > (seen[i - 1]?.[0] ?? 0))).toBe(true)
+    expect(seen.length).toBe(125)
+  })
+
+  it('changes nothing about the envelope', () => {
+    const { secretKey, publicKey } = mxeKeypair()
+    const encrypted = encryptDataset(RECORDS, publicKey, () => {})
+    expect(decryptDataset(encrypted.bytes, secretKey)).toEqual(RECORDS)
+  })
+})

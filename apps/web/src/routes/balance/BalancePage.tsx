@@ -25,7 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatAmount, formatBps, formatInt, USE_TYPE_LABEL } from '@/lib/format'
+import { formatAmount, formatBps, formatInt, truncateMiddle, USE_TYPE_LABEL } from '@/lib/format'
+import { LIVE_DATA } from '@/lib/runData'
 import {
   EMPTY_OWNER_BALANCE,
   LIMITS,
@@ -244,7 +245,9 @@ const BalanceBody = () => {
 
       <section className="panel p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-[19px]">{balance.ownerName}</h2>
+          <h2 className="num text-[19px]" title={balance.owner}>
+            {truncateMiddle(balance.owner, 6, 6)}
+          </h2>
           <Tag>data owner</Tag>
         </div>
         <div className="mt-5 grid gap-6 sm:grid-cols-3">
@@ -316,7 +319,21 @@ const BalancePage = () => (
       </p>
     </header>
     <SignInGate what="see your balance">
-      <BalanceBody />
+      {LIVE_DATA ? (
+        // Decision 2026-10-07: until `GET /balances/me` exists (M3),
+        // the live app shows no sums at all — the prototype's would read as
+        // this owner's money.
+        <div className="panel max-w-2xl p-5">
+          <h2 className="text-[19px]">Not measured yet</h2>
+          <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
+            Paying owners for what their data contributed is milestone M3. Until it lands, there is
+            no balance to show here — not a zero, but no number at all. Runs that completed are on
+            the chain, and their settlement will be read from there.
+          </p>
+        </div>
+      ) : (
+        <BalanceBody />
+      )}
     </SignInGate>
   </div>
 )

@@ -1,6 +1,7 @@
 export { decodeBase58 } from './base58.ts'
 export type {
   ChainView,
+  ConsentView,
   DatasetCard,
   DatasetDetail,
   DatasetList,
@@ -81,6 +82,20 @@ export {
 } from './envelope.ts'
 export type { ApiError, ApiErrorCode } from './errors.ts'
 export { API_ERROR_CODES, apiError, apiErrorSchema } from './errors.ts'
+export type {
+  CiphertextUploadResponse,
+  ConsentTransaction,
+  DatasetRecordStatus,
+  RegisterDatasetResponse,
+  SetConsentRequest,
+} from './owner.ts'
+export {
+  ciphertextUploadResponseSchema,
+  consentTransactionSchema,
+  DATASET_RECORD_STATUSES,
+  registerDatasetResponseSchema,
+  setConsentRequestSchema,
+} from './owner.ts'
 export type {
   Bps,
   ContentHash,

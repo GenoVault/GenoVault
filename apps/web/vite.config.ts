@@ -47,11 +47,32 @@ export default defineConfig({
   base,
   plugins: [react()],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      // `@arcium-hq/client` imports four names from Node's `crypto`; the
+      // dataset cipher calls none of them (`src/lib/nodeCryptoShim.ts`, `T066`).
+      // Exact match only: `node:crypto` and `crypto/…` are not ours to replace.
+      {
+        find: /^crypto$/,
+        replacement: fileURLToPath(new URL('./src/lib/nodeCryptoShim.ts', import.meta.url)),
+      },
+      // The same client imports Anchor's default export, which Anchor's browser
+      // build lacks (`packages/crypto/browser/anchor-default.js`).
+      { find: /^@anchor-lang\/core$/, replacement: '@genovault/crypto/browser/anchor-default' },
+    ],
   },
   server: {
     port: 5173,
+  },
+  // Pre-bundled at start, not discovered mid-flow: the encryption worker pulls
+  // these in on its first run, and a dev server that optimises them then
+  // reloads the page in the middle of a registration (`T066`).
+  optimizeDeps: {
+    include: [
+      'buffer',
+      '@genovault/crypto > @arcium-hq/client',
+      '@genovault/crypto > @solana/web3.js',
+      '@genovault/crypto > @anchor-lang/core/dist/browser/index.js',
+    ],
   },
 })

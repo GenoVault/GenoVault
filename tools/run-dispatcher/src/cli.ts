@@ -35,6 +35,7 @@ import { buildParityCorpus } from './parity-corpus.ts'
 import { revocationPlanSchema, runRevocationLatency } from './revocation-latency.ts'
 import { prepareScenario } from './scenario.ts'
 import { buildTimingCorpus } from './timing-corpus.ts'
+import { seedWebStand } from './web-stand.ts'
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -400,10 +401,71 @@ report: ${out} · ${report.trials.length} trials · ${landed}/${report.probes.le
   }
 }
 
+/**
+ * A seeded world for the web app on the bare validator (`T066`).
+ *
+ * ```bash
+ * # scripts/validator.sh with GENOVAULT_RPC_PORT=8999, then:
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts web-stand  *   --rpc http://127.0.0.1:8999 --out artifacts/web-stand/report.json
+ * # and the real API on the catalog it leaves behind:
+ * CATALOG_FS_ROOT=artifacts/web-stand/api/catalog STORAGE_FS_ROOT=artifacts/web-stand/api/storage
+ * ```
+ *
+ * Seeds through a stand API that signs its own sessions, then stops it; the
+ * catalog and storage directories stay for the API the browser talks to.
+ */
+async function webStand(connection: Connection): Promise<void> {
+  const out = resolve(values.out)
+  const api = await startApiStand({
+    repoRoot: resolve('.'),
+    workDir: join(dirname(out), 'api'),
+    rpcUrl: values.rpc,
+    port: Number(values['api-port']),
+    onLog: (line) => log(`  api: ${line}`),
+  })
+  // The authority survives a validator reset on purpose: it is the mint
+  // authority that funds a buyer for the demo, and a new key every run would
+  // leave nobody able to.
+  const authorityPath = join(dirname(out), 'authority.json')
+  let authority: Keypair
+  try {
+    authority = await loadWallet(authorityPath)
+  } catch {
+    authority = Keypair.generate()
+    await mkdir(dirname(out), { recursive: true })
+    await writeFile(authorityPath, JSON.stringify([...authority.secretKey]))
+  }
+  try {
+    const report = await seedWebStand({
+      connection,
+      program: createProgram({ connection }),
+      api,
+      authority,
+      onProgress: (line) => log(`  ${line}`),
+    })
+    await mkdir(dirname(out), { recursive: true })
+    await writeFile(
+      out,
+      `${JSON.stringify(report, null, 2)}
+`,
+    )
+    log(`
+report: ${out}`)
+    log(`catalog: ${join(dirname(out), 'api', 'catalog')}`)
+    log(`storage: ${join(dirname(out), 'api', 'storage')}`)
+  } finally {
+    await api.stop()
+  }
+}
+
 async function main(): Promise<void> {
   const connection = new Connection(values.rpc, 'confirmed')
   if (command === 'sc004') {
     await sc004(connection)
+    return
+  }
+  if (command === 'web-stand') {
+    await webStand(connection)
     return
   }
   if (command === 'sc005') {
@@ -455,7 +517,7 @@ async function main(): Promise<void> {
 
   if (command !== 'e2e') {
     throw new Error(
-      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003, sc004 or sc005`,
+      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003, sc004, sc005 or web-stand`,
     )
   }
 

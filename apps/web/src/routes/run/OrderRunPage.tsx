@@ -372,12 +372,15 @@ const OrderRunFlow = () => {
       <section className="panel p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="text-[19px]">Quote</h2>
-          <StatePreview
-            label="Platform"
-            options={['running', 'platform-paused'] as const}
-            value={platformPaused}
-            onChange={setPlatformPaused}
-          />
+          {/* The prototype's switch: live, the pause is the platform's, read from the chain. */}
+          {!LIVE_DATA && (
+            <StatePreview
+              label="Platform"
+              options={['running', 'platform-paused'] as const}
+              value={platformPaused}
+              onChange={setPlatformPaused}
+            />
+          )}
         </div>
 
         {quoted.error !== null ? (

@@ -100,6 +100,8 @@ export const consentViewSchema = z.strictObject({
   revoked: z.boolean(),
 })
 
+export type ConsentView = z.infer<typeof consentViewSchema>
+
 export const verificationBadgeViewSchema = z.strictObject({
   verifier: solanaAddressSchema,
   verifiedAt: u64Schema,

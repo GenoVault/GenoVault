@@ -1,11 +1,13 @@
 import { solanaAddressSchema } from '@genovault/shared'
 import { serve } from '@hono/node-server'
 import { pino } from 'pino'
-import { createApp } from './app.ts'
+import { createApp, webOriginsFromEnv } from './app.ts'
 import { authConfigFromEnv, createTokenVerifier } from './services/auth.ts'
 import { catalogConfigFromEnv, createCatalog } from './services/catalog.ts'
 import {
   createChainReader,
+  createConsentChainReader,
+  createConsentIxBuilder,
   createPlatformReader,
   createQuoteChainReader,
   createRegistrationBuilder,
@@ -41,6 +43,11 @@ const dispatcher =
     ? undefined
     : solanaAddressSchema.parse(process.env.GENOVAULT_DISPATCHER)
 
+// Browser origins for CORS (`T066`). Parsed at start like everything above: a
+// typo here would surface as a silent CORS failure in someone's browser, which
+// the API never sees.
+const webOrigins = webOriginsFromEnv(process.env.WEB_ORIGINS)
+
 const app = createApp({
   verifyAccessToken: createTokenVerifier(auth),
   catalog: createCatalog(catalog),
@@ -51,7 +58,10 @@ const app = createApp({
   buildRunOrder: createRunOrderBuilder(rpcUrl),
   readRun: createRunReader(rpcUrl),
   readPlatform: createPlatformReader(rpcUrl),
+  readConsentChain: createConsentChainReader(rpcUrl),
+  buildConsentIx: createConsentIxBuilder(rpcUrl),
   dispatcher,
+  webOrigins,
   baseUrl: process.env.API_BASE_URL ?? `http://127.0.0.1:${port}`,
   ...(process.env.API_MAX_CIPHERTEXT_BYTES === undefined
     ? {}
@@ -66,6 +76,7 @@ serve({ fetch: app.fetch, port }, (info) => {
       catalogDriver: catalog.driver,
       storageDriver: storage.driver,
       dispatcher: dispatcher ?? 'не задано',
+      webOrigins,
     },
     'api піднято',
   )

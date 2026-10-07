@@ -1,8 +1,8 @@
 /** Форматування та людські підписи для словників. Жодного числа без походження. */
 
+import type { ConsentTerms } from '@/lib/consentTerms'
 import type {
   BuyerCategory,
-  Consent,
   DatasetSource,
   IneligibleReason,
   OrderBlocker,
@@ -15,8 +15,6 @@ import { ENCRYPTION, STABLE_MINT } from '@/mockData'
 
 export const truncateMiddle = (value: string, head = 4, tail = 4): string =>
   value.length <= head + tail + 1 ? value : `${value.slice(0, head)}…${value.slice(-tail)}`
-
-export const MINT_SHORT = truncateMiddle(STABLE_MINT.address, 3, 4)
 
 /* --- numbers --- */
 
@@ -45,8 +43,10 @@ export const formatAmount = (value: Amountish): string => {
 }
 
 /** Повне значення — у тултипі, щоб на екрані не було «загубленої» дрібнички. */
-export const amountTitle = (value: Amountish): string =>
-  `${toBaseUnits(value).toLocaleString('en-US')} base units · ${STABLE_MINT.decimals} decimals · mint ${STABLE_MINT.address}`
+export const amountTitle = (value: Amountish, mint: string | null = STABLE_MINT.address): string =>
+  `${toBaseUnits(value).toLocaleString('en-US')} base units · ${STABLE_MINT.decimals} decimals${
+    mint === null ? '' : ` · mint ${mint}`
+  }`
 
 export const formatBps = (bps: number): string => `${(bps / 100).toFixed(2)}%`
 
@@ -132,21 +132,18 @@ const joinNames = (names: string[]): string => {
 }
 
 /** Власник має прочитати те, що підписує, а не бітову маску. */
-export const consentSentence = (consent: Consent | null): string => {
+export const consentSentence = (consent: ConsentTerms | null): string => {
   if (!consent) return 'No consent has been set, so this dataset cannot enter any run.'
-  if (consent.revoked) {
-    return `Consent was revoked on ${formatDate(consent.revokedAt)}. No run can include this dataset.`
-  }
+  // The chain view carries no revocation date, so the sentence names none.
+  if (consent.revoked) return 'Consent was revoked. No run can include this dataset.'
   const buyers = joinNames(
     consent.buyerCategories.map((c) => BUYER_CATEGORY_LABEL[c].toLowerCase()),
   )
-  const uses = joinNames(consent.allowedUseTypes.map((u) => USE_TYPE_LABEL[u].toLowerCase()))
+  const uses = joinNames(consent.allowedUses.map((u) => USE_TYPE_LABEL[u].toLowerCase()))
   const until = consent.expiresAt ? `until ${formatDate(consent.expiresAt)}` : 'with no expiry'
   const forbidden =
-    consent.forbiddenUseTypes.length > 0
-      ? ` ${joinNames(
-          consent.forbiddenUseTypes.map((u) => USE_TYPE_LABEL[u]),
-        )} is explicitly forbidden.`
+    consent.forbiddenUses.length > 0
+      ? ` ${joinNames(consent.forbiddenUses.map((u) => USE_TYPE_LABEL[u]))} is explicitly forbidden.`
       : ''
   return `Any ${buyers} buyer may run ${uses} computations on this dataset ${until}.${forbidden}`
 }

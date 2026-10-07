@@ -14,6 +14,7 @@ import {
   useSignMessage,
   useWallets as useSolanaWallets,
 } from '@privy-io/react-auth/solana'
+import { createSolanaRpc, createSolanaRpcSubscriptions } from '@solana/kit'
 import {
   createContext,
   type ReactNode,
@@ -24,6 +25,7 @@ import {
   useState,
 } from 'react'
 import { HAS_PRIVY, LOGIN_METHODS, PRIVY_APP_ID } from '@/lib/privy'
+import { RPC_URL, RPC_WS_URL, SOLANA_CHAIN } from '@/lib/rpc'
 import { MOCK_SESSION, type Role } from '@/mockData'
 
 export type SignInMethod = 'wallet' | 'email'
@@ -158,7 +160,11 @@ const PrivySession = ({ children }: { children: ReactNode }) => {
       },
       signAndSendTransaction: async (transaction: Uint8Array) => {
         if (wallet === undefined) throw new NoWalletError('підпис транзакції')
-        const { signature } = await signAndSendTransaction({ transaction, wallet })
+        const { signature } = await signAndSendTransaction({
+          transaction,
+          wallet,
+          chain: SOLANA_CHAIN,
+        })
         return signature
       },
     }),
@@ -267,6 +273,20 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
         // Вхід поштою мусить закінчитися гаманцем, інакше «обидва шляхи далі
         // не відрізняються нічим» (`FR-023`) перестає бути правдою.
         embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' } },
+        // The node the wallet broadcasts through — ours, under the label the
+        // client signs with (`lib/rpc.ts`). Without it Privy sends to mainnet.
+        ...(RPC_URL === null || RPC_WS_URL === null
+          ? {}
+          : {
+              solana: {
+                rpcs: {
+                  [SOLANA_CHAIN]: {
+                    rpc: createSolanaRpc(RPC_URL),
+                    rpcSubscriptions: createSolanaRpcSubscriptions(RPC_WS_URL),
+                  },
+                },
+              },
+            }),
       }}
     >
       <PrivySession>

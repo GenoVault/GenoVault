@@ -2,6 +2,7 @@ import {
   apiErrorSchema,
   type ChainView,
   chainViewSchema,
+  ciphertextUploadResponseSchema,
   contentHash,
   DATASET_LIST_LIMIT_MAX,
   type DatasetId,
@@ -10,6 +11,7 @@ import {
   datasetListSchema,
   LIMB_BYTES,
   NONCE_BYTES,
+  registerDatasetResponseSchema,
   SCALAR_FIELD_COUNT,
   type SolanaAddress,
   serializeEnvelope,
@@ -39,39 +41,12 @@ const RECORDS = 12
  * тест, який її розбирає, перевіряє саму відповідь — і падає, коли з неї
  * зникне поле, на яке спирається фронт.
  */
-const registrationSchema = z.object({
-  datasetId: z.string(),
-  owner: z.string(),
-  datasetAddress: z.string(),
-  contentHash: z.string(),
-  status: z.string(),
-  uploadUrl: z.string(),
-  registration: z.object({
-    signAfter: z.string(),
-    instruction: z.object({
-      programId: z.string(),
-      accounts: z.array(
-        z.object({ pubkey: z.string(), isSigner: z.boolean(), isWritable: z.boolean() }),
-      ),
-      data: z.string(),
-    }),
-  }),
-})
-
-const uploadSchema = z.object({
-  storedHash: z.string(),
-  recordCount: z.number(),
-  markerCount: z.number(),
-  byteLength: z.number(),
-  status: z.string(),
-})
-
 async function registered(response: Response) {
-  return registrationSchema.parse(await response.json())
+  return registerDatasetResponseSchema.parse(await response.json())
 }
 
 async function uploaded(response: Response) {
-  return uploadSchema.parse(await response.json())
+  return ciphertextUploadResponseSchema.parse(await response.json())
 }
 
 async function failure(response: Response) {
@@ -280,7 +255,7 @@ describe('POST /datasets', () => {
     expect(text).not.toContain('secretKey')
 
     // Власник — єдиний підписант інструкції, і ним він лишається.
-    const { registration } = registrationSchema.parse(JSON.parse(text))
+    const { registration } = registerDatasetResponseSchema.parse(JSON.parse(text))
     const signers = registration.instruction.accounts.filter((account) => account.isSigner)
     expect(signers).toEqual([{ pubkey: OWNER, isSigner: true, isWritable: true }])
   })
@@ -498,8 +473,27 @@ describe('GET /datasets', () => {
     await post({ ...(await body(envelope(20, MARKERS, 7))), datasetId: 'cohort-draft' })
   }
 
-  it('вимагає сесії', async () => {
-    expect((await app.request('/datasets')).status).toBe(401)
+  it('opens without sign-in and shows the anonymous viewer only uploaded datasets', async () => {
+    // FR-023 asks for sign-in before registering or ordering, not before
+    // reading the catalog (decision 2026-10-07).
+    await seed()
+    const response = await app.request('/datasets')
+    expect(response.status).toBe(200)
+    const page = datasetListSchema.parse(await response.json())
+    expect(page.items.map((item) => item.datasetId).sort()).toEqual([DATASET_ID, 'cohort-beta'])
+  })
+
+  it('refuses a bad token rather than treating it as anonymous', async () => {
+    // A client that believes it is signed in would show an owner a catalog
+    // without their drafts and call it complete.
+    expect((await list('', 'expired')).status).toBe(401)
+    const malformed = await app.request('/datasets', { headers: { authorization: 'Token x' } })
+    expect(malformed.status).toBe(401)
+  })
+
+  it('refuses owner=me without a session — there is no "me"', async () => {
+    await seed()
+    expect((await app.request('/datasets?owner=me')).status).toBe(401)
   })
 
   it('віддає лише залиті датасети', async () => {
@@ -608,8 +602,25 @@ describe('GET /datasets/:owner/:id', () => {
     await put(bytes)
   })
 
-  it('вимагає сесії', async () => {
-    expect((await app.request(`/datasets/${OWNER}/${DATASET_ID}`)).status).toBe(401)
+  it('opens without sign-in', async () => {
+    const response = await app.request(`/datasets/${OWNER}/${DATASET_ID}`)
+    expect(response.status).toBe(200)
+    expect(datasetDetailSchema.parse(await response.json()).datasetId).toBe(DATASET_ID)
+  })
+
+  it('hides a draft from the anonymous viewer exactly as a missing dataset', async () => {
+    await post({ ...(await body(envelope(20, MARKERS, 7))), datasetId: 'cohort-draft' })
+    const draft = await app.request(`/datasets/${OWNER}/cohort-draft`)
+    const missing = await app.request(`/datasets/${OWNER}/cohort-none`)
+    expect(draft.status).toBe(404)
+    expect(await draft.json()).toEqual(await missing.json())
+  })
+
+  it('refuses a bad token on the card too', async () => {
+    const response = await app.request(`/datasets/${OWNER}/${DATASET_ID}`, {
+      headers: { authorization: 'Bearer expired' },
+    })
+    expect(response.status).toBe(401)
   })
 
   it('віддає опис, схему, статистику й стан ланцюга', async () => {

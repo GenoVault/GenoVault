@@ -107,7 +107,16 @@ export function authConfigFromEnv(env: Record<string, string | undefined>): Auth
   return authConfigSchema.parse(
     pem !== undefined && pem.trim() !== ''
       ? { keySource: 'pem', appId, publicKeyPem: pem }
-      : { keySource: 'jwks', appId, jwksUrl: env.PRIVY_JWKS_URL ?? jwksUrlForApp(appId ?? '') },
+      : {
+          keySource: 'jwks',
+          appId,
+          // Blank means unset here too: `.env.example` ships `PRIVY_JWKS_URL=`,
+          // and `??` lets an empty string through as a URL that fails at start.
+          jwksUrl:
+            env.PRIVY_JWKS_URL === undefined || env.PRIVY_JWKS_URL.trim() === ''
+              ? jwksUrlForApp(appId ?? '')
+              : env.PRIVY_JWKS_URL,
+        },
   )
 }
 

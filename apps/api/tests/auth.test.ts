@@ -372,6 +372,17 @@ describe('налаштування з оточення', () => {
     ).toBe('jwks')
   })
 
+  it('reads a blank PRIVY_JWKS_URL as unset, as .env.example ships it', () => {
+    // The API refused to start on the shipped `.env` before this (T066).
+    expect(authConfigFromEnv({ PRIVY_APP_ID: APP_ID, PRIVY_JWKS_URL: '' })).toMatchObject({
+      keySource: 'jwks',
+      jwksUrl: jwksUrlForApp(APP_ID),
+    })
+    expect(
+      authConfigFromEnv({ PRIVY_APP_ID: APP_ID, PRIVY_JWKS_URL: 'https://keys.example/jwks.json' }),
+    ).toMatchObject({ jwksUrl: 'https://keys.example/jwks.json' })
+  })
+
   it('падає без PRIVY_APP_ID', () => {
     // Без ідентифікатора застосунку `aud` нема з чим звіряти, тобто приймався б
     // будь-який токен Privy — у тому числі виданий іншому застосунку.

@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import {
   contentHashSchema,
+  DATASET_RECORD_STATUSES,
   type DatasetId,
   type DatasetMetadata,
   datasetIdSchema,
@@ -40,9 +41,10 @@ export class CatalogError extends Error {
  * `pending` — метадані заявлені, байтів ще немає. Такий датасет каталог не
  * показує: картка з `content_hash`, за яким нічого не лежить, — це обіцянка
  * вмісту, а не вміст.
+ *
+ * The list of states lives in `packages/shared` (`DATASET_RECORD_STATUSES`),
+ * because `POST /datasets` answers with it too.
  */
-export const DATASET_RECORD_STATUSES = ['pending', 'stored'] as const
-
 export const datasetRecordSchema = z.strictObject({
   datasetId: datasetIdSchema,
   owner: solanaAddressSchema,

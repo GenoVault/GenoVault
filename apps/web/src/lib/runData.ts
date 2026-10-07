@@ -20,6 +20,7 @@ import {
   DATASETS,
   type Dataset,
   datasetKey,
+  findDataset,
   LIMITS,
   type Run as MockRun,
   RUNS,
@@ -174,7 +175,7 @@ export function mockRunView(run: MockRun): RunView {
       datasetAddress: entry.owner,
       owner: entry.owner,
       datasetId: entry.datasetId,
-      title: entry.ownerName,
+      title: findDataset(entry.owner, entry.datasetId)?.title,
       pricePer1k: String(run.settlement?.rows[index]?.charged ?? 0),
       recordsIncluded: run.settlement?.rows[index]?.recordsIncluded ?? 0,
       belowFloor: (run.settlement?.rows[index]?.recordsIncluded ?? 0) === 0,
@@ -187,14 +188,10 @@ export function mockRunView(run: MockRun): RunView {
 // ── Хуки ──────────────────────────────────────────────────────────────────────
 
 /**
- * Датасети, з яких складається пул.
+ * The datasets a pool is built from.
  *
- * У живому режимі — каталог із `GET /datasets`. Сторінка самого каталогу
- * (`CatalogPage`) поки лишається на моці — це `T066`, — тож у режимі з API два
- * екрани показують різні списки. Розбіжність названа вголос на екрані
- * замовлення, і це чесніше, ніж давати покупцю квотувати вигадані датасети
- * проти справжнього ланцюга: жоден із них не зареєстрований, і вся квота
- * складалася б із `unregistered`.
+ * Live, this is `GET /datasets` — the same list the catalog page shows since
+ * `T066`, so the pool and the catalog no longer disagree.
  */
 export function useCatalog(token: string | null): Loadable<DatasetCard[]> {
   const [state, setState] = useState<Loadable<DatasetCard[]>>(() =>

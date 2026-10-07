@@ -1,3 +1,5 @@
+// First: Privy's signing screen reads a global `Buffer` (`lib/bufferGlobal.ts`).
+import './lib/bufferGlobal.ts'
 import './index.css'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'

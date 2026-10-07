@@ -14,8 +14,10 @@ import {
   platformConfigAddress,
   registerDatasetIx,
   requestRunIx,
+  revokeConsentIx,
   runAddress,
   runResultAddress,
+  setConsentIx,
 } from '@genovault/sdk'
 import type {
   ChainView,
@@ -533,4 +535,143 @@ function hexToBytes(hex: string): Uint8Array {
   return Uint8Array.from({ length: hex.length / 2 }, (_unused, i) =>
     Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16),
   )
+}
+
+// ── Consent (`T066a`) ─────────────────────────────────────────────────────────
+
+/**
+ * What the owner's consent routes need to know before handing out an
+ * instruction: whether there is a dataset to consent on, which version is
+ * current, whether it is already revoked, and what time the chain says it is.
+ *
+ * `null` — the dataset is not registered on chain.
+ */
+export interface ConsentChainState {
+  status: 'active' | 'retired'
+  /** 0 — no consent yet. */
+  consentVersion: number
+  /** `null` — there is no current consent to be revoked or not. */
+  currentRevoked: boolean | null
+  /** Chain time in Unix seconds — the clock `set_consent` judges expiry by. */
+  now: bigint
+}
+
+export type ConsentChainReader = (
+  owner: SolanaAddress,
+  datasetId: DatasetId,
+) => Promise<ConsentChainState | null>
+
+export function createConsentChainReader(rpcUrl: string): ConsentChainReader {
+  const connection = chainConnection(rpcUrl)
+  const program = createProgram({ connection })
+
+  return async (owner, datasetId) => {
+    const address = datasetAddress(new PublicKey(owner), datasetId, program.programId).address
+
+    let dataset: Awaited<ReturnType<typeof fetchDataset>>
+    let blockTime: number | null
+    try {
+      const slot = await connection.getSlot()
+      ;[dataset, blockTime] = await Promise.all([
+        fetchDataset(program, address),
+        connection.getBlockTime(slot),
+      ])
+    } catch {
+      throw new ChainStateError('unavailable', 'the network node did not answer')
+    }
+    if (blockTime === null) throw new ChainStateError('unavailable', 'chain time is not available')
+    if (dataset === null) return null
+
+    let currentRevoked: boolean | null = null
+    if (dataset.consentVersion !== 0) {
+      let consent: Awaited<ReturnType<typeof fetchConsent>>
+      try {
+        consent = await fetchConsent(
+          program,
+          consentAddress(address, dataset.consentVersion, program.programId).address,
+        )
+      } catch {
+        throw new ChainStateError('unavailable', 'the network node did not answer')
+      }
+      // A dataset that points at a consent the chain does not hold is our
+      // deployment, not the owner's request.
+      if (consent === null) {
+        throw new ChainStateError('not-initialized', 'the current consent is not at its address')
+      }
+      currentRevoked = consent.revokedAt !== null
+    }
+
+    return {
+      status: dataset.status,
+      consentVersion: dataset.consentVersion,
+      currentRevoked,
+      now: BigInt(blockTime),
+    }
+  }
+}
+
+export type ConsentIxParams =
+  | {
+      action: 'set'
+      owner: SolanaAddress
+      datasetId: DatasetId
+      currentVersion: number
+      allowedUses: number
+      forbiddenUses: number
+      buyerCategories: number
+      expiresAt: bigint | null
+    }
+  | { action: 'revoke'; owner: SolanaAddress; datasetId: DatasetId; currentVersion: number }
+
+export interface ConsentIxBuild {
+  datasetAddress: SolanaAddress
+  consentAddress: SolanaAddress
+  /** The consent the instruction acts on: the new one for `set`, the current for `revoke`. */
+  version: number
+  instruction: UnsignedInstruction
+}
+
+export type ConsentIxBuilder = (params: ConsentIxParams) => Promise<ConsentIxBuild>
+
+/**
+ * Builds `set_consent` / `revoke_consent` — and signs neither.
+ *
+ * The version comes from the caller, who read it at `confirmed` a moment ago:
+ * the address of the new consent is `current + 1`, and an address built from
+ * a stale number would be one the program never looks at.
+ */
+export function createConsentIxBuilder(rpcUrl: string): ConsentIxBuilder {
+  const program = createProgram({ connection: chainConnection(rpcUrl) })
+
+  return async (params) => {
+    const owner = new PublicKey(params.owner)
+    const dataset = datasetAddress(owner, params.datasetId, program.programId).address
+    const version = params.action === 'set' ? params.currentVersion + 1 : params.currentVersion
+
+    const instruction =
+      params.action === 'set'
+        ? await setConsentIx(program, {
+            owner,
+            datasetId: params.datasetId,
+            currentVersion: params.currentVersion,
+            allowedUses: params.allowedUses,
+            forbiddenUses: params.forbiddenUses,
+            buyerCategories: params.buyerCategories,
+            expiresAt: params.expiresAt,
+          })
+        : await revokeConsentIx(program, {
+            owner,
+            datasetId: params.datasetId,
+            currentVersion: params.currentVersion,
+          })
+
+    return {
+      datasetAddress: solanaAddressSchema.parse(dataset.toBase58()),
+      consentAddress: solanaAddressSchema.parse(
+        consentAddress(dataset, version, program.programId).address.toBase58(),
+      ),
+      version,
+      instruction: encodeInstruction(instruction),
+    }
+  }
 }

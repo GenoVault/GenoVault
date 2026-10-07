@@ -4,8 +4,9 @@
  * Форма датасету, не записи (FR-002).
  */
 
+import type { DatasetCard as DatasetCardView } from '@genovault/shared'
 import { Plus, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Amount, Count, Tag } from '@/components/Primitives'
 import { EmptyState, ErrorBlock, SkeletonCard, StatePreview } from '@/components/StateBlocks'
@@ -19,12 +20,29 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAppState } from '@/lib/appState'
+import { type CatalogFilters, useDatasetList } from '@/lib/catalogData'
 import { formatDate, SOURCE_LABEL } from '@/lib/format'
-import { DATASET_SOURCES, DATASETS, type Dataset, datasetKey, LIMITS } from '@/mockData'
+import { DATASET_SOURCES, datasetKey, STABLE_MINT } from '@/mockData'
 
 type ViewState = 'list' | 'empty' | 'error'
 
-const DatasetCard = ({ dataset }: { dataset: Dataset }) => {
+/**
+ * "4.5" stable units → base units of the mint, as `maxPricePer1k` takes them.
+ * Anything that is not a plain decimal within the mint's precision filters
+ * nothing rather than something the person did not type.
+ */
+const toBaseUnits = (value: string): string | null => {
+  const match = /^(\d+)(?:\.(\d*))?$/.exec(value.trim())
+  if (match === null) return null
+  const [, whole = '0', fraction = ''] = match
+  if (fraction.length > STABLE_MINT.decimals) return null
+  return (
+    BigInt(whole) * 10n ** BigInt(STABLE_MINT.decimals) +
+    BigInt(fraction.padEnd(STABLE_MINT.decimals, '0') || '0')
+  ).toString()
+}
+
+const DatasetCard = ({ dataset }: { dataset: DatasetCardView }) => {
   const { pool, addToPool } = useAppState()
   const key = datasetKey(dataset)
   const inPool = pool.includes(key)
@@ -63,13 +81,13 @@ const DatasetCard = ({ dataset }: { dataset: Dataset }) => {
         <div>
           <dt className="label-tiny">Records</dt>
           <dd className="mt-0.5">
-            <Count value={dataset.records} />
+            <Count value={dataset.recordCount} />
           </dd>
         </div>
         <div>
           <dt className="label-tiny">Markers</dt>
           <dd className="mt-0.5">
-            <Count value={dataset.markers} />
+            <Count value={dataset.markerCount} />
           </dd>
         </div>
         <div>
@@ -92,18 +110,12 @@ const SKELETON_KEYS = ['a', 'b', 'c', 'd', 'e', 'f']
 
 const CatalogPage = () => {
   const [params, setParams] = useSearchParams()
-  const [loading, setLoading] = useState(true)
   const [view, setView] = useState<ViewState>('list')
 
   const q = params.get('q') ?? ''
   const source = params.get('source') ?? 'any'
   const minRecords = params.get('minRecords') ?? ''
   const maxPrice = params.get('maxPrice') ?? ''
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setLoading(false), 420)
-    return () => window.clearTimeout(timer)
-  }, [])
 
   const setParam = (name: string, value: string) => {
     const next = new URLSearchParams(params)
@@ -112,25 +124,18 @@ const CatalogPage = () => {
     setParams(next, { replace: true })
   }
 
-  const results = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    const min = minRecords === '' ? 0 : Number(minRecords)
-    const max = maxPrice === '' ? Number.POSITIVE_INFINITY : Number(maxPrice) * 1_000_000
-    return DATASETS.filter((d) => {
-      const matchesText =
-        needle === '' ||
-        d.title.toLowerCase().includes(needle) ||
-        d.description.toLowerCase().includes(needle)
-      return (
-        matchesText &&
-        (source === 'any' || d.source === source) &&
-        d.records >= min &&
-        d.pricePer1k <= max
-      )
-    })
-  }, [q, source, minRecords, maxPrice])
-
-  const shown = view === 'empty' ? [] : results.slice(0, LIMITS.DATASET_LIST_LIMIT_DEFAULT)
+  const filters = useMemo<CatalogFilters>(
+    () => ({
+      q,
+      source: DATASET_SOURCES.find((s) => s === source) ?? null,
+      minRecords: minRecords === '' ? null : Number(minRecords),
+      maxPricePer1k: toBaseUnits(maxPrice),
+    }),
+    [q, source, minRecords, maxPrice],
+  )
+  const { token } = useAppState()
+  const list = useDatasetList(filters, token)
+  const shown = view === 'empty' ? [] : (list.data?.items ?? [])
   const filtersActive = q !== '' || source !== 'any' || minRecords !== '' || maxPrice !== ''
 
   return (
@@ -217,21 +222,29 @@ const CatalogPage = () => {
         )}
       </div>
 
-      <StatePreview options={['list', 'empty', 'error'] as const} value={view} onChange={setView} />
+      {!list.live && (
+        <StatePreview
+          options={['list', 'empty', 'error'] as const}
+          value={view}
+          onChange={setView}
+        />
+      )}
 
-      {loading ? (
+      {list.loading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {SKELETON_KEYS.map((key) => (
             <SkeletonCard key={key} />
           ))}
         </div>
-      ) : view === 'error' ? (
+      ) : list.error !== null || view === 'error' ? (
         <ErrorBlock
-          error={{
-            code: 'UPSTREAM_UNAVAILABLE',
-            message: 'The catalog index did not answer. Nothing was lost — try again.',
-            details: { endpoint: 'GET /datasets' },
-          }}
+          error={
+            list.error ?? {
+              code: 'UPSTREAM_UNAVAILABLE',
+              message: 'The catalog index did not answer. Nothing was lost — try again.',
+              details: { endpoint: 'GET /datasets' },
+            }
+          }
           onRetry={() => setView('list')}
         />
       ) : shown.length === 0 ? (
@@ -254,9 +267,9 @@ const CatalogPage = () => {
         <>
           <p className="text-[12.5px] text-muted-foreground">
             Showing <span className="num">{shown.length}</span> of{' '}
-            <span className="num">{results.length}</span> ·{' '}
-            <span className="num">{LIMITS.DATASET_LIST_LIMIT_DEFAULT}</span> per page · field
-            schema, declared statistics and chain state live on each dataset card
+            <span className="num">{list.data?.total ?? shown.length}</span> ·{' '}
+            <span className="num">{list.data?.limit}</span> per page · field schema, declared
+            statistics and chain state live on each dataset card
           </p>
           <div className="grid animate-rise-in gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {shown.map((d) => (

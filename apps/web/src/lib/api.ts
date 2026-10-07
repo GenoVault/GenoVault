@@ -1,18 +1,27 @@
 import {
   type ApiError,
   apiErrorSchema,
+  type CiphertextUploadResponse,
+  type ConsentTransaction,
+  ciphertextUploadResponseSchema,
+  consentTransactionSchema,
+  type DatasetDetail,
   type DatasetList,
+  datasetDetailSchema,
   datasetListSchema,
   type PlatformView,
   type ProgramRefusal,
   platformViewSchema,
   programRefusal,
+  type RegisterDatasetResponse,
   type RunOrder,
   type RunQuote,
   type RunView,
+  registerDatasetResponseSchema,
   runOrderSchema,
   runQuoteSchema,
   runViewSchema,
+  type SetConsentRequest,
 } from '@genovault/shared'
 import type { z } from 'zod'
 import { BLOCKER_TEXT, REASON_TEXT } from '@/lib/format'
@@ -200,14 +209,144 @@ export async function getRun(
 }
 
 /**
- * Каталог датасетів.
+ * The dataset catalog (`GET /datasets`).
  *
- * Живе тут, а не в окремому клієнті каталогу: `T029` кличе його рівно для
- * одного — щоб пул прогону складався з датасетів, які справді є в мережі.
- * Сторінка каталогу переїде на нього в `T066`.
+ * `query` is the filters as `datasetQuerySchema` reads them — strings, as a
+ * query string carries them. The order screen asks with none; the catalog
+ * screen with what the person typed (`T066`).
  */
-export async function getDatasets(options: ApiOptions = {}): Promise<DatasetList> {
-  return call('/datasets', datasetListSchema, options)
+export async function getDatasets(
+  options: ApiOptions & { query?: Record<string, string> } = {},
+): Promise<DatasetList> {
+  const { query, ...rest } = options
+  const search = query === undefined ? '' : new URLSearchParams(query).toString()
+  return call(search === '' ? '/datasets' : `/datasets?${search}`, datasetListSchema, rest)
+}
+
+/** One dataset card with its chain state (`GET /datasets/:owner/:id`). */
+export async function getDatasetDetail(
+  owner: string,
+  datasetId: string,
+  options: ApiOptions = {},
+): Promise<DatasetDetail> {
+  return call(
+    `/datasets/${encodeURIComponent(owner)}/${encodeURIComponent(datasetId)}`,
+    datasetDetailSchema,
+    options,
+  )
+}
+
+/**
+ * `POST /datasets` — the declaration before the bytes (`FR-001`).
+ *
+ * The body is plain JSON, typed here by hand rather than by
+ * `RegisterDatasetRequest`: that type is the schema's **output**, with branded
+ * strings and a `bigint` price, and the wire carries the input.
+ */
+export interface DatasetDeclaration {
+  datasetId: string
+  owner: string
+  contentHash: string
+  /** Base units of the mint, as a decimal string. */
+  pricePer1k: string
+  metadata: Record<string, unknown>
+}
+
+export async function postDataset(
+  declaration: DatasetDeclaration,
+  options: ApiOptions = {},
+): Promise<RegisterDatasetResponse> {
+  return call('/datasets', registerDatasetResponseSchema, {
+    ...options,
+    method: 'POST',
+    body: JSON.stringify(declaration),
+  })
+}
+
+/**
+ * `PUT /datasets/:id/ciphertext` with upload progress.
+ *
+ * `XMLHttpRequest`, not `fetch`: `fetch` reports no upload progress, and the
+ * envelope of ten thousand records is ~21 MB — minutes on a slow uplink that
+ * the screen should count, not spin through.
+ */
+export function putCiphertext(
+  datasetId: string,
+  bytes: Uint8Array,
+  options: ApiOptions & { onProgress?: (sent: number, total: number) => void } = {},
+): Promise<CiphertextUploadResponse> {
+  const url = `${base()}/datasets/${encodeURIComponent(datasetId)}/ciphertext`
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    if (options.token !== undefined && options.token !== null) {
+      xhr.setRequestHeader('authorization', `Bearer ${options.token}`)
+    }
+    xhr.setRequestHeader('content-type', 'application/octet-stream')
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) options.onProgress?.(event.loaded, event.total)
+    }
+    xhr.onerror = () => reject(new ApiRequestError(0, 'UNKNOWN', 'could not reach the API'))
+    xhr.onabort = () => reject(new ApiRequestError(0, 'UNKNOWN', 'request cancelled'))
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(toError(xhr.status, xhr.responseText))
+        return
+      }
+      let payload: unknown
+      try {
+        payload = JSON.parse(xhr.responseText)
+      } catch {
+        reject(new ApiRequestError(xhr.status, 'UNKNOWN', 'the response is not JSON'))
+        return
+      }
+      const parsed = ciphertextUploadResponseSchema.safeParse(payload)
+      if (parsed.success) resolve(parsed.data)
+      else {
+        reject(
+          new ApiRequestError(
+            xhr.status,
+            'UNKNOWN',
+            'the API response does not pass its own schema',
+            {
+              issues: parsed.error.issues,
+            },
+          ),
+        )
+      }
+    }
+    options.signal?.addEventListener('abort', () => xhr.abort())
+    // A copy into a buffer of exactly the envelope's size: `send` takes the
+    // whole underlying buffer of a view.
+    xhr.send(bytes.slice().buffer)
+  })
+}
+
+/**
+ * A new consent version, by name (`T066a`). Answers with an **unsigned**
+ * `set_consent`; the owner's wallet signs it.
+ */
+export async function postConsent(
+  datasetId: string,
+  request: SetConsentRequest,
+  options: ApiOptions = {},
+): Promise<ConsentTransaction> {
+  return call(`/datasets/${encodeURIComponent(datasetId)}/consent`, consentTransactionSchema, {
+    ...options,
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/** Revocation of the current consent (`T066a`). Unsigned, like everything here. */
+export async function deleteConsent(
+  datasetId: string,
+  options: ApiOptions = {},
+): Promise<ConsentTransaction> {
+  return call(`/datasets/${encodeURIComponent(datasetId)}/consent`, consentTransactionSchema, {
+    ...options,
+    method: 'DELETE',
+  })
 }
 
 /**

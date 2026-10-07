@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { API_URL } from '@/lib/api'
 import { useAppState } from '@/lib/appState'
 import { truncateMiddle } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -89,7 +90,9 @@ const SignInControl = () => {
   return (
     <div className="flex items-center gap-2">
       <div className="hidden text-right sm:block">
-        <p className="num text-[12.5px] leading-4">{truncateMiddle(address ?? '', 4, 4)}</p>
+        <p className="num text-[12.5px] leading-4" title={address ?? undefined}>
+          {truncateMiddle(address ?? '', 4, 4)}
+        </p>
         <p className="text-[11px] leading-4 text-muted-foreground">
           {live ? 'signed in' : 'prototype sign-in'} · {method}
         </p>
@@ -110,8 +113,20 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-surface-sunken/70">
         <p className="mx-auto max-w-[1400px] px-4 py-1.5 text-[11.5px] leading-4 text-muted-foreground md:px-8">
-          M0 prototype on mock data. No network, no backend, no signed transactions — it closes no
-          acceptance criterion.
+          {/* The banner names the mode the screens run in (`T066`): the
+              prototype's fixtures, or a live API — which, until a deployment
+              exists, is a test network with synthetic data. */}
+          {API_URL === null ? (
+            <>
+              M0 prototype on mock data. No network, no backend, no signed transactions — it closes
+              no acceptance criterion.
+            </>
+          ) : (
+            <>
+              Live API at <span className="num">{new URL(API_URL).host}</span> · synthetic data on a
+              test network. No real patient record exists anywhere in this system.
+            </>
+          )}
         </p>
       </div>
 

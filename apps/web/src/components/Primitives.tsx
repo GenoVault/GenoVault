@@ -2,7 +2,8 @@
 
 import { Check, Copy } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { type Amountish, amountTitle, formatAmount, formatInt, MINT_SHORT } from '@/lib/format'
+import { type Amountish, amountTitle, formatAmount, formatInt, truncateMiddle } from '@/lib/format'
+import { useMint } from '@/lib/mint'
 import { cn } from '@/lib/utils'
 
 /* --- amounts --- */
@@ -15,18 +16,21 @@ export const Amount = ({
   value: Amountish
   className?: string
   withMint?: boolean
-}) => (
-  <span className="inline-flex items-baseline gap-1.5">
-    <span className={cn('num', className)} title={amountTitle(value)}>
-      {formatAmount(value)}
-    </span>
-    {withMint && (
-      <span className="text-[11px] text-muted-foreground" title={amountTitle(value)}>
-        {MINT_SHORT} · stable unit
+}) => {
+  const mint = useMint()
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className={cn('num', className)} title={amountTitle(value, mint)}>
+        {formatAmount(value)}
       </span>
-    )}
-  </span>
-)
+      {withMint && (
+        <span className="text-[11px] text-muted-foreground" title={amountTitle(value, mint)}>
+          {mint === null ? 'stable unit' : `${truncateMiddle(mint, 3, 4)} · stable unit`}
+        </span>
+      )}
+    </span>
+  )
+}
 
 export const Count = ({ value, className }: { value: number; className?: string }) => (
   <span className={cn('num', className)}>{formatInt(value)}</span>

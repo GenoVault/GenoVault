@@ -52,6 +52,7 @@ export interface SealedDataset extends EncryptedDataset {
 export function encryptDataset(
   records: readonly DatasetRecord[],
   mxePublicKey: Uint8Array,
+  onProgress?: (done: number, total: number) => void,
 ): EncryptedDataset {
   if (mxePublicKey.length !== X25519_KEY_BYTES) {
     throw new RangeError(
@@ -75,9 +76,16 @@ export function encryptDataset(
   const ephemeralPublicKey = x25519.getPublicKey(ephemeralSecretKey)
   const cipher = new RescueCipher(x25519.getSharedSecret(ephemeralSecretKey, mxePublicKey))
 
+  // Progress in records, every 1%: ten thousand records are ~10 minutes of
+  // CPU (`T014`), and the screen names the number instead of spinning.
+  const step = Math.max(1, Math.floor(plaintext.length / 100))
   const frames: Frame[] = plaintext.map((elements, index) => {
     const nonce = nonceForRecord(index)
-    return { nonce, limbs: cipher.encrypt(elements, nonce) }
+    const frame = { nonce, limbs: cipher.encrypt(elements, nonce) }
+    if (onProgress !== undefined && ((index + 1) % step === 0 || index + 1 === plaintext.length)) {
+      onProgress(index + 1, plaintext.length)
+    }
+    return frame
   })
 
   const header: EnvelopeHeader = {
@@ -106,8 +114,9 @@ export function encryptDataset(
 export async function sealDataset(
   records: readonly DatasetRecord[],
   mxePublicKey: Uint8Array,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<SealedDataset> {
-  const encrypted = encryptDataset(records, mxePublicKey)
+  const encrypted = encryptDataset(records, mxePublicKey, onProgress)
   return { ...encrypted, contentHash: await contentHash(encrypted.bytes) }
 }
 

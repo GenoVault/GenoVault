@@ -1,76 +1,57 @@
 /**
- * M0 прототип: усі дані в одному файлі.
- * Типи звідси у T065 стають Zod-схемами в packages/shared,
- * тому форма об'єктів важливіша за елегантність коду.
+ * M0 prototype: every piece of data in one file.
  *
- * Жодної реальної організації: усі власники — вигадані назви,
- * усі датасети мають provenance `synthetic`.
+ * Since `T065` this is a fixture, not a contract. The vocabularies come from
+ * `packages/shared`, and the screens never read these shapes directly: the
+ * datasets reach them through `datasetCardSchema` / `datasetDetailSchema`
+ * (`lib/catalogData.ts`), the runs through `runViewSchema` (`lib/runData.ts`).
+ *
+ * No real organisation and no owner names: an owner is an address, as on chain.
+ * Every dataset has provenance `synthetic`.
  */
+
+import {
+  type ApiErrorCode,
+  BUYER_CATEGORY_NAMES,
+  type BuyerCategoryName,
+  type QuoteBlocker,
+  type QuoteIneligibleReason,
+  type RunStatusName,
+  DATASET_SOURCES as SHARED_DATASET_SOURCES,
+  USE_TYPE_NAMES,
+  type UseTypeName,
+} from '@genovault/shared'
 
 /* ------------------------------------------------------------------ */
 /* Vocabularies                                                        */
 /* ------------------------------------------------------------------ */
 
-export type DatasetSource = 'clinic' | 'biobank' | 'individual' | 'synthetic'
+export type DatasetSource = (typeof SHARED_DATASET_SOURCES)[number]
 
-export type UseType =
-  | 'oncology'
-  | 'cardiology'
-  | 'rareDisease'
-  | 'populationGenetics'
-  | 'pharmaCommercial'
+export type UseType = UseTypeName
 
-export type BuyerCategory = 'academic' | 'nonProfit' | 'commercial' | 'government'
+export type BuyerCategory = BuyerCategoryName
 
-export type IneligibleReason =
-  | 'unregistered'
-  | 'retired'
-  | 'ciphertext-missing'
-  | 'no-consent'
-  | 'revoked'
-  | 'expired'
-  | 'use-forbidden'
-  | 'use-not-allowed'
-  | 'category-not-allowed'
+export type IneligibleReason = QuoteIneligibleReason
 
-export type OrderBlocker = 'platform-paused' | 'no-eligible-datasets' | null
+export type OrderBlocker = QuoteBlocker | null
 
 export type ChainStateKind = 'unavailable' | 'unregistered' | 'registered'
 
 export type ChainStatus = 'active' | 'retired'
 
-export type RunStatus = 'accepted' | 'running' | 'completed' | 'rejected' | 'failed'
+export type RunStatus = RunStatusName
 
-export type ApiErrorCode =
-  | 'PLATFORM_PAUSED'
-  | 'INVALID_INPUT'
-  | 'UNAUTHORIZED'
-  | 'CONSENT_VIOLATION'
-  | 'NOT_FOUND'
-  | 'INSUFFICIENT_ESCROW'
-  | 'RATE_LIMITED'
-  | 'INTERNAL'
-  | 'UPSTREAM_UNAVAILABLE'
+export type { ApiErrorCode }
 
 export type SexFilter = 'female' | 'male' | 'any'
 export type AffectedFilter = 'affected' | 'unaffected' | 'any'
 
-export const DATASET_SOURCES: DatasetSource[] = ['clinic', 'biobank', 'individual', 'synthetic']
+export const DATASET_SOURCES: DatasetSource[] = [...SHARED_DATASET_SOURCES]
 
-export const USE_TYPES: UseType[] = [
-  'oncology',
-  'cardiology',
-  'rareDisease',
-  'populationGenetics',
-  'pharmaCommercial',
-]
+export const USE_TYPES: UseType[] = [...USE_TYPE_NAMES]
 
-export const BUYER_CATEGORIES: BuyerCategory[] = [
-  'academic',
-  'nonProfit',
-  'commercial',
-  'government',
-]
+export const BUYER_CATEGORIES: BuyerCategory[] = [...BUYER_CATEGORY_NAMES]
 
 export const API_ERROR_STATUS: Record<ApiErrorCode, number> = {
   // Пауза платформи (`T029`): 409, а не 503. Запит покупця бездоганний, і
@@ -215,7 +196,6 @@ export interface Attestation {
 export interface Dataset {
   datasetId: string
   owner: string
-  ownerName: string
   title: string
   description: string
   source: DatasetSource
@@ -258,7 +238,6 @@ export const datasetUpperBound = (pricePer1k: number, records: number): number =
 const NORDVEIL: Dataset = {
   datasetId: 'nordveil-exome-01',
   owner: '7Ndv1QpXm4Rk8fJ2sTbW3yLcHu9aZe6gVqDh5PrKm1Ao',
-  ownerName: 'Nordveil Genomic Trust',
   title: 'Nordveil exome panel — cohort 01',
   description:
     'Synthetic exome-derived marker panel with phenotype labels, generated from a published allele-frequency model.',
@@ -302,7 +281,6 @@ const NORDVEIL: Dataset = {
 const MERIDIAN: Dataset = {
   datasetId: 'meridian-cardio-04',
   owner: '9Fq3LcW2mHt7bXk4yPsZ1dRvNu8aTe5gJqDh6ZrBn3Cd',
-  ownerName: 'Meridian Cohort Registry',
   title: 'Meridian cardiology cohort — wave 04',
   description:
     'Synthetic cardiology cohort with the same 50-marker schema and an affected/unaffected label.',
@@ -346,7 +324,6 @@ const MERIDIAN: Dataset = {
 const HALVARD: Dataset = {
   datasetId: 'halvard-rare-02',
   owner: '4Kd8ZrVn2sHb6yLc1mQt9fXk3uPaTe7gJwDh5NrSm2Ef',
-  ownerName: 'Halvard Rare Disease Archive',
   title: 'Halvard rare-disease archive — set 02',
   description:
     'Small synthetic rare-disease set: enriched affected fraction, identical 50-marker schema.',
@@ -390,7 +367,6 @@ const HALVARD: Dataset = {
 const KELDAN: Dataset = {
   datasetId: 'keldan-pop-07',
   owner: '2Rb5NmZq7sHc3yTd9fXk1uPaLe8gJwVh6ZrKn4Bt1Gh1',
-  ownerName: 'Keldan Population Study',
   title: 'Keldan population panel — release 07',
   description:
     'Synthetic population-genetics panel. Consent was revoked by its owner, so the dataset cannot enter a run.',
@@ -434,7 +410,6 @@ const KELDAN: Dataset = {
 const SUNDRY: Dataset = {
   datasetId: 'sundry-onco-11',
   owner: '6Wc2WmZr8sHd4yTe1fXk5uPaLb9gJqVh7ZrNn3Ct2Jj1',
-  ownerName: 'Sundry Oncology Collective',
   title: 'Sundry oncology collective — batch 11',
   description:
     'Synthetic oncology-adjacent marker set. Its consent allows cardiology and population genetics only.',
@@ -478,7 +453,6 @@ const SUNDRY: Dataset = {
 const VARDE: Dataset = {
   datasetId: 'varde-pilot-03',
   owner: '3Pt9NmZs5sHe2yTf7fXk8uPaLc1gJwVh4ZrBn6Dt5Km1',
-  ownerName: 'Varde Pilot Biobank',
   title: 'Varde pilot biobank — pilot 03',
   description:
     'Synthetic pilot set. Registered on-chain, but the encrypted records were never uploaded to storage.',
@@ -564,116 +538,11 @@ export interface RunFilters {
   affected: AffectedFilter
 }
 
-interface QuoteRowBase {
-  datasetId: string
-  owner: string
-  ownerName: string
-  title: string
-}
-
-/**
- * Рядок квоти — союз, а не поле з `undefined`, як і `quoteLineSchema` у
- * `packages/shared`. Спільна форма з обома половинами дозволила б відповідь
- * «непридатний, але ось вартість», якої не буває, і екран мусив би підпирати
- * читання причини знаком оклику.
- */
-export type QuoteRow =
-  | (QuoteRowBase & {
-      eligible: true
-      pricePer1k: number
-      claimedRecords: number
-      upperBound: number
-    })
-  | (QuoteRowBase & { eligible: false; reason: IneligibleReason })
-
-export interface Quote {
-  recipeId: number
-  useType: UseType
-  buyerCategory: BuyerCategory
-  filters: RunFilters
-  rows: QuoteRow[]
-  eligibleCount: number
-  totalCount: number
-  upperBound: number
-  feeBps: number
-  orderable: boolean
-  blocker: OrderBlocker
-}
-
 export const MOCK_QUOTE_FILTERS: RunFilters = {
   minAge: 40,
   maxAge: 75,
   sex: 'any',
   affected: 'any',
-}
-
-export const MOCK_QUOTE: Quote = {
-  recipeId: 1,
-  useType: 'rareDisease',
-  buyerCategory: 'academic',
-  filters: MOCK_QUOTE_FILTERS,
-  rows: [
-    {
-      datasetId: 'nordveil-exome-01',
-      owner: NORDVEIL.owner,
-      ownerName: 'Nordveil Genomic Trust',
-      title: NORDVEIL.title,
-      eligible: true,
-      pricePer1k: 4000000,
-      claimedRecords: 12000,
-      upperBound: 48000000,
-    },
-    {
-      datasetId: 'meridian-cardio-04',
-      owner: MERIDIAN.owner,
-      ownerName: 'Meridian Cohort Registry',
-      title: MERIDIAN.title,
-      eligible: true,
-      pricePer1k: 2500000,
-      claimedRecords: 8400,
-      upperBound: 21000000,
-    },
-    {
-      datasetId: 'halvard-rare-02',
-      owner: HALVARD.owner,
-      ownerName: 'Halvard Rare Disease Archive',
-      title: HALVARD.title,
-      eligible: true,
-      pricePer1k: 6000000,
-      claimedRecords: 3200,
-      upperBound: 19200000,
-    },
-    {
-      datasetId: 'keldan-pop-07',
-      owner: KELDAN.owner,
-      ownerName: 'Keldan Population Study',
-      title: KELDAN.title,
-      eligible: false,
-      reason: 'revoked',
-    },
-    {
-      datasetId: 'sundry-onco-11',
-      owner: SUNDRY.owner,
-      ownerName: 'Sundry Oncology Collective',
-      title: SUNDRY.title,
-      eligible: false,
-      reason: 'use-not-allowed',
-    },
-    {
-      datasetId: 'varde-pilot-03',
-      owner: VARDE.owner,
-      ownerName: 'Varde Pilot Biobank',
-      title: VARDE.title,
-      eligible: false,
-      reason: 'ciphertext-missing',
-    },
-  ],
-  eligibleCount: 3,
-  totalCount: 6,
-  upperBound: 88200000,
-  feeBps: 700,
-  orderable: true,
-  blocker: null,
 }
 
 /* ------------------------------------------------------------------ */
@@ -698,7 +567,6 @@ export interface RunReport {
 export interface SettlementRow {
   datasetId: string
   owner: string
-  ownerName: string
   recordsIncluded: number
   charged: number
   fee: number
@@ -727,7 +595,7 @@ export interface Run {
   useType: UseType
   buyerCategory: BuyerCategory
   filters: RunFilters
-  datasets: { datasetId: string; owner: string; ownerName: string }[]
+  datasets: { datasetId: string; owner: string }[]
   upperBound: number
   feeBps: number
   progress?: { batch: number; batches: number }
@@ -738,16 +606,14 @@ export interface Run {
 }
 
 const RUN_POOL = [
-  { datasetId: 'nordveil-exome-01', owner: NORDVEIL.owner, ownerName: 'Nordveil Genomic Trust' },
+  { datasetId: 'nordveil-exome-01', owner: NORDVEIL.owner },
   {
     datasetId: 'meridian-cardio-04',
     owner: MERIDIAN.owner,
-    ownerName: 'Meridian Cohort Registry',
   },
   {
     datasetId: 'halvard-rare-02',
     owner: HALVARD.owner,
-    ownerName: 'Halvard Rare Disease Archive',
   },
 ]
 
@@ -773,7 +639,6 @@ export const MOCK_SETTLEMENT: Settlement = {
     {
       datasetId: 'nordveil-exome-01',
       owner: NORDVEIL.owner,
-      ownerName: 'Nordveil Genomic Trust',
       recordsIncluded: 7340,
       charged: 29360000,
       fee: 2055200,
@@ -782,7 +647,6 @@ export const MOCK_SETTLEMENT: Settlement = {
     {
       datasetId: 'meridian-cardio-04',
       owner: MERIDIAN.owner,
-      ownerName: 'Meridian Cohort Registry',
       recordsIncluded: 5010,
       charged: 12525000,
       fee: 876750,
@@ -791,7 +655,6 @@ export const MOCK_SETTLEMENT: Settlement = {
     {
       datasetId: 'halvard-rare-02',
       owner: HALVARD.owner,
-      ownerName: 'Halvard Rare Disease Archive',
       recordsIncluded: 1880,
       charged: 11280000,
       fee: 789600,
@@ -882,7 +745,7 @@ export const RUN_STATUS_ORDER: RunStatus[] = [
 ]
 
 /* ------------------------------------------------------------------ */
-/* Balance and payouts (data-owner view: Nordveil Genomic Trust)        */
+/* Balance and payouts (data-owner view)                               */
 /* ------------------------------------------------------------------ */
 
 export interface PayoutRow {
@@ -907,7 +770,6 @@ export interface PayoutRow {
 
 export interface OwnerBalance {
   owner: string
-  ownerName: string
   available: number
   totalEarned: number
   totalWithdrawn: number
@@ -916,7 +778,6 @@ export interface OwnerBalance {
 
 export const OWNER_BALANCE: OwnerBalance = {
   owner: NORDVEIL.owner,
-  ownerName: 'Nordveil Genomic Trust',
   available: 34717800,
   totalEarned: 49717800,
   totalWithdrawn: 15000000,
@@ -975,7 +836,6 @@ export const OWNER_BALANCE: OwnerBalance = {
 /** Порожній баланс: власник ще не брав участі в жодному прогоні. */
 export const EMPTY_OWNER_BALANCE: OwnerBalance = {
   owner: NORDVEIL.owner,
-  ownerName: 'Nordveil Genomic Trust',
   available: 0,
   totalEarned: 0,
   totalWithdrawn: 0,

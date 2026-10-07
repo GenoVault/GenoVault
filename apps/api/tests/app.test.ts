@@ -1,6 +1,6 @@
 import { apiErrorSchema } from '@genovault/shared'
 import { describe, expect, it } from 'vitest'
-import { createApp } from '../src/app.ts'
+import { createApp, webOriginsFromEnv } from '../src/app.ts'
 
 const app = createApp()
 
@@ -37,5 +37,52 @@ describe('внутрішня помилка', () => {
     expect(body).not.toContain('ssn')
     expect(body).not.toContain('patients')
     expect(apiErrorSchema.parse(JSON.parse(body)).error.code).toBe('INTERNAL')
+  })
+})
+
+describe('CORS (T066)', () => {
+  const WEB = 'http://localhost:5173'
+  const withCors = createApp({ webOrigins: [WEB] })
+
+  const preflight = (target: ReturnType<typeof createApp>, origin: string) =>
+    target.request('/datasets', {
+      method: 'OPTIONS',
+      headers: {
+        origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization',
+      },
+    })
+
+  it('lets the listed origin send a session token', async () => {
+    const response = await preflight(withCors, WEB)
+    expect(response.headers.get('access-control-allow-origin')).toBe(WEB)
+    expect(response.headers.get('access-control-allow-headers')).toContain('authorization')
+    expect(response.headers.get('access-control-allow-methods')).toContain('DELETE')
+  })
+
+  it('says nothing to any other origin', async () => {
+    const response = await preflight(withCors, 'https://evil.example')
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  it('sends no CORS headers at all when no origin is configured', async () => {
+    const response = await preflight(app, WEB)
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  it('takes WEB_ORIGINS as origins only', () => {
+    expect(webOriginsFromEnv(undefined)).toEqual([])
+    expect(webOriginsFromEnv(' ')).toEqual([])
+    expect(webOriginsFromEnv(`${WEB}, https://genovault.github.io`)).toEqual([
+      WEB,
+      'https://genovault.github.io',
+    ])
+    // A trailing slash or a path never matches what a browser sends.
+    expect(() => webOriginsFromEnv(`${WEB}/`)).toThrow(/not an origin/)
+    expect(() => webOriginsFromEnv('https://genovault.github.io/GenoVault')).toThrow(
+      /not an origin/,
+    )
+    expect(() => webOriginsFromEnv('localhost:5173')).toThrow()
   })
 })

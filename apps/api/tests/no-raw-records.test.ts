@@ -19,6 +19,7 @@ import { createApp } from '../src/app.ts'
 import { AuthError, type TokenVerifier } from '../src/services/auth.ts'
 import { memoryCatalog } from '../src/services/catalog.ts'
 import {
+  createConsentIxBuilder,
   createRegistrationBuilder,
   createRunOrderBuilder,
   deriveDatasetAddress,
@@ -257,6 +258,13 @@ beforeEach(async () => {
       feeBps: 700,
       paused: false,
     })),
+    readConsentChain: vi.fn(async () => ({
+      status: 'active' as const,
+      consentVersion: 1,
+      currentRevoked: false,
+      now: 1_735_689_600n,
+    })),
+    buildConsentIx: createConsentIxBuilder('http://127.0.0.1:8899'),
     dispatcher: DISPATCHER,
     baseUrl: 'http://127.0.0.1:8879',
   })
@@ -334,6 +342,58 @@ function probes(): { label: string; route: string; run: () => Promise<Response> 
       label: 'картка неіснуючого',
       route: 'GET /datasets/:owner/:id',
       run: async () => app.request(`/datasets/${OWNER}/cohort-missing`, { headers: auth }),
+    },
+    {
+      label: 'anonymous catalog',
+      route: 'GET /datasets',
+      run: async () => app.request('/datasets'),
+    },
+    {
+      label: 'anonymous dataset card',
+      route: 'GET /datasets/:owner/:id',
+      run: async () => app.request(`/datasets/${OWNER}/${DATASET_ID}`),
+    },
+    {
+      label: 'set consent',
+      route: 'POST /datasets/:id/consent',
+      run: async () =>
+        app.request(`/datasets/${DATASET_ID}/consent`, {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            allowedUses: ['oncology'],
+            forbiddenUses: [],
+            buyerCategories: ['academic'],
+            expiresAt: '1893456000',
+          }),
+        }),
+    },
+    {
+      label: 'set consent with an expiry in the past',
+      route: 'POST /datasets/:id/consent',
+      run: async () =>
+        app.request(`/datasets/${DATASET_ID}/consent`, {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            allowedUses: ['oncology'],
+            forbiddenUses: [],
+            buyerCategories: ['academic'],
+            expiresAt: '1',
+          }),
+        }),
+    },
+    {
+      label: 'revoke consent',
+      route: 'DELETE /datasets/:id/consent',
+      run: async () =>
+        app.request(`/datasets/${DATASET_ID}/consent`, { method: 'DELETE', headers: auth }),
+    },
+    {
+      label: 'revoke consent on a missing dataset',
+      route: 'DELETE /datasets/:id/consent',
+      run: async () =>
+        app.request('/datasets/cohort-missing/consent', { method: 'DELETE', headers: auth }),
     },
     {
       label: 'повторна реєстрація',
