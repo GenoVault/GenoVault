@@ -170,6 +170,15 @@ export {
   recipeView,
   recipeViewSchema,
 } from './recipes.ts'
+export type { AgeBin, FrequenciesReport } from './report.ts'
+export {
+  AGE_THRESHOLDS,
+  ageHistogram,
+  alleleFrequencies,
+  REPORT_LAYOUT,
+  ReportLayoutError,
+  unpackReport,
+} from './report.ts'
 export type {
   PlatformView,
   RunOrder,

@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./report-key": "./src/report-key.ts",
     "./mxe-key": "./src/mxe-key.ts",
+    "./report": "./src/report.ts",
     "./browser/anchor-default": "./browser/anchor-default.js"
   },
   "scripts": {

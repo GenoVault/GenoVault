@@ -22,9 +22,16 @@
  * якого застерігає визначення віх.
  */
 
-import type { RunStatusName, RunView } from '@genovault/shared'
-import { bpsSchema, pricePer1kSchema, settleRun, tokenAmountSchema } from '@genovault/shared'
-import { CheckCircle2, CircleDashed, Loader2, Lock, XCircle } from 'lucide-react'
+import type { AgeBin, FrequenciesReport, RunStatusName, RunView } from '@genovault/shared'
+import {
+  ageHistogram,
+  alleleFrequencies,
+  bpsSchema,
+  pricePer1kSchema,
+  settleRun,
+  tokenAmountSchema,
+} from '@genovault/shared'
+import { CheckCircle2, CircleDashed, Loader2, Lock, LockOpen, XCircle } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
@@ -38,6 +45,7 @@ import {
   Tag,
 } from '@/components/Primitives'
 import { ErrorBlock, SignInGate, StatePreview } from '@/components/StateBlocks'
+import { Button } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -46,6 +54,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useAppState } from '@/lib/appState'
 import {
   BUYER_CATEGORY_LABEL,
   formatBps,
@@ -55,6 +64,8 @@ import {
   truncateMiddle,
   USE_TYPE_LABEL,
 } from '@/lib/format'
+import { useReport } from '@/lib/report'
+import { RPC_URL } from '@/lib/rpc'
 import { LIVE_DATA, useRunView } from '@/lib/runData'
 import { MOCK_SESSION, type Run as MockRun, RUN_STATUS_ORDER, RUNS } from '@/mockData'
 
@@ -217,48 +228,148 @@ const SettlementBlock = ({ run }: { run: RunView }) => {
 }
 
 /**
- * Звіт є, але прочитати його поки нічим.
+ * The report under the buyer's key, and the button that opens it here.
  *
- * Шифротексти публічні — вони лежать в акаунті мережі. Приватна половина ключа
- * не зберігається ніде й виводиться з підпису гаманця; чого немає, так це
- * розбору того, як Arcis пакує числа звіту в польові елементи. Це `T030`.
+ * The ciphertexts are public — they sit in a network account. The private
+ * half of the key is stored nowhere and is derived from the wallet signature
+ * again (`lib/report.ts`); the layout of the numbers comes from the compiler
+ * output, mirrored and checked in the gate (`scripts/sync-report-layout.mjs`).
  */
 const SealedReportBlock = ({ run }: { run: RunView }) => {
+  const { address, signMessage } = useAppState()
+  const { phase, report, error, read } = useReport()
   if (run.result === null) return null
+
+  const isBuyer = address !== null && address === run.buyer
+  const rpcUrl = RPC_URL
+  const canRead = LIVE_DATA && isBuyer && !run.result.suppressed
+
   return (
     <section className="panel p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="flex items-center gap-2 text-[19px]">
-          <Lock className="h-4 w-4" />
-          Report — encrypted to you
+          {report === null ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+          {report === null ? 'Report — encrypted to you' : 'Report'}
         </h2>
         <span className="num text-[12.5px] text-muted-foreground">
-          {run.result.ciphertexts.length} field elements
+          {report === null
+            ? `${run.result.ciphertexts.length} field elements`
+            : `aggregates over ${formatInt(report.included)} records`}
         </span>
       </div>
-      <p className="mt-3 max-w-2xl text-[13.5px] leading-6 text-muted-foreground">
-        The cohort is <span className="num">{formatInt(run.result.recordsIncluded)}</span> records.
-        The numbers themselves are sealed to the key derived from your wallet signature — nobody
-        else can read them, this app included.
-      </p>
-      <p className="mt-2 max-w-2xl text-[13.5px] leading-6 text-muted-foreground">
-        Decoding is not wired yet: the layout Arcis uses to pack the report into field elements has
-        not been checked against a real MPC output. Guessing it would put numbers on this screen
-        that nobody verified.
-      </p>
-      {run.result.suppressed && (
-        <p className="mt-2 text-[13.5px] leading-6 text-destructive">
-          The cohort was smaller than the recipe's minimum, so the report is zeros and the deposit
-          comes back in full.
-        </p>
+
+      {report === null ? (
+        <>
+          <p className="mt-3 max-w-2xl text-[13.5px] leading-6 text-muted-foreground">
+            The cohort is <span className="num">{formatInt(run.result.recordsIncluded)}</span>{' '}
+            records. The numbers themselves are sealed to the key derived from your wallet signature
+            — nobody else can read them, this app's server included.
+          </p>
+          {run.result.suppressed && (
+            <p className="mt-2 text-[13.5px] leading-6 text-destructive">
+              The cohort was smaller than the recipe's minimum, so the report is zeros and the
+              deposit comes back in full.
+            </p>
+          )}
+          {canRead && rpcUrl !== null && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => void read({ run, rpcUrl, signMessage })}
+                disabled={phase === 'reading'}
+              >
+                {phase === 'reading' && <Loader2 className="h-4 w-4 animate-spin" />}
+                Read the report
+              </Button>
+              <span className="text-[12.5px] text-muted-foreground">
+                Your wallet signs the same message as at ordering; the key is rebuilt and the report
+                decrypted in this browser.
+              </span>
+            </div>
+          )}
+          {LIVE_DATA && !isBuyer && !run.result.suppressed && (
+            <SourceNote className="mt-3">
+              Only the wallet that ordered this run can open it.
+            </SourceNote>
+          )}
+          {error !== null && (
+            <p className="mt-3 text-[13.5px] leading-6 text-destructive">{error}</p>
+          )}
+          <div className="mt-4">
+            <CopyValue
+              value={run.result.encryptionKey}
+              display={truncateMiddle(run.result.encryptionKey, 8, 8)}
+            />
+          </div>
+        </>
+      ) : (
+        <ReportNumbers report={report} />
       )}
-      <div className="mt-4">
-        <CopyValue
-          value={run.result.encryptionKey}
-          display={truncateMiddle(run.result.encryptionKey, 8, 8)}
-        />
-      </div>
     </section>
+  )
+}
+
+const ageLabel = (bin: AgeBin): string =>
+  bin.from === null
+    ? `under ${bin.to}`
+    : bin.to === null
+      ? `${bin.from}+`
+      : `${bin.from}–${bin.to - 1}`
+
+const ReportNumbers = ({ report }: { report: FrequenciesReport }) => {
+  const bins = ageHistogram(report).filter((bin) => bin.count > 0)
+  const frequencies = alleleFrequencies(report)
+  return (
+    <>
+      <div className="mt-5 grid gap-6 lg:grid-cols-2">
+        <div>
+          <span className="label-tiny">
+            Minor-allele frequency · <span className="num">{frequencies.length}</span> markers
+          </span>
+          <FrequencySparkline values={frequencies} className="mt-2" height={64} />
+          <SourceNote className="mt-2">
+            Mean minor-allele copies per marker over two alleles, in schema order. The split into 0,
+            1 and 2 copies is not part of this recipe.
+          </SourceNote>
+        </div>
+
+        <div className="flex flex-col gap-5">
+          <div>
+            <span className="label-tiny mb-2 block">Distribution by sex</span>
+            <div className="flex flex-col gap-2">
+              <BarRow
+                label="female"
+                value={report.included - report.male}
+                total={report.included}
+              />
+              <BarRow label="male" value={report.male} total={report.included} />
+            </div>
+          </div>
+          <div>
+            <span className="label-tiny mb-2 block">Age · ten-year buckets</span>
+            <div className="flex flex-col gap-1.5">
+              {bins.map((bin) => (
+                <BarRow
+                  key={ageLabel(bin)}
+                  label={ageLabel(bin)}
+                  value={bin.count}
+                  total={report.included}
+                  tone="brand"
+                />
+              ))}
+            </div>
+          </div>
+          <KeyValue label="Affected rate">
+            <span className="num text-lg">
+              {formatRate(report.included === 0 ? 0 : report.affected / report.included)}
+            </span>
+          </KeyValue>
+        </div>
+      </div>
+      <SourceNote className="mt-4">
+        Computed by the MPC cluster over ciphertext and decrypted in this browser with the key from
+        your wallet signature. Neither the platform nor the dispatcher has seen these numbers.
+      </SourceNote>
+    </>
   )
 }
 
