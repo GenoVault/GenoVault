@@ -57,12 +57,12 @@ export class QuoteOverflowError extends Error {
  * домовленістю про те, як саме рахуватиме `T027`.
  */
 export function datasetUpperBound(pricePer1k: PricePer1k, recordCount: bigint): TokenAmount {
-  if (recordCount < 0n) throw new QuoteOverflowError('кількість записів не може бути від’ємною')
+  if (recordCount < 0n) throw new QuoteOverflowError('the record count cannot be negative')
 
   const product = pricePer1k * recordCount
   const amount = (product + RECORDS_PER_PRICE_UNIT - 1n) / RECORDS_PER_PRICE_UNIT
   if (amount > U64_MAX) {
-    throw new QuoteOverflowError('вартість датасету не вміщається в u64')
+    throw new QuoteOverflowError('the dataset price does not fit in u64')
   }
   return tokenAmountSchema.parse(amount)
 }
@@ -89,7 +89,7 @@ export function datasetUpperBound(pricePer1k: PricePer1k, recordCount: bigint): 
  */
 export function poolUpperBound(lines: readonly TokenAmount[]): TokenAmount {
   const total = lines.reduce((sum: bigint, amount) => sum + amount, 0n)
-  if (total > U64_MAX) throw new QuoteOverflowError('вартість прогону не вміщається в u64')
+  if (total > U64_MAX) throw new QuoteOverflowError('the run price does not fit in u64')
   return tokenAmountSchema.parse(total)
 }
 

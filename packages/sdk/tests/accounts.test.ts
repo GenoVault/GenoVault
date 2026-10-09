@@ -98,7 +98,7 @@ describe('декодування акаунтів', () => {
 
   it('невідомий статус падає тут, а не перетворюється на undefined', () => {
     expect(() => decodeDataset({ ...DATASET_FIELDS, status: { archived: {} } } as never)).toThrow(
-      /невідомий статус/,
+      /unknown dataset status/,
     )
   })
 
@@ -358,7 +358,7 @@ describe('декодування прогону', () => {
     }
 
     expect(() => decodeRun({ ...RUN_FIELDS, status: { settling: {} } } as never)).toThrow(
-      /невідомий статус прогону/,
+      /unknown run status/,
     )
   })
 

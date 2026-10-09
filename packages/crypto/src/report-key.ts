@@ -58,8 +58,8 @@ export interface ReportKeypair {
  */
 export function reportKeyMessage(buyer: string, nonce: bigint): string {
   return [
-    'GenoVault: ключ для читання звіту прогону.',
-    'Підпис не переказує коштів і нічого не змінює в мережі.',
+    'GenoVault: the key for reading a run report.',
+    'Signing moves no funds and changes nothing on the network.',
     `buyer: ${buyer}`,
     `run nonce: ${nonce.toString(10)}`,
   ].join('\n')
@@ -79,7 +79,7 @@ const HKDF_INFO = 'genovault/report-key/v1'
  */
 export async function deriveReportKey(signature: Uint8Array): Promise<ReportKeypair> {
   if (signature.length === 0) {
-    throw new RangeError('підпис порожній — виводити ключ немає з чого')
+    throw new RangeError('the signature is empty — there is nothing to derive a key from')
   }
 
   // Копія, а не сам масив: `Uint8Array` над `SharedArrayBuffer` не є

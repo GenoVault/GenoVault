@@ -52,7 +52,7 @@ export class AuthError extends Error {
 /** Ідентифікатор користувача в Privy — DID виду `did:privy:<id>`. */
 export const privyUserIdSchema = z
   .string()
-  .regex(/^did:privy:[A-Za-z0-9]{1,64}$/, 'очікувався ідентифікатор виду did:privy:<id>')
+  .regex(/^did:privy:[A-Za-z0-9]{1,64}$/, 'expected an identifier of the form did:privy:<id>')
 
 export interface Actor {
   /** Хто — у провайдері входу. Ключа даних за цим ідентифікатором не існує. */
@@ -129,7 +129,7 @@ function decodeSegment(segment: string, what: string): Uint8Array<ArrayBuffer> {
   // нього: інакше підроблений заголовок із крапкою всередині розбереться в
   // щось валідне, а підпис рахувався б над іншим рядком.
   if (segment === '' || !BASE64URL.test(segment)) {
-    throw new AuthError(`${what} токена не є base64url`)
+    throw new AuthError(`token ${what} is not base64url`)
   }
   return new Uint8Array(Buffer.from(segment, 'base64url'))
 }
@@ -139,7 +139,7 @@ function decodeJson(segment: string, what: string): unknown {
     return JSON.parse(Buffer.from(decodeSegment(segment, what)).toString('utf8'))
   } catch (error) {
     if (error instanceof AuthError) throw error
-    throw new AuthError(`${what} токена не є JSON`)
+    throw new AuthError(`token ${what} is not JSON`)
   }
 }
 
@@ -151,7 +151,7 @@ function decodeJson(segment: string, what: string): unknown {
  * тим самим значенням, яке зловмисник і надіслав.
  */
 const headerSchema = z.object({
-  alg: z.literal(ALGORITHM, `підтримується лише ${ALGORITHM}`),
+  alg: z.literal(ALGORITHM, `only ${ALGORITHM} is supported`),
   typ: z.literal('JWT').optional(),
   kid: z.string().min(1).optional(),
 })
@@ -171,7 +171,7 @@ function parseSchema<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
   if (!result.success) {
     // Назовні йде перше зауваження без шляху до значення: клієнту треба знати,
     // що саме не так із токеном, а не отримати назад його ж вміст.
-    throw new AuthError(`${what}: ${result.error.issues[0]?.message ?? 'непридатна форма'}`)
+    throw new AuthError(`${what}: ${result.error.issues[0]?.message ?? 'unusable shape'}`)
   }
   return result.data
 }
@@ -189,7 +189,7 @@ export function pemToDer(pem: string): Uint8Array<ArrayBuffer> {
     .replace(/-----BEGIN [A-Z ]+-----/, '')
     .replace(/-----END [A-Z ]+-----/, '')
     .replace(/\s+/g, '')
-  if (body === '') throw new AuthError('порожній ключ перевірки')
+  if (body === '') throw new AuthError('the verification key is empty')
   return new Uint8Array(Buffer.from(body, 'base64'))
 }
 
@@ -225,7 +225,7 @@ function pemKeySource(pem: string): KeySource {
     async keys() {
       cached ??= importSpki(pemToDer(pem)).catch((error: unknown) => {
         cached = undefined
-        throw new AuthError(`ключ перевірки непридатний: ${describe(error)}`)
+        throw new AuthError(`the verification key is unusable: ${describe(error)}`)
       })
       return [await cached]
     },
@@ -256,13 +256,13 @@ export function jwksKeySource(
     try {
       response = await fetchImpl(url, { headers: { accept: 'application/json' } })
     } catch (error) {
-      throw new AuthError(`не вдалося отримати ключі перевірки: ${describe(error)}`)
+      throw new AuthError(`could not fetch the verification keys: ${describe(error)}`)
     }
     if (!response.ok) {
-      throw new AuthError(`джерело ключів відповіло ${response.status}`)
+      throw new AuthError(`the key source answered ${response.status}`)
     }
 
-    const jwks = parseSchema(jwksSchema, await response.json(), 'набір ключів')
+    const jwks = parseSchema(jwksSchema, await response.json(), 'key set')
     // `flatMap`, а не `filter` + `map`: перевірка полів має ще й звужувати
     // тип, інакше `x`/`y` доїжджають до імпорту як `string | undefined`.
     const usable = jwks.keys.flatMap((key) =>
@@ -288,7 +288,7 @@ export function jwksKeySource(
       })),
     )
 
-    if (imported.length === 0) throw new AuthError('джерело ключів не містить придатних ключів')
+    if (imported.length === 0) throw new AuthError('the key source holds no usable keys')
 
     entries = imported
     fetchedAt = now()
@@ -345,35 +345,35 @@ export function createTokenVerifier(
 
   return async (token: string): Promise<Actor> => {
     const parts = token.split('.')
-    if (parts.length !== 3) throw new AuthError('токен не є JWT із трьох частин')
+    if (parts.length !== 3) throw new AuthError('the token is not a three-part JWT')
     const [rawHeader = '', rawClaims = '', rawSignature = ''] = parts
 
-    const header = parseSchema(headerSchema, decodeJson(rawHeader, 'заголовок'), 'заголовок')
+    const header = parseSchema(headerSchema, decodeJson(rawHeader, 'header'), 'header')
 
-    const signature = decodeSegment(rawSignature, 'підпис')
+    const signature = decodeSegment(rawSignature, 'signature')
     if (signature.length !== SIGNATURE_BYTES) {
-      throw new AuthError('підпис не має довжини ES256')
+      throw new AuthError('the signature is not ES256-length')
     }
 
     const signed = new TextEncoder().encode(`${rawHeader}.${rawClaims}`)
     if (!(await verifyAgainst(source, header.kid, signature, signed))) {
-      throw new AuthError('підпис токена не збігається')
+      throw new AuthError('the token signature does not match')
     }
 
-    const claims = parseSchema(claimsSchema, decodeJson(rawClaims, 'тіло'), 'тіло')
+    const claims = parseSchema(claimsSchema, decodeJson(rawClaims, 'payload'), 'payload')
 
-    if (claims.iss !== PRIVY_ISSUER) throw new AuthError('токен виданий іншим емітентом')
+    if (claims.iss !== PRIVY_ISSUER) throw new AuthError('the token was issued by another issuer')
 
     const audience = typeof claims.aud === 'string' ? [claims.aud] : claims.aud
-    if (!audience.includes(config.appId)) throw new AuthError('токен виданий іншому застосунку')
+    if (!audience.includes(config.appId)) throw new AuthError('the token was issued to another app')
 
     const current = now()
-    if (claims.exp * 1000 + skewMs <= current) throw new AuthError('токен прострочений')
+    if (claims.exp * 1000 + skewMs <= current) throw new AuthError('the token has expired')
     if (claims.nbf !== undefined && claims.nbf * 1000 - skewMs > current) {
-      throw new AuthError('токен ще не чинний')
+      throw new AuthError('the token is not valid yet')
     }
     if (claims.iat !== undefined && claims.iat * 1000 - skewMs > current) {
-      throw new AuthError('токен виданий у майбутньому')
+      throw new AuthError('the token was issued in the future')
     }
 
     // Проєкція, а не `...claims`: усе, чого немає в `Actor`, лишається тут.

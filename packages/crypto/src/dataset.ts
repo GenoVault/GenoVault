@@ -56,17 +56,18 @@ export function encryptDataset(
 ): EncryptedDataset {
   if (mxePublicKey.length !== X25519_KEY_BYTES) {
     throw new RangeError(
-      `публічний ключ MXE має бути ${X25519_KEY_BYTES} байтів, отримано ${mxePublicKey.length}`,
+      `the MXE public key must be ${X25519_KEY_BYTES} bytes, got ${mxePublicKey.length}`,
     )
   }
-  if (records.length === 0) throw new RangeError('датасет без записів шифрувати нема сенсу')
+  if (records.length === 0)
+    throw new RangeError('there is nothing to encrypt in a dataset without records')
 
   const markerCount = datasetRecordSchema.parse(records[0]).genotypes.length
   const plaintext = records.map((record, index) => {
     const parsed = datasetRecordSchema.parse(record)
     if (parsed.genotypes.length !== markerCount) {
       throw new RangeError(
-        `запис ${index} має ${parsed.genotypes.length} маркерів замість ${markerCount}`,
+        `record ${index} has ${parsed.genotypes.length} markers instead of ${markerCount}`,
       )
     }
     return toFieldElements(parsed)
@@ -135,7 +136,7 @@ export function decryptDataset(bytes: Uint8Array, mxeSecretKey: Uint8Array): Dat
 
   const derived = x25519.getPublicKey(mxeSecretKey)
   if (!derived.every((byte, index) => header.mxePublicKey[index] === byte)) {
-    throw new DatasetEnvelopeError('конверт зашифрований на інший кластер')
+    throw new DatasetEnvelopeError('the envelope is encrypted to another cluster')
   }
 
   const cipher = new RescueCipher(x25519.getSharedSecret(mxeSecretKey, header.ephemeralPublicKey))

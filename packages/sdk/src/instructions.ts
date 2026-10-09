@@ -38,7 +38,7 @@ export async function initializeIx(
   params: InitializeParams,
 ): Promise<TransactionInstruction> {
   if (!Number.isInteger(params.feeBps) || params.feeBps < 0 || params.feeBps > 0xffff) {
-    throw new RangeError(`комісія має бути u16, отримано ${params.feeBps}`)
+    throw new RangeError(`the fee must be a u16, got ${params.feeBps}`)
   }
 
   return program.methods
@@ -267,20 +267,20 @@ export async function requestRunIx(
 ): Promise<TransactionInstruction> {
   if (params.buyerX25519.length !== X25519_KEY_BYTES) {
     throw new RangeError(
-      `ключ покупця має бути ${X25519_KEY_BYTES} байтів, отримано ${params.buyerX25519.length}`,
+      `the buyer key must be ${X25519_KEY_BYTES} bytes, got ${params.buyerX25519.length}`,
     )
   }
   if (params.recipeParams.length !== RECIPE_PARAMS_LEN) {
     throw new RangeError(
-      `параметри рецепта мають бути ${RECIPE_PARAMS_LEN} байтів, отримано ${params.recipeParams.length}`,
+      `recipe params must be ${RECIPE_PARAMS_LEN} bytes, got ${params.recipeParams.length}`,
     )
   }
   if (params.datasets.length === 0) {
-    throw new RangeError('прогін без жодного датасету не буває')
+    throw new RangeError('a run needs at least one dataset')
   }
   if (params.datasets.length > MAX_RUN_DATASETS) {
     throw new RangeError(
-      `прогін вміщає до ${MAX_RUN_DATASETS} датасетів, отримано ${params.datasets.length}`,
+      `a run holds up to ${MAX_RUN_DATASETS} datasets, got ${params.datasets.length}`,
     )
   }
 

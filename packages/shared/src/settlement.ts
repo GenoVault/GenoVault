@@ -118,7 +118,7 @@ function ceilDiv(numerator: bigint, denominator: bigint): bigint {
  * викликач не відрізнить переповнення від зіпсованого входу.
  */
 function toU64(amount: bigint, what: string): TokenAmount {
-  if (amount > U64_MAX) throw new SettlementError('overflow', `${what} не вміщається в u64`)
+  if (amount > U64_MAX) throw new SettlementError('overflow', `${what} does not fit in u64`)
   return tokenAmountSchema.parse(amount)
 }
 
@@ -162,7 +162,7 @@ function silentShare(run: SettlementRun, entry: SettlementDataset, cap: boolean)
 function uncappedFor(run: SettlementRun, index: number): bigint {
   const entry = run.datasets[index]
   if (entry === undefined) {
-    throw new SettlementError('dataset-index-out-of-range', `датасета ${index} немає в пулі`)
+    throw new SettlementError('dataset-index-out-of-range', `dataset ${index} is not in the pool`)
   }
 
   const records = BigInt(run.recordsIncluded)
@@ -191,16 +191,16 @@ function uncappedFor(run: SettlementRun, index: number): bigint {
 export function grossFor(run: SettlementRun, index: number): TokenAmount {
   const entry = run.datasets[index]
   if (entry === undefined) {
-    throw new SettlementError('dataset-index-out-of-range', `датасета ${index} немає в пулі`)
+    throw new SettlementError('dataset-index-out-of-range', `dataset ${index} is not in the pool`)
   }
   // Мовчазний пул має власну стелю й ділиться порівну, а не пропорційно
   // заробленому: ділити тут нема на що — усі оголосили нуль.
   if (contributedRecords(run) === 0n) {
-    return toU64(silentShare(run, entry, true), 'нарахування')
+    return toU64(silentShare(run, entry, true), 'payout')
   }
 
   const raw = uncappedFor(run, index)
-  if (raw === 0n) return toU64(0n, 'нарахування')
+  if (raw === 0n) return toU64(0n, 'payout')
 
   let total = 0n
   for (let other = 0; other < run.datasets.length; other += 1) {
@@ -208,7 +208,7 @@ export function grossFor(run: SettlementRun, index: number): TokenAmount {
   }
   const escrow = run.escrowAmount as bigint
 
-  if (total <= escrow) return toU64(raw, 'нарахування')
+  if (total <= escrow) return toU64(raw, 'payout')
 
   // Повна ціна не вміщається в депозит: ділимо те, що є, пропорційно
   // заробленому. Сума часток тут не перевищує депозит за побудовою — кожна
@@ -218,7 +218,7 @@ export function grossFor(run: SettlementRun, index: number): TokenAmount {
     (sum, other) => sum + other.pricePer1k * BigInt(other.recordsIncluded),
     0n,
   )
-  return toU64((escrow * base) / totalBase, 'нарахування')
+  return toU64((escrow * base) / totalBase, 'payout')
 }
 
 /**
@@ -230,7 +230,7 @@ export function grossFor(run: SettlementRun, index: number): TokenAmount {
  * сум від цього не страждає, бо частка власника рахується відніманням.
  */
 export function platformFee(gross: TokenAmount, feeBps: Bps): TokenAmount {
-  return toU64((gross * BigInt(feeBps)) / BPS_DENOMINATOR, 'комісія')
+  return toU64((gross * BigInt(feeBps)) / BPS_DENOMINATOR, 'fee')
 }
 
 /** Нарахування одному датасету з розкладеною стелею. */
@@ -288,13 +288,13 @@ export function settleRun(run: SettlementRun): RunSettlement {
   if (BigInt(run.recordsIncluded) < contributed) {
     throw new SettlementError(
       'records-below-contributions',
-      `когорта ${run.recordsIncluded} менша за суму внесків ${contributed}`,
+      `cohort ${run.recordsIncluded} is smaller than the sum of contributions ${contributed}`,
     )
   }
 
   const lines = run.datasets.map((entry, index): SettlementLine => {
     const gross = grossFor(run, index)
-    const grossUncapped = toU64(uncappedFor(run, index), 'нарахування')
+    const grossUncapped = toU64(uncappedFor(run, index), 'payout')
     const fee = platformFee(gross, run.feeBps)
     return {
       index,
@@ -316,7 +316,7 @@ export function settleRun(run: SettlementRun): RunSettlement {
   const grossTotal = sum((line) => line.gross)
   const escrow = run.escrowAmount as bigint
   if (grossTotal > escrow) {
-    throw new SettlementError('overflow', 'сума нарахувань перевищила депозит')
+    throw new SettlementError('overflow', 'the payouts exceed the escrow')
   }
 
   const shortfall = sum((line) => line.grossUncapped) - grossTotal

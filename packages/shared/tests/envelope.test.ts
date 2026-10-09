@@ -67,50 +67,48 @@ describe('конверт відмовляє, а не вгадує', () => {
   it('на чужому magic', () => {
     const bytes = valid()
     bytes[0] = 0x00
-    expect(() => inspectEnvelope(bytes)).toThrow(/не конверт датасету/)
+    expect(() => inspectEnvelope(bytes)).toThrow(/not a GenoVault dataset envelope/)
   })
 
   it('на незнайомій версії формату', () => {
     const bytes = valid()
     bytes[4] = FORMAT_VERSION + 1
-    expect(() => inspectEnvelope(bytes)).toThrow(/версія формату/)
+    expect(() => inspectEnvelope(bytes)).toThrow(/format version/)
   })
 
   it('на ненульовому резерві — щоб майбутній прапорець не знехтували мовчки', () => {
     const bytes = valid()
     bytes[6] = 0b1
-    expect(() => inspectEnvelope(bytes)).toThrow(/резервні байти/)
+    expect(() => inspectEnvelope(bytes)).toThrow(/reserved header bytes/)
   })
 
   it('на коротшому за заголовок і на обрізаному файлі', () => {
-    expect(() => inspectEnvelope(new Uint8Array(10))).toThrow(/коротший за заголовок/)
-    expect(() => inspectEnvelope(valid().slice(0, HEADER_BYTES + 10))).toThrow(
-      /очікувалось \d+ байт/,
-    )
+    expect(() => inspectEnvelope(new Uint8Array(10))).toThrow(/shorter than the header/)
+    expect(() => inspectEnvelope(valid().slice(0, HEADER_BYTES + 10))).toThrow(/expected \d+ bytes/)
   })
 
   it('на порожньому датасеті й датасеті без маркерів', () => {
     // Обидва проходять серіалізацію — заборона живе саме в читачі, бо саме він
     // стоїть на межі, куди приходять чужі байти.
     expect(() => inspectEnvelope(serializeEnvelope(header({ recordCount: 0 }), []))).toThrow(
-      /без записів/,
+      /without records/,
     )
     expect(() => inspectEnvelope(serializeEnvelope(header({ markerCount: 0 }), frames(0)))).toThrow(
-      /без маркерів/,
+      /without markers/,
     )
   })
 
   it('на заголовку, що суперечить сам собі', () => {
     const bytes = valid()
     new DataView(bytes.buffer).setUint32(76, MARKERS + 1, true)
-    expect(() => inspectEnvelope(bytes)).toThrow(/сам собі суперечить/)
+    expect(() => inspectEnvelope(bytes)).toThrow(/contradicts itself/)
   })
 
   it('на повтореному nonce — це вже скомпрометована гама, а не дрібна вада', () => {
     const bytes = valid()
     bytes.set(bytes.subarray(HEADER_BYTES, HEADER_BYTES + NONCE_BYTES), HEADER_BYTES + FRAME)
 
-    expect(() => inspectEnvelope(bytes)).toThrow(/nonce повторюється/)
+    expect(() => inspectEnvelope(bytes)).toThrow(/nonce repeats/)
   })
 
   it('відмовляє власним типом помилки, а не будь-якою', () => {

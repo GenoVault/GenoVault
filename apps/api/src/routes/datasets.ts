@@ -116,7 +116,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
   const services = configure(deps)
 
   routes.post('/datasets', requireAuth(deps.verify), async (c) => {
-    if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+    if (services === undefined) return fail(c, 'INTERNAL', 'internal error')
 
     let raw: unknown
     try {
@@ -124,7 +124,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
     } catch {
       // Поламаний JSON — це 400. Без цієї гілки `SyntaxError` дійшов би до
       // обробника помилок застосунку й став би 500, тобто «це ми зламались».
-      return fail(c, 'INVALID_INPUT', 'тіло запиту не є JSON')
+      return fail(c, 'INVALID_INPUT', 'the request body is not JSON')
     }
 
     const request = registerDatasetRequestSchema.parse(raw)
@@ -139,7 +139,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
       return fail(
         c,
         'INVALID_INPUT',
-        `ця сесія вже прив'язана до адреси ${bound}; реєстрація на іншу адресу потребує іншого входу`,
+        `this session is already bound to address ${bound}; registering for another address needs another sign-in`,
       )
     }
 
@@ -165,7 +165,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
         return fail(
           c,
           'INVALID_INPUT',
-          `датасет ${request.datasetId} уже зареєстрований з іншим відбитком вмісту`,
+          `dataset ${request.datasetId} is already registered with a different content hash`,
         )
       }
       // Bytes nobody points at: no chain record, so no run. They go, rather
@@ -220,13 +220,13 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
   })
 
   routes.put('/datasets/:id/ciphertext', requireAuth(deps.verify), async (c) => {
-    if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+    if (services === undefined) return fail(c, 'INTERNAL', 'internal error')
 
     const actor = c.get('actor')
     const datasetId = datasetIdSchema.parse(c.req.param('id'))
 
     const record = await resolveOwnDataset(services.catalog, actor.userId, datasetId)
-    if (record === undefined) return fail(c, 'NOT_FOUND', 'датасет не знайдено')
+    if (record === undefined) return fail(c, 'NOT_FOUND', 'dataset not found')
 
     // Заявлена довжина перевіряється до читання тіла: сенсу приймати в пам'ять
     // гігабайт, щоб потім його відхилити, немає.
@@ -235,7 +235,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
       return fail(
         c,
         'INVALID_INPUT',
-        `шифротекст більший за межу ${services.maxCiphertextBytes} байтів`,
+        `the ciphertext is larger than the ${services.maxCiphertextBytes}-byte limit`,
       )
     }
 
@@ -244,7 +244,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
       return fail(
         c,
         'INVALID_INPUT',
-        `шифротекст більший за межу ${services.maxCiphertextBytes} байтів`,
+        `the ciphertext is larger than the ${services.maxCiphertextBytes}-byte limit`,
       )
     }
 
@@ -259,21 +259,21 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
       return fail(
         c,
         'INVALID_INPUT',
-        `відбиток завантаженого вмісту (${uploaded}) не збігається із заявленим при реєстрації`,
+        `the hash of the uploaded content (${uploaded}) does not match the one declared at registration`,
       )
     }
     if (header.recordCount !== record.metadata.recordCount) {
       return fail(
         c,
         'INVALID_INPUT',
-        `у конверті ${header.recordCount} записів, а заявлено ${record.metadata.recordCount}`,
+        `the envelope holds ${header.recordCount} records, ${record.metadata.recordCount} were declared`,
       )
     }
     if (header.markerCount !== record.metadata.markerCount) {
       return fail(
         c,
         'INVALID_INPUT',
-        `у конверті ${header.markerCount} маркерів, а заявлено ${record.metadata.markerCount}`,
+        `the envelope holds ${header.markerCount} markers, ${record.metadata.markerCount} were declared`,
       )
     }
 
@@ -309,7 +309,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
    * побудовою. Згода й бейдж живуть у картці окремого датасету.
    */
   routes.get('/datasets', optionalAuth(deps.verify), async (c) => {
-    if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+    if (services === undefined) return fail(c, 'INTERNAL', 'internal error')
 
     const query = datasetQuerySchema.parse(
       Object.fromEntries(new URL(c.req.url).searchParams.entries()),
@@ -384,7 +384,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
    * тобто ще одного місця, де правда може розійтися з ланцюгом.
    */
   routes.get('/datasets/:owner/:id', optionalAuth(deps.verify), async (c) => {
-    if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+    if (services === undefined) return fail(c, 'INTERNAL', 'internal error')
 
     const owner = solanaAddressSchema.parse(c.req.param('owner'))
     const datasetId = datasetIdSchema.parse(c.req.param('id'))
@@ -396,7 +396,7 @@ export function datasetRoutes(deps: DatasetRoutesDeps) {
     // Незавантажений датасет видно тільки власнику — тією ж відповіддю, що й
     // неіснуючий, бо інакше 404 і 403 разом дають перелік чужих чернеток.
     if (record === undefined || (record.status !== 'stored' && record.owner !== self)) {
-      return fail(c, 'NOT_FOUND', 'датасет не знайдено')
+      return fail(c, 'NOT_FOUND', 'dataset not found')
     }
 
     const chain = await services.readChain(record.owner, record.datasetId)

@@ -158,7 +158,7 @@ describe('перевірка токена', () => {
 
   it('відхиляє підпис чужим ключем', async () => {
     const foreign = await signWith(otherKeys.privateKey, { alg: 'ES256' }, claims())
-    expect(await reasonOf((await verifier())(foreign))).toContain('підпис')
+    expect(await reasonOf((await verifier())(foreign))).toContain('signature')
   })
 
   it('відхиляє підмінене тіло при цілому підписі', async () => {
@@ -166,7 +166,7 @@ describe('перевірка токена', () => {
     const [header = '', , signature = ''] = original.split('.')
     const tampered = `${header}.${segment(claims({ sub: 'did:privy:attacker' }))}.${signature}`
 
-    expect(await reasonOf((await verifier())(tampered))).toContain('підпис')
+    expect(await reasonOf((await verifier())(tampered))).toContain('signature')
   })
 
   it('звіряє підпис до claims, а не після', async () => {
@@ -179,17 +179,17 @@ describe('перевірка токена', () => {
       claims({ exp: Math.floor(Date.now() / 1000) - 10_000 }),
     )
 
-    expect(await reasonOf((await verifier())(expired))).toContain('підпис')
+    expect(await reasonOf((await verifier())(expired))).toContain('signature')
   })
 
   it('відхиляє чужого емітента і чужий застосунок', async () => {
     const verify = await verifier()
 
     expect(await reasonOf(verify(await token(claims({ iss: 'auth.example.com' }))))).toContain(
-      'емітентом',
+      'another issuer',
     )
     expect(await reasonOf(verify(await token(claims({ aud: 'someone-else' }))))).toContain(
-      'застосунку',
+      'another app',
     )
   })
 
@@ -203,7 +203,7 @@ describe('перевірка токена', () => {
     const verify = createTokenVerifier(await pemConfig({ clockSkewSeconds: 30 }))
 
     expect(await reasonOf(verify(await token(claims({ exp: nowSeconds - 60 }))))).toContain(
-      'прострочений',
+      'expired',
     )
     // Протух десять секунд тому — у межах допуску на розбіжність годинників.
     const actor = await verify(await token(claims({ exp: nowSeconds - 10 })))
@@ -215,10 +215,10 @@ describe('перевірка токена', () => {
     const verify = await verifier()
 
     expect(await reasonOf(verify(await token(claims({ iat: nowSeconds + 600 }))))).toContain(
-      'майбутньому',
+      'in the future',
     )
     expect(await reasonOf(verify(await token(claims({ nbf: nowSeconds + 600 }))))).toContain(
-      'не чинний',
+      'not valid yet',
     )
   })
 
@@ -227,7 +227,7 @@ describe('перевірка токена', () => {
 
     const noSid = claims()
     delete noSid.sid
-    expect(await reasonOf(verify(await token(noSid)))).toContain('тіло')
+    expect(await reasonOf(verify(await token(noSid)))).toContain('payload')
 
     expect(await reasonOf(verify(await token(claims({ sub: 'user_42' }))))).toContain('did:privy')
   })
@@ -235,8 +235,8 @@ describe('перевірка токена', () => {
   it('відхиляє те, що взагалі не є JWT', async () => {
     const verify = await verifier()
 
-    expect(await reasonOf(verify('не.jwt'))).toContain('трьох частин')
-    expect(await reasonOf(verify('a.b.c.d'))).toContain('трьох частин')
+    expect(await reasonOf(verify('not.jwt'))).toContain('three-part')
+    expect(await reasonOf(verify('a.b.c.d'))).toContain('three-part')
     // Крапка й плюс поза алфавітом base64url: `Buffer` ковтнув би їх мовчки, і
     // підпис рахувався б над іншим рядком, ніж прийшов.
     expect(await reasonOf(verify('e+J9.e30.AAAA'))).toContain('base64url')
@@ -249,7 +249,7 @@ describe('перевірка токена', () => {
     const [header = '', body = ''] = (await token()).split('.')
     const short = `${header}.${body}.${b64url(new Uint8Array(32))}`
 
-    expect(await reasonOf((await verifier())(short))).toContain('довжини ES256')
+    expect(await reasonOf((await verifier())(short))).toContain('ES256-length')
   })
 })
 
@@ -347,7 +347,7 @@ describe('джерело ключів', () => {
     const rsaOnly = createTokenVerifier(jwksConfig(), {
       fetch: unusable as unknown as typeof fetch,
     })
-    expect(await reasonOf(rsaOnly(await token()))).toContain('придатних ключів')
+    expect(await reasonOf(rsaOnly(await token()))).toContain('usable keys')
   })
 
   it('читає PEM зі змінної як SPKI', async () => {
@@ -428,7 +428,7 @@ describe('GET /me', () => {
     const text = await response.text()
 
     expect(response.status).toBe(401)
-    expect(apiErrorSchema.parse(JSON.parse(text)).error.message).toContain('прострочений')
+    expect(apiErrorSchema.parse(JSON.parse(text)).error.message).toContain('expired')
     expect(text).not.toContain(stale)
     expect(text).not.toContain(SESSION)
   })

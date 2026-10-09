@@ -72,7 +72,7 @@ type RawConfig = Awaited<ReturnType<GenoVaultProgram['account']['platformConfig'
 function datasetStatus(raw: Raw['status']): DatasetStatus {
   if ('active' in raw) return 'active'
   if ('retired' in raw) return 'retired'
-  throw new Error(`невідомий статус датасету: ${JSON.stringify(raw)}`)
+  throw new Error(`unknown dataset status: ${JSON.stringify(raw)}`)
 }
 
 export function decodeDataset(raw: Raw): DatasetAccount {
@@ -257,7 +257,7 @@ function runStatus(raw: RawRun['status']): RunStatusName {
   if ('completed' in raw) return 'completed'
   if ('rejected' in raw) return 'rejected'
   if ('failed' in raw) return 'failed'
-  throw new Error(`невідомий статус прогону: ${JSON.stringify(raw)}`)
+  throw new Error(`unknown run status: ${JSON.stringify(raw)}`)
 }
 
 /**

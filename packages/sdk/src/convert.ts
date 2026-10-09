@@ -15,7 +15,7 @@ export const U64_MAX = 0xffff_ffff_ffff_ffffn
 /** `bigint` → `BN` без проміжного `number`: 2^53 тут не межа, а помилка. */
 export function toBn(value: bigint | number): BN {
   const big = typeof value === 'bigint' ? value : BigInt(value)
-  if (big < 0n || big > U64_MAX) throw new RangeError(`значення не вміщається в u64: ${big}`)
+  if (big < 0n || big > U64_MAX) throw new RangeError(`the value does not fit in u64: ${big}`)
   return new BN(big.toString(10), 10)
 }
 
@@ -34,7 +34,7 @@ export function fromBn(value: BN): bigint {
  */
 export function fromBnOption(value: unknown): bigint | null {
   if (value === null || value === undefined) return null
-  if (!BN.isBN(value)) throw new TypeError(`очікувався BN або null, отримано ${typeof value}`)
+  if (!BN.isBN(value)) throw new TypeError(`expected a BN or null, got ${typeof value}`)
   return fromBn(value)
 }
 

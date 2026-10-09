@@ -41,7 +41,7 @@ export class NoWalletError extends Error {
   override readonly name = 'NoWalletError'
 
   constructor(what: string) {
-    super(`прототип не має гаманця: ${what} потребує справжнього входу`)
+    super(`the prototype has no wallet: ${what} needs a real sign-in`)
   }
 }
 
@@ -154,7 +154,7 @@ const PrivySession = ({ children }: { children: ReactNode }) => {
       live: true,
       token,
       signMessage: async (message: Uint8Array) => {
-        if (wallet === undefined) throw new NoWalletError('підпис повідомлення')
+        if (wallet === undefined) throw new NoWalletError('signing a message')
         // Without Privy's own confirmation screen, on purpose. In
         // `@privy-io/react-auth` 3.40 (and still in 3.47) that screen stays the
         // modal's current route after it closes; the escrow transaction asked
@@ -172,7 +172,7 @@ const PrivySession = ({ children }: { children: ReactNode }) => {
         return signature
       },
       signAndSendTransaction: async (transaction: Uint8Array) => {
-        if (wallet === undefined) throw new NoWalletError('підпис транзакції')
+        if (wallet === undefined) throw new NoWalletError('signing a transaction')
         const { signature } = await signAndSendTransaction({
           transaction,
           wallet,
@@ -216,8 +216,8 @@ const MockSession = ({ children }: { children: ReactNode }) => {
       signOut,
       live: false,
       token: null,
-      signMessage: () => Promise.reject(new NoWalletError('підпис повідомлення')),
-      signAndSendTransaction: () => Promise.reject(new NoWalletError('підпис транзакції')),
+      signMessage: () => Promise.reject(new NoWalletError('signing a message')),
+      signAndSendTransaction: () => Promise.reject(new NoWalletError('signing a transaction')),
     }),
     [method, signIn, signOut],
   )

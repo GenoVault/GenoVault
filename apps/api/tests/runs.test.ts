@@ -617,7 +617,7 @@ describe('квота відмовляє зрозуміло', () => {
     // 500 сказало б «ми зламались», і клієнт не повторив би запит. Тут
     // повторити варто.
     readQuoteChain.mockImplementation(async () => {
-      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+      throw new ChainStateError('unavailable', 'the network node did not answer')
     })
 
     const response = await quote(request())
@@ -627,7 +627,7 @@ describe('квота відмовляє зрозуміло', () => {
 
   it('нерозгорнута конфігурація платформи — 500, бо це наше', async () => {
     readQuoteChain.mockImplementation(async () => {
-      throw new ChainStateError('not-initialized', 'конфігурації платформи немає в мережі')
+      throw new ChainStateError('not-initialized', 'the platform config is not on the network')
     })
 
     const response = await quote(request())
@@ -637,7 +637,7 @@ describe('квота відмовляє зрозуміло', () => {
 
   it('жодна відмова не переказує адреси вузла', async () => {
     readQuoteChain.mockImplementation(async () => {
-      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+      throw new ChainStateError('unavailable', 'the network node did not answer')
     })
 
     const text = await (await quote(request())).text()

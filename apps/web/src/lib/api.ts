@@ -90,7 +90,7 @@ function base(): string {
   if (API_URL === null) {
     // Викликач мусив спитати `HAS_API` раніше. Кидаємо тут, а не повертаємо
     // порожню відповідь: мовчазний `null` виглядав би як «сервер відповів».
-    throw new ApiRequestError(0, 'UNKNOWN', 'VITE_API_URL не заданий — API недоступний')
+    throw new ApiRequestError(0, 'UNKNOWN', 'VITE_API_URL is not set — the API is unavailable')
   }
   return API_URL
 }
@@ -125,7 +125,7 @@ async function call<T>(
   try {
     payload = JSON.parse(text)
   } catch {
-    throw new ApiRequestError(response.status, 'UNKNOWN', 'відповідь не є JSON')
+    throw new ApiRequestError(response.status, 'UNKNOWN', 'the response is not JSON')
   }
 
   const parsed = schema.safeParse(payload)
@@ -135,7 +135,7 @@ async function call<T>(
     throw new ApiRequestError(
       response.status,
       'UNKNOWN',
-      'відповідь API не проходить власну схему',
+      'the API response does not pass its own schema',
       { issues: parsed.error.issues },
     )
   }
@@ -152,12 +152,13 @@ function toError(status: number, text: string): ApiRequestError {
   } catch {
     // Тіло не JSON — нижче.
   }
-  return new ApiRequestError(status, 'UNKNOWN', `сервер відповів ${status}`)
+  return new ApiRequestError(status, 'UNKNOWN', `the server answered ${status}`)
 }
 
 function describeNetwork(error: unknown): string {
-  if (error instanceof DOMException && error.name === 'AbortError') return 'запит скасовано'
-  return 'не вдалося з’єднатися з API'
+  if (error instanceof DOMException && error.name === 'AbortError')
+    return 'the request was cancelled'
+  return 'could not connect to the API'
 }
 
 /** Стан платформи: комісія, мінт, пауза, диспетчер. Без токена. */
@@ -420,6 +421,6 @@ export function toApiError(error: unknown): ApiError['error'] {
 
   return {
     code: 'INTERNAL',
-    message: error instanceof Error ? error.message : 'невідома помилка',
+    message: error instanceof Error ? error.message : 'unknown error',
   }
 }

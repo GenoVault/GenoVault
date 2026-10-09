@@ -122,7 +122,7 @@ export async function loadCiphertext(
 
   const actual = await contentHash(bytes)
   if (actual !== hash) {
-    throw new DatasetEnvelopeError(`вміст за адресою ${key} не відповідає своєму відбитку`)
+    throw new DatasetEnvelopeError(`the content at ${key} does not match its hash`)
   }
 
   return bytes
@@ -164,7 +164,7 @@ export function createStorage(config: StorageConfig): StorageDriver {
 function assertKey(key: string): void {
   // Ключі будує `ciphertextKey`, але драйвер — теж межа: шлях, зібраний
   // деінде, не має шансу вийти за корінь сховища через `..`.
-  if (!KEY_PATTERN.test(key)) throw new StorageError(`неприйнятний ключ об'єкта: ${key}`)
+  if (!KEY_PATTERN.test(key)) throw new StorageError(`unacceptable object key: ${key}`)
 }
 
 export function fsDriver(root: string): StorageDriver {
@@ -174,7 +174,7 @@ export function fsDriver(root: string): StorageDriver {
     assertKey(key)
     const full = resolve(join(base, key))
     if (full !== base && !full.startsWith(base + sep)) {
-      throw new StorageError(`ключ веде за межі сховища: ${key}`)
+      throw new StorageError(`the key leads outside the storage: ${key}`)
     }
     return full
   }
@@ -195,7 +195,7 @@ export function fsDriver(root: string): StorageDriver {
         await rename(temp, path)
       } catch (error) {
         await unlink(temp).catch(() => {})
-        throw new StorageError(`не вдалося записати ${key}: ${describe(error)}`)
+        throw new StorageError(`could not write ${key}: ${describe(error)}`)
       }
     },
 
@@ -208,7 +208,7 @@ export function fsDriver(root: string): StorageDriver {
         return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
       } catch (error) {
         if (error instanceof StorageError) throw error
-        throw new StorageError(`не вдалося прочитати ${key}: ${describe(error)}`)
+        throw new StorageError(`could not read ${key}: ${describe(error)}`)
       }
     },
 
@@ -261,14 +261,14 @@ export function supabaseDriver(
         body: bytes,
       })
       if (!response.ok) {
-        throw new StorageError(`сховище відмовило на записі ${key}: ${response.status}`)
+        throw new StorageError(`the storage refused to write ${key}: ${response.status}`)
       }
     },
 
     async get(key) {
       const response = await fetch(endpoint(key), { headers: auth })
       if (!response.ok) {
-        throw new StorageError(`сховище відмовило на читанні ${key}: ${response.status}`)
+        throw new StorageError(`the storage refused to read ${key}: ${response.status}`)
       }
       return new Uint8Array(await response.arrayBuffer())
     },

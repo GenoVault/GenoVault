@@ -142,7 +142,7 @@ describe('маніфест проходить схему каталогу', () =
       datasetFieldSchema.safeParse({
         field: 'marker_0001',
         type: 'integer',
-        description: 'копій мінорного алеля: 0, 1 або 2',
+        description: 'minor-allele copies: 0, 1 or 2',
       }).success,
     ).toBe(true)
     // Межа лишається межею: ім'я з великої літери чи з дефісом — не поле.

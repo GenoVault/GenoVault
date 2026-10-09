@@ -257,13 +257,13 @@ export function fsCatalog(root: string): CatalogStore {
   const pathFor = (...parts: string[]): string => {
     for (const part of parts) {
       if (!PART_PATTERN.test(part) || part.includes('..')) {
-        throw new CatalogError(`неприйнятна частина ключа каталогу: ${part}`)
+        throw new CatalogError(`unacceptable catalog key part: ${part}`)
       }
     }
 
     const full = resolve(join(base, ...parts))
     if (!full.startsWith(base + sep)) {
-      throw new CatalogError(`ключ веде за межі каталогу: ${parts.join('/')}`)
+      throw new CatalogError(`the key leads outside the catalog: ${parts.join('/')}`)
     }
     return full
   }
@@ -273,7 +273,7 @@ export function fsCatalog(root: string): CatalogStore {
       return JSON.parse(await readFile(path, 'utf8'))
     } catch (error) {
       if (isNotFound(error)) return undefined
-      throw new CatalogError(`не вдалося прочитати ${path}: ${describe(error)}`)
+      throw new CatalogError(`could not read ${path}: ${describe(error)}`)
     }
   }
 
@@ -295,12 +295,12 @@ export function fsCatalog(root: string): CatalogStore {
         return owner
       } catch (error) {
         if (!isExists(error))
-          throw new CatalogError(`не вдалося прив'язати сесію: ${describe(error)}`)
+          throw new CatalogError(`could not bind the session: ${describe(error)}`)
       }
 
       const stored = await readJson(path)
       const parsed = z.object({ owner: solanaAddressSchema }).safeParse(stored)
-      if (!parsed.success) throw new CatalogError(`прив'язка сесії у ${path} не читається`)
+      if (!parsed.success) throw new CatalogError(`the session binding in ${path} cannot be read`)
       return parsed.data.owner
     },
 
@@ -320,7 +320,7 @@ export function fsCatalog(root: string): CatalogStore {
       // більше, ніж мережі, підстав немає.
       const parsed = datasetRecordSchema.safeParse(stored)
       if (!parsed.success) {
-        throw new CatalogError(`рядок каталогу ${owner}/${datasetId} не проходить власну схему`)
+        throw new CatalogError(`catalog row ${owner}/${datasetId} does not pass its own schema`)
       }
       return parsed.data
     },
@@ -332,7 +332,7 @@ export function fsCatalog(root: string): CatalogStore {
       try {
         await writeFile(path, serializeRecord(checked))
       } catch (error) {
-        throw new CatalogError(`не вдалося записати рядок каталогу: ${describe(error)}`)
+        throw new CatalogError(`could not write the catalog row: ${describe(error)}`)
       }
     },
 
@@ -354,7 +354,7 @@ export function fsCatalog(root: string): CatalogStore {
           if (stored === undefined) continue
           const parsed = datasetRecordSchema.safeParse(stored)
           if (!parsed.success) {
-            throw new CatalogError(`рядок каталогу ${owner}/${file} не проходить власну схему`)
+            throw new CatalogError(`catalog row ${owner}/${file} does not pass its own schema`)
           }
           records.push(parsed.data)
         }

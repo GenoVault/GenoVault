@@ -55,7 +55,7 @@ export type UnsignedInstruction = z.infer<typeof unsignedInstructionSchema>
 /** Публічний x25519 покупця — 32 байти шістнадцятково, як `contentHash`. */
 export const x25519PublicKeySchema = z
   .string()
-  .regex(/^[0-9a-f]{64}$/, 'очікувалось 32 байти шістнадцятково в нижньому регістрі')
+  .regex(/^[0-9a-f]{64}$/, 'expected 32 bytes as lowercase hex')
 
 /**
  * Тіло `POST /runs`.

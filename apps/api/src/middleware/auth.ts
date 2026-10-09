@@ -31,13 +31,13 @@ export function requireAuth(
     if (verify === undefined) {
       // Ненастроєна автентифікація — це збій сервера, а не поганий токен.
       // 401 тут був би брехнею: він каже клієнту виправити те, що ціле.
-      return fail(c, 'INTERNAL', 'внутрішня помилка')
+      return fail(c, 'INTERNAL', 'internal error')
     }
 
     const match = BEARER.exec(c.req.header('authorization') ?? '')
     const token = match?.groups?.token
     if (token === undefined) {
-      return fail(c, 'UNAUTHORIZED', 'потрібен сесійний токен у заголовку Authorization')
+      return fail(c, 'UNAUTHORIZED', 'a session token is required in the Authorization header')
     }
 
     let actor: Actor

@@ -324,7 +324,7 @@ describe('POST /datasets', () => {
       const response = await post(await body(envelope(RECORDS, MARKERS, 99)))
 
       expect(response.status).toBe(400)
-      expect((await failure(response)).message).toContain('іншим відбитком')
+      expect((await failure(response)).message).toContain('different content hash')
     })
 
     it('another hash replaces a declaration that never reached the chain', async () => {
@@ -419,7 +419,7 @@ describe('PUT /datasets/:id/ciphertext', () => {
   it('відхиляє вміст, відбиток якого не збігається із заявленим', async () => {
     const response = await put(envelope(RECORDS, MARKERS, 42))
     expect(response.status).toBe(400)
-    expect((await failure(response)).message).toContain('не збігається')
+    expect((await failure(response)).message).toContain('does not match')
   })
 
   it('не кладе в сховище нічого, що не пройшло перевірок', async () => {
@@ -444,7 +444,7 @@ describe('PUT /datasets/:id/ciphertext', () => {
 
     const response = await put(bytes, 'good', datasetIdSchema.parse('cohort-gamma'))
     expect(response.status).toBe(400)
-    expect((await failure(response)).message).toContain('записів')
+    expect((await failure(response)).message).toContain('records')
   })
 
   it('відхиляє тіло, більше за межу', async () => {
@@ -463,7 +463,7 @@ describe('PUT /datasets/:id/ciphertext', () => {
       body: envelope(),
     })
     expect(response.status).toBe(400)
-    expect((await failure(response)).message).toContain('більший за межу')
+    expect((await failure(response)).message).toContain('-byte limit')
   })
 
   describe('чужий датасет', () => {

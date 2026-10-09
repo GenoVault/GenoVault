@@ -59,7 +59,7 @@ export function consentAddress(
   programId: PublicKey = PROGRAM_ID,
 ): DerivedAddress {
   if (!Number.isInteger(version) || version < 0 || version > 0xffff_ffff) {
-    throw new RangeError(`версія згоди має бути u32, отримано ${version}`)
+    throw new RangeError(`the consent version must be a u32, got ${version}`)
   }
 
   const seed = Buffer.alloc(4)
@@ -95,7 +95,7 @@ export function runAddress(
   programId: PublicKey = PROGRAM_ID,
 ): DerivedAddress {
   if (nonce < 0n || nonce > 0xffff_ffff_ffff_ffffn) {
-    throw new RangeError(`нонс прогону має бути u64, отримано ${nonce}`)
+    throw new RangeError(`the run nonce must be a u64, got ${nonce}`)
   }
 
   const seed = Buffer.alloc(8)

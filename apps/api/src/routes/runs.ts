@@ -132,8 +132,8 @@ function configure(deps: RunRoutesDeps): RunServices | undefined {
 function chainFailure(c: Parameters<typeof fail>[0], error: unknown) {
   if (error instanceof ChainStateError) {
     return error.reason === 'unavailable'
-      ? fail(c, 'UPSTREAM_UNAVAILABLE', 'мережа зараз не відповідає — спробуйте пізніше')
-      : fail(c, 'INTERNAL', 'внутрішня помилка')
+      ? fail(c, 'UPSTREAM_UNAVAILABLE', 'the network is not responding right now — try again later')
+      : fail(c, 'INTERNAL', 'internal error')
   }
   throw error
 }
@@ -201,7 +201,7 @@ function encodeRecipeParams(recipe: Recipe, params: Record<string, unknown>): Ui
   if (recipe.name === 'frequencies') {
     return encodeFrequenciesParams(params as FrequenciesParams)
   }
-  throw new Error(`розкладка параметрів рецепта ${recipe.name} не описана`)
+  throw new Error(`the parameter layout of recipe ${recipe.name} is not described`)
 }
 
 /**
@@ -355,13 +355,13 @@ export function runRoutes(deps: RunRoutesDeps) {
   const services = configure(deps)
 
   routes.post('/runs/quote', requireAuth(deps.verify), async (c) => {
-    if (services === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+    if (services === undefined) return fail(c, 'INTERNAL', 'internal error')
 
     let raw: unknown
     try {
       raw = await c.req.json()
     } catch {
-      return fail(c, 'INVALID_INPUT', 'тіло запиту не є JSON')
+      return fail(c, 'INVALID_INPUT', 'the request body is not JSON')
     }
 
     const request = runQuoteRequestSchema.parse(raw)
@@ -370,7 +370,7 @@ export function runRoutes(deps: RunRoutesDeps) {
     if (recipe === undefined) {
       // Каталог рецептів фіксований (`FR-011a`), і невідомий номер — це не
       // «поки не реалізовано», а «такого рецепта не буде без нашої зміни».
-      return fail(c, 'INVALID_INPUT', `рецепта ${request.recipeId} немає в каталозі`)
+      return fail(c, 'INVALID_INPUT', `recipe ${request.recipeId} is not in the catalog`)
     }
 
     // Параметри розбирає рецепт: їхню форму оголошує він, і підставлені
@@ -379,7 +379,7 @@ export function runRoutes(deps: RunRoutesDeps) {
 
     const duplicate = duplicateOf(request.datasets)
     if (duplicate !== undefined) {
-      return fail(c, 'INVALID_INPUT', `датасет ${duplicate.datasetId} названо двічі`, {
+      return fail(c, 'INVALID_INPUT', `dataset ${duplicate.datasetId} is named twice`, {
         owner: duplicate.owner,
         datasetId: duplicate.datasetId,
       })
@@ -404,7 +404,7 @@ export function runRoutes(deps: RunRoutesDeps) {
     if (evaluation === undefined) {
       // Читач повертає рядок на кожен запит; коротша відповідь означала б, що
       // ціни поїхали не тим датасетам.
-      return fail(c, 'INTERNAL', 'внутрішня помилка')
+      return fail(c, 'INTERNAL', 'internal error')
     }
 
     let upperBound: TokenAmount
@@ -466,21 +466,21 @@ export function runRoutes(deps: RunRoutesDeps) {
    */
   routes.post('/runs', requireAuth(deps.verify), async (c) => {
     if (services === undefined || services.buildRunOrder === undefined) {
-      return fail(c, 'INTERNAL', 'внутрішня помилка')
+      return fail(c, 'INTERNAL', 'internal error')
     }
 
     let raw: unknown
     try {
       raw = await c.req.json()
     } catch {
-      return fail(c, 'INVALID_INPUT', 'тіло запиту не є JSON')
+      return fail(c, 'INVALID_INPUT', 'the request body is not JSON')
     }
 
     const request = runOrderRequestSchema.parse(raw)
 
     const recipe = findRecipe(request.recipeId)
     if (recipe === undefined) {
-      return fail(c, 'INVALID_INPUT', `рецепта ${request.recipeId} немає в каталозі`)
+      return fail(c, 'INVALID_INPUT', `recipe ${request.recipeId} is not in the catalog`)
     }
     const params = recipe.params.parse(request.params) as Record<string, unknown>
 
@@ -488,13 +488,13 @@ export function runRoutes(deps: RunRoutesDeps) {
       return fail(
         c,
         'INVALID_INPUT',
-        `прогін вміщає до ${MAX_RUN_DATASETS} датасетів, отримано ${request.datasets.length}`,
+        `a run holds up to ${MAX_RUN_DATASETS} datasets, got ${request.datasets.length}`,
       )
     }
 
     const duplicate = duplicateOf(request.datasets)
     if (duplicate !== undefined) {
-      return fail(c, 'INVALID_INPUT', `датасет ${duplicate.datasetId} названо двічі`, {
+      return fail(c, 'INVALID_INPUT', `dataset ${duplicate.datasetId} is named twice`, {
         owner: duplicate.owner,
         datasetId: duplicate.datasetId,
       })
@@ -508,7 +508,7 @@ export function runRoutes(deps: RunRoutesDeps) {
       return fail(
         c,
         'INVALID_INPUT',
-        'диспетчера не названо, а платформа свого не публікує — назвіть його явно',
+        'no dispatcher was named and the platform publishes none — name one explicitly',
       )
     }
 
@@ -520,7 +520,7 @@ export function runRoutes(deps: RunRoutesDeps) {
     }
 
     if (chain.paused) {
-      return fail(c, 'PLATFORM_PAUSED', 'платформа зупинила прийом нових прогонів', {
+      return fail(c, 'PLATFORM_PAUSED', 'the platform has paused new runs', {
         refusal: 'platform-paused',
       })
     }
@@ -534,7 +534,7 @@ export function runRoutes(deps: RunRoutesDeps) {
       }
       throw error
     }
-    if (evaluation === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+    if (evaluation === undefined) return fail(c, 'INTERNAL', 'internal error')
 
     const ineligible = evaluation.lines.flatMap((line) =>
       line.eligible ? [] : [{ owner: line.owner, datasetId: line.datasetId, reason: line.reason }],
@@ -542,7 +542,7 @@ export function runRoutes(deps: RunRoutesDeps) {
     if (ineligible.length > 0) {
       // Усі одразу, а не перша: покупець із пулом на п'ятдесят датасетів інакше
       // дізнавався б про проблеми по одній.
-      return fail(c, 'CONSENT_VIOLATION', 'прогін не складається з цим складом пулу', {
+      return fail(c, 'CONSENT_VIOLATION', 'the run cannot be made from this pool', {
         refusal: 'datasets-ineligible',
         ineligible,
       })
@@ -560,7 +560,7 @@ export function runRoutes(deps: RunRoutesDeps) {
     if (maxEscrow < escrow) {
       // Стеля нижча за ціну — це не помилка запиту, а розбіжність із тим, що
       // покупець бачив: власник підняв ціну між квотою й підписом.
-      return fail(c, 'INSUFFICIENT_ESCROW', 'стеля покупця нижча за вартість прогону', {
+      return fail(c, 'INSUFFICIENT_ESCROW', 'the buyer ceiling is below the price of the run', {
         refusal: 'escrow-below-price',
         escrow: escrow.toString(),
       })
@@ -626,13 +626,13 @@ export function runRoutes(deps: RunRoutesDeps) {
    */
   routes.get('/runs/:buyer/:nonce', async (c) => {
     if (services === undefined || services.readRun === undefined) {
-      return fail(c, 'INTERNAL', 'внутрішня помилка')
+      return fail(c, 'INTERNAL', 'internal error')
     }
 
     const buyer = solanaAddressSchema.parse(c.req.param('buyer'))
     const nonceRaw = u64StringSchema.parse(c.req.param('nonce'))
     const nonce = BigInt(nonceRaw)
-    if (nonce > U64_MAX) return fail(c, 'INVALID_INPUT', 'нонс прогону не вміщається в u64')
+    if (nonce > U64_MAX) return fail(c, 'INVALID_INPUT', 'the run nonce does not fit in u64')
 
     let state: Awaited<ReturnType<RunReader>>
     try {
@@ -642,7 +642,7 @@ export function runRoutes(deps: RunRoutesDeps) {
     }
 
     const run = state.run
-    if (run === null) return fail(c, 'NOT_FOUND', 'прогону не знайдено')
+    if (run === null) return fail(c, 'NOT_FOUND', 'run not found')
 
     const recipe = findRecipe(run.recipeId)
     const addresses = run.datasets.map((entry) =>

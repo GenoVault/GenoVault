@@ -135,13 +135,15 @@ export function createApp(deps: AppDeps = {}) {
   app.route('/', platformRoutes({ readPlatform: deps.readPlatform, dispatcher: deps.dispatcher }))
   app.route('/', recipeRoutes())
 
-  app.notFound((c) => fail(c, 'NOT_FOUND', 'маршрут не знайдено'))
+  app.notFound((c) => fail(c, 'NOT_FOUND', 'route not found'))
 
   app.onError((error, c) => {
     if (error instanceof ZodError) {
       // Валідація на межі — це 400, а не 500. Zod 4 проганяє всі перевірки,
       // тому issues може містити кілька зауважень до одного поля.
-      return fail(c, 'INVALID_INPUT', 'запит не пройшов валідацію', { issues: error.issues })
+      return fail(c, 'INVALID_INPUT', 'the request did not pass validation', {
+        issues: error.issues,
+      })
     }
     if (error instanceof DatasetEnvelopeError) {
       // Не шифротекст — це поламаний запит, а не збій сервера. Текст віддаємо
@@ -150,7 +152,7 @@ export function createApp(deps: AppDeps = {}) {
     }
     // Текст внутрішньої помилки назовні не йде: він регулярно містить фрагменти
     // запиту, а тут через запити проходять медичні дані.
-    return fail(c, 'INTERNAL', 'внутрішня помилка')
+    return fail(c, 'INTERNAL', 'internal error')
   })
 
   return app

@@ -306,14 +306,14 @@ export function createQuoteChainReader(rpcUrl: string): QuoteChainReader {
     } catch {
       // Текст помилки назовні не йде: він регулярно містить адресу RPC, а це
       // деталь розгортання.
-      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+      throw new ChainStateError('unavailable', 'the network node did not answer')
     }
 
     if (blockTime === null) {
-      throw new ChainStateError('unavailable', 'час ланцюга недоступний')
+      throw new ChainStateError('unavailable', 'chain time is unavailable')
     }
     if (config === null) {
-      throw new ChainStateError('not-initialized', 'конфігурації платформи немає в мережі')
+      throw new ChainStateError('not-initialized', 'the platform config is not on the network')
     }
 
     // Адреса згоди деривується з номера чинної версії, тож ланцюг версій
@@ -336,7 +336,7 @@ export function createQuoteChainReader(rpcUrl: string): QuoteChainReader {
       try {
         consents = await fetchConsents(program, consentAddresses)
       } catch {
-        throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+        throw new ChainStateError('unavailable', 'the network node did not answer')
       }
     }
 
@@ -401,10 +401,10 @@ export function createPlatformReader(rpcUrl: string): PlatformReader {
     try {
       config = await fetchPlatformConfig(program, platformConfigAddress(program.programId).address)
     } catch {
-      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+      throw new ChainStateError('unavailable', 'the network node did not answer')
     }
     if (config === null) {
-      throw new ChainStateError('not-initialized', 'конфігурації платформи немає в мережі')
+      throw new ChainStateError('not-initialized', 'the platform config is not on the network')
     }
 
     return {
@@ -519,7 +519,7 @@ export function createRunReader(rpcUrl: string): RunReader {
         fetchRunResult(program, resultAddress),
       ])
     } catch {
-      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+      throw new ChainStateError('unavailable', 'the network node did not answer')
     }
 
     return {

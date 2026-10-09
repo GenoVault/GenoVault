@@ -53,7 +53,7 @@ describe('datasetMetadataSchema', () => {
     const broken = metadata({
       statistics: { affectedRate: 0.2, meanAge: 40, alleleFrequencies: [0.1, 0.2] },
     })
-    expect(() => datasetMetadataSchema.parse(broken)).toThrow(/по одній на маркер/)
+    expect(() => datasetMetadataSchema.parse(broken)).toThrow(/one per marker/)
   })
 
   it('не приймає більше маркерів, ніж уміє рецепт', () => {
@@ -73,7 +73,7 @@ describe('datasetMetadataSchema', () => {
       // На одному записі «частка уражених» — це діагноз конкретної людини, а
       // «середній вік» — її вік. Агрегатом вони бути перестають.
       const single = metadata({ recordCount: 1 })
-      expect(() => datasetMetadataSchema.parse(single)).toThrow(/описує окрему людину/)
+      expect(() => datasetMetadataSchema.parse(single)).toThrow(/describe a single person/)
     })
 
     it('приймає датасет на один запис без статистики', () => {
@@ -85,7 +85,7 @@ describe('datasetMetadataSchema', () => {
 
     it('вимагає статистику від MIN_COHORT записів', () => {
       const { statistics: _dropped, ...rest } = metadata({ recordCount: MIN_COHORT })
-      expect(() => datasetMetadataSchema.parse(rest)).toThrow(/агрегований опис/)
+      expect(() => datasetMetadataSchema.parse(rest)).toThrow(/aggregate statistics/)
     })
   })
 
@@ -93,7 +93,7 @@ describe('datasetMetadataSchema', () => {
     const backwards = metadata({
       provenance: { source: 'biobank', collectedFrom: '2024-06-30', collectedTo: '2024-01-01' },
     })
-    expect(() => datasetMetadataSchema.parse(backwards)).toThrow(/закінчується раніше/)
+    expect(() => datasetMetadataSchema.parse(backwards)).toThrow(/ends before it starts/)
   })
 
   it('не падає винятком, коли зламано і поле, і крос-перевірка', () => {

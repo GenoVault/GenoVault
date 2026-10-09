@@ -112,21 +112,23 @@ export function serializeEnvelope(header: EnvelopeHeader, frames: readonly Frame
  */
 export function inspectEnvelope(bytes: Uint8Array): EnvelopeHeader {
   if (bytes.length < HEADER_BYTES) {
-    throw new DatasetEnvelopeError(`файл коротший за заголовок: ${bytes.length} < ${HEADER_BYTES}`)
+    throw new DatasetEnvelopeError(
+      `the file is shorter than the header: ${bytes.length} < ${HEADER_BYTES}`,
+    )
   }
   if (!MAGIC.every((byte, index) => bytes[index] === byte)) {
-    throw new DatasetEnvelopeError('це не конверт датасету GenoVault')
+    throw new DatasetEnvelopeError('this is not a GenoVault dataset envelope')
   }
   if (bytes[OFFSET_VERSION] !== FORMAT_VERSION) {
     throw new DatasetEnvelopeError(
-      `версія формату ${bytes[OFFSET_VERSION]}, читач розуміє ${FORMAT_VERSION}`,
+      `format version ${bytes[OFFSET_VERSION]}, the reader understands ${FORMAT_VERSION}`,
     )
   }
 
   // Резерв читається, а не пропускається: коли він колись стане полем прапорців,
   // цей рядок змусить старого читача відмовити, а не тихо знехтувати прапорцем.
   for (let i = OFFSET_RESERVED; i < OFFSET_RESERVED + RESERVED_BYTES; i += 1) {
-    if (bytes[i] !== 0) throw new DatasetEnvelopeError('резервні байти заголовка не нульові')
+    if (bytes[i] !== 0) throw new DatasetEnvelopeError('the reserved header bytes are not zero')
   }
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -138,18 +140,18 @@ export function inspectEnvelope(bytes: Uint8Array): EnvelopeHeader {
     fieldsPerRecord: view.getUint32(OFFSET_FIELDS_PER_RECORD, true),
   }
 
-  if (header.recordCount === 0) throw new DatasetEnvelopeError('датасет без записів')
-  if (header.markerCount === 0) throw new DatasetEnvelopeError('датасет без маркерів')
+  if (header.recordCount === 0) throw new DatasetEnvelopeError('a dataset without records')
+  if (header.markerCount === 0) throw new DatasetEnvelopeError('a dataset without markers')
   if (header.fieldsPerRecord !== SCALAR_FIELD_COUNT + header.markerCount) {
     throw new DatasetEnvelopeError(
-      `заголовок сам собі суперечить: ${header.fieldsPerRecord} полів на запис ` +
-        `при ${header.markerCount} маркерах`,
+      `the header contradicts itself: ${header.fieldsPerRecord} fields per record ` +
+        `with ${header.markerCount} markers`,
     )
   }
 
   const expected = envelopeBytes(header)
   if (bytes.length !== expected) {
-    throw new DatasetEnvelopeError(`очікувалось ${expected} байтів, у файлі ${bytes.length}`)
+    throw new DatasetEnvelopeError(`expected ${expected} bytes, the file has ${bytes.length}`)
   }
 
   assertUniqueNonces(bytes, header)
@@ -197,7 +199,7 @@ function assertUniqueNonces(bytes: Uint8Array, header: EnvelopeHeader): void {
   for (let record = 0; record < header.recordCount; record += 1) {
     const at = HEADER_BYTES + record * stride
     const nonce = bytes.subarray(at, at + NONCE_BYTES).join(',')
-    if (seen.has(nonce)) throw new DatasetEnvelopeError(`nonce повторюється на записі ${record}`)
+    if (seen.has(nonce)) throw new DatasetEnvelopeError(`the nonce repeats at record ${record}`)
     seen.add(nonce)
   }
 }

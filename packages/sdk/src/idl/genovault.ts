@@ -3150,327 +3150,327 @@ export type Genovault = {
     {
       "code": 6000,
       "name": "abortedComputation",
-      "msg": "Обчислення перервано"
+      "msg": "The computation was aborted"
     },
     {
       "code": 6001,
       "name": "feeBpsTooHigh",
-      "msg": "Комісія платформи перевищує дозволену межу"
+      "msg": "The platform fee exceeds the allowed limit"
     },
     {
       "code": 6002,
       "name": "datasetIdLength",
-      "msg": "Ідентифікатор датасету порожній або довший за 32 байти"
+      "msg": "The dataset id is empty or longer than 32 bytes"
     },
     {
       "code": 6003,
       "name": "emptyDataset",
-      "msg": "Датасет без записів не реєструється"
+      "msg": "A dataset without records cannot be registered"
     },
     {
       "code": 6004,
       "name": "emptyContentHash",
-      "msg": "Відбиток вмісту порожній"
+      "msg": "The content hash is empty"
     },
     {
       "code": 6005,
       "name": "notDatasetOwner",
-      "msg": "Ви не власник цього датасету"
+      "msg": "You are not the owner of this dataset"
     },
     {
       "code": 6006,
       "name": "datasetNotActive",
-      "msg": "Датасет знято з каталогу"
+      "msg": "The dataset is retired"
     },
     {
       "code": 6007,
       "name": "datasetContentUnchanged",
-      "msg": "Вміст датасету не змінився — нова версія не потрібна"
+      "msg": "The dataset content did not change — no new version is needed"
     },
     {
       "code": 6008,
       "name": "datasetVersionOverflow",
-      "msg": "Лічильник версій датасету переповнився"
+      "msg": "The dataset version counter overflowed"
     },
     {
       "code": 6009,
       "name": "consentAllowsNothing",
-      "msg": "Згода, яка нічого не дозволяє, — це відкликання, а не згода"
+      "msg": "Consent that allows nothing is a revocation, not a consent"
     },
     {
       "code": 6010,
       "name": "consentExpiryInPast",
-      "msg": "Строк дії згоди вже минув на момент її запису"
+      "msg": "The consent expiry had already passed when it was written"
     },
     {
       "code": 6011,
       "name": "consentAlreadyRevoked",
-      "msg": "Згоду вже відкликано"
+      "msg": "The consent is already revoked"
     },
     {
       "code": 6012,
       "name": "consentIsRevoked",
-      "msg": "Згоду відкликано"
+      "msg": "The consent was revoked"
     },
     {
       "code": 6013,
       "name": "consentExpired",
-      "msg": "Строк дії згоди минув"
+      "msg": "The consent has expired"
     },
     {
       "code": 6014,
       "name": "unknownUseType",
-      "msg": "Невідомий тип використання"
+      "msg": "Unknown use type"
     },
     {
       "code": 6015,
       "name": "unknownBuyerCategory",
-      "msg": "Невідома категорія покупця"
+      "msg": "Unknown buyer category"
     },
     {
       "code": 6016,
       "name": "useTypeForbidden",
-      "msg": "Цей тип використання прямо заборонений власником"
+      "msg": "The owner explicitly forbids this use type"
     },
     {
       "code": 6017,
       "name": "useTypeNotAllowed",
-      "msg": "Цей тип використання не дозволений згодою"
+      "msg": "This use type is not allowed by the consent"
     },
     {
       "code": 6018,
       "name": "buyerCategoryNotAllowed",
-      "msg": "Ця категорія покупця не дозволена згодою"
+      "msg": "This buyer category is not allowed by the consent"
     },
     {
       "code": 6019,
       "name": "consentVersionOverflow",
-      "msg": "Лічильник версій згоди переповнився"
+      "msg": "The consent version counter overflowed"
     },
     {
       "code": 6020,
       "name": "previousConsentMissing",
-      "msg": "Не передано попередню версію згоди"
+      "msg": "The previous consent version was not passed"
     },
     {
       "code": 6021,
       "name": "runWithoutDatasets",
-      "msg": "Прогін без жодного датасету"
+      "msg": "A run without any dataset"
     },
     {
       "code": 6022,
       "name": "runTooManyDatasets",
-      "msg": "У прогоні забагато датасетів"
+      "msg": "Too many datasets in the run"
     },
     {
       "code": 6023,
       "name": "runDuplicateDataset",
-      "msg": "Датасет повторюється у складі прогону"
+      "msg": "A dataset repeats in the run"
     },
     {
       "code": 6024,
       "name": "runNotAccepted",
-      "msg": "Прогін не в статусі «прийнято»"
+      "msg": "The run is not in the accepted status"
     },
     {
       "code": 6025,
       "name": "runNotRunning",
-      "msg": "Прогін не виконується"
+      "msg": "The run is not running"
     },
     {
       "code": 6026,
       "name": "runIsFinal",
-      "msg": "Прогін уже в кінцевому статусі"
+      "msg": "The run is already in a final status"
     },
     {
       "code": 6027,
       "name": "runResultAlreadyRecorded",
-      "msg": "Результат прогону вже записано"
+      "msg": "The run result is already written"
     },
     {
       "code": 6028,
       "name": "runResultMissing",
-      "msg": "Результату прогону ще немає"
+      "msg": "The run has no result yet"
     },
     {
       "code": 6029,
       "name": "runAlreadySettled",
-      "msg": "Усім датасетам прогону вже нараховано"
+      "msg": "Every dataset of the run is already settled"
     },
     {
       "code": 6030,
       "name": "runSettlementExceedsEscrow",
-      "msg": "Нарахування перевищує заблоковане в депозиті"
+      "msg": "The payout exceeds what is locked in escrow"
     },
     {
       "code": 6031,
       "name": "runSettlementOverflow",
-      "msg": "Переповнення суми нарахувань"
+      "msg": "The payout sum overflowed"
     },
     {
       "code": 6032,
       "name": "runSettlementIncomplete",
-      "msg": "Нараховано не всім датасетам прогону"
+      "msg": "Not every dataset of the run is settled"
     },
     {
       "code": 6033,
       "name": "platformPaused",
-      "msg": "Платформу поставлено на паузу — нові прогони не приймаються"
+      "msg": "The platform is paused — no new runs are accepted"
     },
     {
       "code": 6034,
       "name": "unknownRecipe",
-      "msg": "Такого рецепта немає в каталозі"
+      "msg": "No such recipe in the catalog"
     },
     {
       "code": 6035,
       "name": "runAccountsMalformed",
-      "msg": "Склад прогону передано неповними парами «датасет + згода»"
+      "msg": "The run pool was passed as incomplete dataset and consent pairs"
     },
     {
       "code": 6036,
       "name": "consentMissing",
-      "msg": "Власник ще не задав згоди для цього датасету"
+      "msg": "The owner has not set consent for this dataset yet"
     },
     {
       "code": 6037,
       "name": "consentDatasetMismatch",
-      "msg": "Передана згода належить іншому датасету"
+      "msg": "The passed consent belongs to another dataset"
     },
     {
       "code": 6038,
       "name": "consentVersionStale",
-      "msg": "Передана згода не є чинною версією"
+      "msg": "The passed consent is not the current version"
     },
     {
       "code": 6039,
       "name": "runEscrowOverflow",
-      "msg": "Вартість прогону не вміщається в u64"
+      "msg": "The run price does not fit in u64"
     },
     {
       "code": 6040,
       "name": "runEscrowAboveMax",
-      "msg": "Вартість прогону перевищує названу покупцем межу"
+      "msg": "The run price exceeds the ceiling the buyer named"
     },
     {
       "code": 6041,
       "name": "runNotDispatcher",
-      "msg": "Цю дію може виконати лише диспетчер прогону"
+      "msg": "Only the dispatcher of the run can do this"
     },
     {
       "code": 6042,
       "name": "recipeParamsInvalid",
-      "msg": "Параметри рецепта не проходять перевірку"
+      "msg": "The recipe parameters do not pass validation"
     },
     {
       "code": 6043,
       "name": "accumulatorBusy",
-      "msg": "Попереднє обчислення прогону ще не повернулось"
+      "msg": "The previous computation of the run has not returned yet"
     },
     {
       "code": 6044,
       "name": "accumulatorNotReady",
-      "msg": "Накопичувач прогону ще не створено"
+      "msg": "The run accumulator is not created yet"
     },
     {
       "code": 6045,
       "name": "accumulatorAlreadyReady",
-      "msg": "Накопичувач прогону вже створено"
+      "msg": "The run accumulator is already created"
     },
     {
       "code": 6046,
       "name": "accumulatorOffsetMismatch",
-      "msg": "Callback належить іншому обчисленню"
+      "msg": "The callback belongs to another computation"
     },
     {
       "code": 6047,
       "name": "batchBufferMalformed",
-      "msg": "Буферний акаунт не має заголовка"
+      "msg": "The buffer account has no header"
     },
     {
       "code": 6048,
       "name": "batchBufferForeignRun",
-      "msg": "Буферний акаунт належить іншому прогону"
+      "msg": "The buffer account belongs to another run"
     },
     {
       "code": 6049,
       "name": "batchBufferTooSmall",
-      "msg": "Буферний акаунт ще не дорощено до розміру батча"
+      "msg": "The buffer account has not grown to the batch size yet"
     },
     {
       "code": 6050,
       "name": "batchBufferNotGrowing",
-      "msg": "Буферний акаунт уже такого розміру або більший"
+      "msg": "The buffer account is already this size or larger"
     },
     {
       "code": 6051,
       "name": "batchWriteOutOfBounds",
-      "msg": "Запис виходить за межі буферного акаунта"
+      "msg": "The write goes past the end of the buffer account"
     },
     {
       "code": 6052,
       "name": "batchLiveOutOfRange",
-      "msg": "У батчі має бути від 1 до 32 живих записів"
+      "msg": "A batch must hold from 1 to RECIPE_BATCH live records"
     },
     {
       "code": 6053,
       "name": "runPoolExhausted",
-      "msg": "Усі датасети прогону вже закриті"
+      "msg": "Every dataset of the run is already closed"
     },
     {
       "code": 6054,
       "name": "runPoolNotExhausted",
-      "msg": "У прогоні лишились незакриті датасети"
+      "msg": "The run still has open datasets"
     },
     {
       "code": 6055,
       "name": "runFoldOverflow",
-      "msg": "Лічильник згорнутих батчів переповнився"
+      "msg": "The folded batch counter overflowed"
     },
     {
       "code": 6056,
       "name": "lamportsOverflow",
-      "msg": "Переповнення балансу при поверненні rent"
+      "msg": "Balance overflow while returning rent"
     },
     {
       "code": 6057,
       "name": "runRevealAlreadyDone",
-      "msg": "Звіт прогону вже розкрито"
+      "msg": "The run report is already revealed"
     },
     {
       "code": 6058,
       "name": "runDatasetIndexOutOfRange",
-      "msg": "У прогоні немає датасету під таким індексом"
+      "msg": "The run has no dataset at this index"
     },
     {
       "code": 6059,
       "name": "runDatasetMismatch",
-      "msg": "Переданий датасет не той, що стоїть під цим індексом у прогоні"
+      "msg": "The passed dataset is not the one at this index in the run"
     },
     {
       "code": 6060,
       "name": "runRecordsBelowContributions",
-      "msg": "Записів у звіті менше, ніж оголошено внесками датасетів"
+      "msg": "The report holds fewer records than the dataset contributions declare"
     },
     {
       "code": 6061,
       "name": "ownerBalanceOverflow",
-      "msg": "Переповнення балансу нарахувань власника"
+      "msg": "The owner balance overflowed"
     },
     {
       "code": 6062,
       "name": "runResultForeignRun",
-      "msg": "Результат прогону належить іншому прогону"
+      "msg": "The run result belongs to another run"
     },
     {
       "code": 6063,
       "name": "runNotFailed",
-      "msg": "Повернення депозиту можливе лише з невдалого прогону"
+      "msg": "Escrow can only be refunded from a failed run"
     },
     {
       "code": 6064,
       "name": "runAlreadyRefunded",
-      "msg": "Депозит цього прогону вже повернуто покупцю"
+      "msg": "The escrow of this run is already refunded to the buyer"
     }
   ],
   "types": [
@@ -9319,327 +9319,327 @@ export const IDL: Genovault = {
     {
       "code": 6000,
       "name": "abortedComputation",
-      "msg": "Обчислення перервано"
+      "msg": "The computation was aborted"
     },
     {
       "code": 6001,
       "name": "feeBpsTooHigh",
-      "msg": "Комісія платформи перевищує дозволену межу"
+      "msg": "The platform fee exceeds the allowed limit"
     },
     {
       "code": 6002,
       "name": "datasetIdLength",
-      "msg": "Ідентифікатор датасету порожній або довший за 32 байти"
+      "msg": "The dataset id is empty or longer than 32 bytes"
     },
     {
       "code": 6003,
       "name": "emptyDataset",
-      "msg": "Датасет без записів не реєструється"
+      "msg": "A dataset without records cannot be registered"
     },
     {
       "code": 6004,
       "name": "emptyContentHash",
-      "msg": "Відбиток вмісту порожній"
+      "msg": "The content hash is empty"
     },
     {
       "code": 6005,
       "name": "notDatasetOwner",
-      "msg": "Ви не власник цього датасету"
+      "msg": "You are not the owner of this dataset"
     },
     {
       "code": 6006,
       "name": "datasetNotActive",
-      "msg": "Датасет знято з каталогу"
+      "msg": "The dataset is retired"
     },
     {
       "code": 6007,
       "name": "datasetContentUnchanged",
-      "msg": "Вміст датасету не змінився — нова версія не потрібна"
+      "msg": "The dataset content did not change — no new version is needed"
     },
     {
       "code": 6008,
       "name": "datasetVersionOverflow",
-      "msg": "Лічильник версій датасету переповнився"
+      "msg": "The dataset version counter overflowed"
     },
     {
       "code": 6009,
       "name": "consentAllowsNothing",
-      "msg": "Згода, яка нічого не дозволяє, — це відкликання, а не згода"
+      "msg": "Consent that allows nothing is a revocation, not a consent"
     },
     {
       "code": 6010,
       "name": "consentExpiryInPast",
-      "msg": "Строк дії згоди вже минув на момент її запису"
+      "msg": "The consent expiry had already passed when it was written"
     },
     {
       "code": 6011,
       "name": "consentAlreadyRevoked",
-      "msg": "Згоду вже відкликано"
+      "msg": "The consent is already revoked"
     },
     {
       "code": 6012,
       "name": "consentIsRevoked",
-      "msg": "Згоду відкликано"
+      "msg": "The consent was revoked"
     },
     {
       "code": 6013,
       "name": "consentExpired",
-      "msg": "Строк дії згоди минув"
+      "msg": "The consent has expired"
     },
     {
       "code": 6014,
       "name": "unknownUseType",
-      "msg": "Невідомий тип використання"
+      "msg": "Unknown use type"
     },
     {
       "code": 6015,
       "name": "unknownBuyerCategory",
-      "msg": "Невідома категорія покупця"
+      "msg": "Unknown buyer category"
     },
     {
       "code": 6016,
       "name": "useTypeForbidden",
-      "msg": "Цей тип використання прямо заборонений власником"
+      "msg": "The owner explicitly forbids this use type"
     },
     {
       "code": 6017,
       "name": "useTypeNotAllowed",
-      "msg": "Цей тип використання не дозволений згодою"
+      "msg": "This use type is not allowed by the consent"
     },
     {
       "code": 6018,
       "name": "buyerCategoryNotAllowed",
-      "msg": "Ця категорія покупця не дозволена згодою"
+      "msg": "This buyer category is not allowed by the consent"
     },
     {
       "code": 6019,
       "name": "consentVersionOverflow",
-      "msg": "Лічильник версій згоди переповнився"
+      "msg": "The consent version counter overflowed"
     },
     {
       "code": 6020,
       "name": "previousConsentMissing",
-      "msg": "Не передано попередню версію згоди"
+      "msg": "The previous consent version was not passed"
     },
     {
       "code": 6021,
       "name": "runWithoutDatasets",
-      "msg": "Прогін без жодного датасету"
+      "msg": "A run without any dataset"
     },
     {
       "code": 6022,
       "name": "runTooManyDatasets",
-      "msg": "У прогоні забагато датасетів"
+      "msg": "Too many datasets in the run"
     },
     {
       "code": 6023,
       "name": "runDuplicateDataset",
-      "msg": "Датасет повторюється у складі прогону"
+      "msg": "A dataset repeats in the run"
     },
     {
       "code": 6024,
       "name": "runNotAccepted",
-      "msg": "Прогін не в статусі «прийнято»"
+      "msg": "The run is not in the accepted status"
     },
     {
       "code": 6025,
       "name": "runNotRunning",
-      "msg": "Прогін не виконується"
+      "msg": "The run is not running"
     },
     {
       "code": 6026,
       "name": "runIsFinal",
-      "msg": "Прогін уже в кінцевому статусі"
+      "msg": "The run is already in a final status"
     },
     {
       "code": 6027,
       "name": "runResultAlreadyRecorded",
-      "msg": "Результат прогону вже записано"
+      "msg": "The run result is already written"
     },
     {
       "code": 6028,
       "name": "runResultMissing",
-      "msg": "Результату прогону ще немає"
+      "msg": "The run has no result yet"
     },
     {
       "code": 6029,
       "name": "runAlreadySettled",
-      "msg": "Усім датасетам прогону вже нараховано"
+      "msg": "Every dataset of the run is already settled"
     },
     {
       "code": 6030,
       "name": "runSettlementExceedsEscrow",
-      "msg": "Нарахування перевищує заблоковане в депозиті"
+      "msg": "The payout exceeds what is locked in escrow"
     },
     {
       "code": 6031,
       "name": "runSettlementOverflow",
-      "msg": "Переповнення суми нарахувань"
+      "msg": "The payout sum overflowed"
     },
     {
       "code": 6032,
       "name": "runSettlementIncomplete",
-      "msg": "Нараховано не всім датасетам прогону"
+      "msg": "Not every dataset of the run is settled"
     },
     {
       "code": 6033,
       "name": "platformPaused",
-      "msg": "Платформу поставлено на паузу — нові прогони не приймаються"
+      "msg": "The platform is paused — no new runs are accepted"
     },
     {
       "code": 6034,
       "name": "unknownRecipe",
-      "msg": "Такого рецепта немає в каталозі"
+      "msg": "No such recipe in the catalog"
     },
     {
       "code": 6035,
       "name": "runAccountsMalformed",
-      "msg": "Склад прогону передано неповними парами «датасет + згода»"
+      "msg": "The run pool was passed as incomplete dataset and consent pairs"
     },
     {
       "code": 6036,
       "name": "consentMissing",
-      "msg": "Власник ще не задав згоди для цього датасету"
+      "msg": "The owner has not set consent for this dataset yet"
     },
     {
       "code": 6037,
       "name": "consentDatasetMismatch",
-      "msg": "Передана згода належить іншому датасету"
+      "msg": "The passed consent belongs to another dataset"
     },
     {
       "code": 6038,
       "name": "consentVersionStale",
-      "msg": "Передана згода не є чинною версією"
+      "msg": "The passed consent is not the current version"
     },
     {
       "code": 6039,
       "name": "runEscrowOverflow",
-      "msg": "Вартість прогону не вміщається в u64"
+      "msg": "The run price does not fit in u64"
     },
     {
       "code": 6040,
       "name": "runEscrowAboveMax",
-      "msg": "Вартість прогону перевищує названу покупцем межу"
+      "msg": "The run price exceeds the ceiling the buyer named"
     },
     {
       "code": 6041,
       "name": "runNotDispatcher",
-      "msg": "Цю дію може виконати лише диспетчер прогону"
+      "msg": "Only the dispatcher of the run can do this"
     },
     {
       "code": 6042,
       "name": "recipeParamsInvalid",
-      "msg": "Параметри рецепта не проходять перевірку"
+      "msg": "The recipe parameters do not pass validation"
     },
     {
       "code": 6043,
       "name": "accumulatorBusy",
-      "msg": "Попереднє обчислення прогону ще не повернулось"
+      "msg": "The previous computation of the run has not returned yet"
     },
     {
       "code": 6044,
       "name": "accumulatorNotReady",
-      "msg": "Накопичувач прогону ще не створено"
+      "msg": "The run accumulator is not created yet"
     },
     {
       "code": 6045,
       "name": "accumulatorAlreadyReady",
-      "msg": "Накопичувач прогону вже створено"
+      "msg": "The run accumulator is already created"
     },
     {
       "code": 6046,
       "name": "accumulatorOffsetMismatch",
-      "msg": "Callback належить іншому обчисленню"
+      "msg": "The callback belongs to another computation"
     },
     {
       "code": 6047,
       "name": "batchBufferMalformed",
-      "msg": "Буферний акаунт не має заголовка"
+      "msg": "The buffer account has no header"
     },
     {
       "code": 6048,
       "name": "batchBufferForeignRun",
-      "msg": "Буферний акаунт належить іншому прогону"
+      "msg": "The buffer account belongs to another run"
     },
     {
       "code": 6049,
       "name": "batchBufferTooSmall",
-      "msg": "Буферний акаунт ще не дорощено до розміру батча"
+      "msg": "The buffer account has not grown to the batch size yet"
     },
     {
       "code": 6050,
       "name": "batchBufferNotGrowing",
-      "msg": "Буферний акаунт уже такого розміру або більший"
+      "msg": "The buffer account is already this size or larger"
     },
     {
       "code": 6051,
       "name": "batchWriteOutOfBounds",
-      "msg": "Запис виходить за межі буферного акаунта"
+      "msg": "The write goes past the end of the buffer account"
     },
     {
       "code": 6052,
       "name": "batchLiveOutOfRange",
-      "msg": "У батчі має бути від 1 до 32 живих записів"
+      "msg": "A batch must hold from 1 to RECIPE_BATCH live records"
     },
     {
       "code": 6053,
       "name": "runPoolExhausted",
-      "msg": "Усі датасети прогону вже закриті"
+      "msg": "Every dataset of the run is already closed"
     },
     {
       "code": 6054,
       "name": "runPoolNotExhausted",
-      "msg": "У прогоні лишились незакриті датасети"
+      "msg": "The run still has open datasets"
     },
     {
       "code": 6055,
       "name": "runFoldOverflow",
-      "msg": "Лічильник згорнутих батчів переповнився"
+      "msg": "The folded batch counter overflowed"
     },
     {
       "code": 6056,
       "name": "lamportsOverflow",
-      "msg": "Переповнення балансу при поверненні rent"
+      "msg": "Balance overflow while returning rent"
     },
     {
       "code": 6057,
       "name": "runRevealAlreadyDone",
-      "msg": "Звіт прогону вже розкрито"
+      "msg": "The run report is already revealed"
     },
     {
       "code": 6058,
       "name": "runDatasetIndexOutOfRange",
-      "msg": "У прогоні немає датасету під таким індексом"
+      "msg": "The run has no dataset at this index"
     },
     {
       "code": 6059,
       "name": "runDatasetMismatch",
-      "msg": "Переданий датасет не той, що стоїть під цим індексом у прогоні"
+      "msg": "The passed dataset is not the one at this index in the run"
     },
     {
       "code": 6060,
       "name": "runRecordsBelowContributions",
-      "msg": "Записів у звіті менше, ніж оголошено внесками датасетів"
+      "msg": "The report holds fewer records than the dataset contributions declare"
     },
     {
       "code": 6061,
       "name": "ownerBalanceOverflow",
-      "msg": "Переповнення балансу нарахувань власника"
+      "msg": "The owner balance overflowed"
     },
     {
       "code": 6062,
       "name": "runResultForeignRun",
-      "msg": "Результат прогону належить іншому прогону"
+      "msg": "The run result belongs to another run"
     },
     {
       "code": 6063,
       "name": "runNotFailed",
-      "msg": "Повернення депозиту можливе лише з невдалого прогону"
+      "msg": "Escrow can only be refunded from a failed run"
     },
     {
       "code": 6064,
       "name": "runAlreadyRefunded",
-      "msg": "Депозит цього прогону вже повернуто покупцю"
+      "msg": "The escrow of this run is already refunded to the buyer"
     }
   ],
   "types": [

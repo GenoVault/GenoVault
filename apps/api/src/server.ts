@@ -77,9 +77,9 @@ serve({ fetch: app.fetch, port }, (info) => {
       authKeySource: auth.keySource,
       catalogDriver: catalog.driver,
       storageDriver: storage.driver,
-      dispatcher: dispatcher ?? 'не задано',
+      dispatcher: dispatcher ?? 'not set',
       webOrigins,
     },
-    'api піднято',
+    'api up',
   )
 })

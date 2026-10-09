@@ -20,7 +20,7 @@ export const solanaAddressSchema = z
   .min(32)
   .max(44)
   .refine((value) => decodeBase58(value)?.length === SOLANA_ADDRESS_BYTES, {
-    message: 'очікувалась base58-адреса завдовжки 32 байти',
+    message: 'expected a 32-byte base58 address',
   })
   .transform((value) => value as SolanaAddress)
 
@@ -38,7 +38,7 @@ export const DATASET_ID_MAX_LENGTH = 32
 
 export const datasetIdSchema = z
   .string()
-  .regex(/^[a-z0-9][a-z0-9-]{2,31}$/, 'дозволені малі літери, цифри й дефіс, 3–32 символи')
+  .regex(/^[a-z0-9][a-z0-9-]{2,31}$/, 'lowercase letters, digits and hyphens, 3–32 characters')
   .transform((value) => value as DatasetId)
 
 export type DatasetId = Brand<string, 'DatasetId'>
@@ -58,7 +58,7 @@ const amountBaseSchema = z
   .union([z.bigint(), z.string().regex(/^\d+$/), z.number().int().nonnegative()])
   .transform((value) => BigInt(value))
   .refine((value) => value >= 0n && value <= 0xffff_ffff_ffff_ffffn, {
-    message: 'сума не вміщається в u64',
+    message: 'the amount does not fit in u64',
   })
 
 export const tokenAmountSchema = amountBaseSchema.transform((value) => value as TokenAmount)
@@ -100,7 +100,7 @@ export const BPS_DENOMINATOR = 10_000n
 /** Відбиток вмісту датасету, за яким звіряють, по чому саме йшов прогін (FR-004). */
 export const contentHashSchema = z
   .string()
-  .regex(/^[0-9a-f]{64}$/, 'очікувався sha-256 у нижньому регістрі, 64 шістнадцяткові символи')
+  .regex(/^[0-9a-f]{64}$/, 'expected a lowercase sha-256, 64 hex characters')
   .transform((value) => value as ContentHash)
 
 export type ContentHash = Brand<string, 'ContentHash'>
@@ -115,7 +115,7 @@ export type ContentHash = Brand<string, 'ContentHash'>
  * Схема живе тут, а не в модулі відповідей, бо стосується не каталогу і не
  * квоти, а того, як число взагалі перетинає межу.
  */
-export const u64StringSchema = z.string().regex(/^\d+$/, 'очікувалось ціле число рядком')
+export const u64StringSchema = z.string().regex(/^\d+$/, 'expected an integer as a string')
 
 /**
  * Ціле u128 рядком.
@@ -126,4 +126,4 @@ export const u64StringSchema = z.string().regex(/^\d+$/, 'очікувалось
  * округлить, друге відхилить. Обидва варіанти означають звіт, який більше
  * ніхто не розшифрує.
  */
-export const u128StringSchema = z.string().regex(/^\d+$/, 'очікувалось ціле число рядком')
+export const u128StringSchema = z.string().regex(/^\d+$/, 'expected an integer as a string')

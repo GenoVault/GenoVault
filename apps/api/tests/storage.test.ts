@@ -106,7 +106,7 @@ describe('гейт відхиляє все, що не є конвертом', ()
     const driver = fsDriver(root)
 
     await expect(storeCiphertext(driver, DATASET_ID, new Uint8Array(0))).rejects.toThrow(
-      /коротший за заголовок/,
+      /shorter than the header/,
     )
     await expect(
       storeCiphertext(
@@ -114,10 +114,10 @@ describe('гейт відхиляє все, що не є конвертом', ()
         DATASET_ID,
         Uint8Array.from({ length: 4096 }, (_, i) => i % 251),
       ),
-    ).rejects.toThrow(/не конверт датасету/)
+    ).rejects.toThrow(/not a GenoVault dataset envelope/)
     await expect(
       storeCiphertext(driver, DATASET_ID, envelope().slice(0, HEADER_BYTES + 20)),
-    ).rejects.toThrow(/очікувалось \d+ байт/)
+    ).rejects.toThrow(/expected \d+ bytes/)
   })
 
   it('не приймає неприйнятного ідентифікатора датасету', async () => {
@@ -191,7 +191,7 @@ describe('читання перевіряє вдруге', () => {
     await writeRaw(wrongHash, envelope(1))
 
     await expect(loadCiphertext(fsDriver(root), DATASET_ID, wrongHash)).rejects.toThrow(
-      /не відповідає своєму відбитку/,
+      /does not match its hash/,
     )
   })
 })
@@ -202,7 +202,7 @@ describe('драйвер fs', () => {
 
     await expect(driver.get('../../../etc/passwd')).rejects.toThrow(StorageError)
     await expect(driver.get('datasets/../../escape/aa.gvds')).rejects.toThrow(StorageError)
-    await expect(driver.put('anything.txt', envelope())).rejects.toThrow(/неприйнятний ключ/)
+    await expect(driver.put('anything.txt', envelope())).rejects.toThrow(/unacceptable object key/)
   })
 
   it('не лишає під адресою об єкта недописаного файлу', async () => {
@@ -254,7 +254,7 @@ describe('драйвер supabase', () => {
     stubFetch(403)
 
     await expect(storeCiphertext(supabaseDriver(SUPABASE), DATASET_ID, envelope())).rejects.toThrow(
-      /сховище відмовило на записі/,
+      /the storage refused to write/,
     )
   })
 

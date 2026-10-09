@@ -156,7 +156,7 @@ describe('вхід перевіряється до шифру', () => {
 
   it('відхиляє записи з різною кількістю маркерів', () => {
     const ragged: DatasetRecord[] = [record(0), { ...record(1), genotypes: [0, 1] }]
-    expect(() => encryptDataset(ragged, mxe.publicKey)).toThrow(/маркерів замість/)
+    expect(() => encryptDataset(ragged, mxe.publicKey)).toThrow(/markers instead of/)
   })
 
   it('відхиляє генотип поза 0..2', () => {
@@ -165,8 +165,8 @@ describe('вхід перевіряється до шифру', () => {
   })
 
   it('відхиляє порожній датасет і ключ кластера не тієї довжини', () => {
-    expect(() => encryptDataset([], mxe.publicKey)).toThrow(/без записів/)
-    expect(() => encryptDataset(RECORDS, mxe.publicKey.slice(0, 31))).toThrow(/32 байт/)
+    expect(() => encryptDataset([], mxe.publicKey)).toThrow(/without records/)
+    expect(() => encryptDataset(RECORDS, mxe.publicKey.slice(0, 31))).toThrow(/32 bytes/)
   })
 })
 

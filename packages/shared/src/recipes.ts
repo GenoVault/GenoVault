@@ -52,7 +52,7 @@ export const frequenciesParamsSchema = z
     affected: z.enum(['affected', 'unaffected', 'any']).prefault('any'),
   })
   .refine((value) => value.minAge <= value.maxAge, {
-    message: 'нижня межа віку не може бути більшою за верхню',
+    message: 'the lower age bound cannot be above the upper one',
     path: ['minAge'],
   })
 
@@ -99,10 +99,10 @@ export const RECIPES: readonly Recipe[] = [
   {
     id: FREQUENCIES_RECIPE_ID,
     name: 'frequencies',
-    title: 'Частоти й розподіли',
+    title: 'Allele frequencies and distributions',
     description:
-      'Частоти алелів по маркерах, розподіл за статтю, віком і статусом ураження ' +
-      'на когорті, зібраній фільтрами. Результат — агрегати, не вибірка записів.',
+      'Per-marker allele frequencies, sex split, an age histogram and the affected rate ' +
+      'over the filtered cohort. The result is aggregates, never a sample of records.',
     markers: MAX_MARKERS,
     minCohort: MIN_COHORT,
     params: frequenciesParamsSchema,

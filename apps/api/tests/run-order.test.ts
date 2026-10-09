@@ -423,7 +423,7 @@ describe('POST /runs', () => {
 
     const response = await post(order())
     expect(response.status).toBe(400)
-    expect(apiErrorSchema.parse(await response.json()).error.message).toContain('диспетчера')
+    expect(apiErrorSchema.parse(await response.json()).error.message).toContain('dispatcher')
   })
 
   it('непридатний датасет відмовляє названою причиною, і всі одразу', async () => {
@@ -502,7 +502,7 @@ describe('POST /runs', () => {
     )
 
     expect(response.status).toBe(400)
-    expect(apiErrorSchema.parse(await response.json()).error.message).toContain('двічі')
+    expect(apiErrorSchema.parse(await response.json()).error.message).toContain('named twice')
   })
 
   it('невідомий рецепт і поламані параметри не доходять до мережі', async () => {
@@ -517,7 +517,7 @@ describe('POST /runs', () => {
   it('без мережі замовлення немає — 503, а не 500', async () => {
     await store(ALPHA)
     readQuoteChain.mockImplementation(async () => {
-      throw new ChainStateError('unavailable', 'вузол мережі не відповів')
+      throw new ChainStateError('unavailable', 'the network node did not answer')
     })
 
     const response = await post(order())
@@ -623,7 +623,7 @@ describe('GET /platform', () => {
 
   it('нерозгорнута платформа — не 200 з нулями', async () => {
     readPlatform.mockImplementation(async () => {
-      throw new ChainStateError('not-initialized', 'конфігурації платформи немає в мережі')
+      throw new ChainStateError('not-initialized', 'the platform config is not on the network')
     })
 
     expect((await app.request('/platform')).status).toBe(500)

@@ -33,7 +33,7 @@ describe('таблиця помилок програми', () => {
   it('називає код і не вигадує імені чужому', () => {
     expect(programErrorByCode(REVOKED)).toMatchObject({
       name: 'consentIsRevoked',
-      msg: 'Згоду відкликано',
+      msg: 'The consent was revoked',
       violation: 'revoked',
     })
     // 1 — це `InsufficientFunds` Token-2022, 2000-ні — рамка Anchor, 6065 —
@@ -95,7 +95,7 @@ describe('код відмови з того, що кинув гаманець', 
   it('читається з логів симуляції', () => {
     const logs = [
       `Program ${PROGRAM_ADDRESS} invoke [1]`,
-      'Program log: AnchorError occurred. Error Code: ConsentIsRevoked. Error Number: 6012. Error Message: Згоду відкликано.',
+      'Program log: AnchorError occurred. Error Code: ConsentIsRevoked. Error Number: 6012. Error Message: The consent was revoked.',
       `Program ${PROGRAM_ADDRESS} consumed 14203 of 200000 compute units`,
       `Program ${PROGRAM_ADDRESS} failed: custom program error: 0x177c`,
     ]

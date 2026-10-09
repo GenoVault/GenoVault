@@ -19,7 +19,7 @@ const { values } = parseArgs({
 
 function number(raw: string, flag: string): number {
   const parsed = Number(raw)
-  if (!Number.isFinite(parsed)) throw new RangeError(`--${flag} має бути числом, отримано "${raw}"`)
+  if (!Number.isFinite(parsed)) throw new RangeError(`--${flag} must be a number, got "${raw}"`)
   return parsed
 }
 
@@ -53,12 +53,12 @@ writeFileSync(
 
 process.stdout.write(
   [
-    `датасет:    ${base}.ndjson`,
-    `записів:    ${manifest.recordCount}`,
-    `маркерів:   ${manifest.markerCount}`,
-    `причинних:  ${manifest.groundTruth.causalMarkers.join(', ')}`,
-    `уражених:   ${(manifest.statistics.affectedRate * 100).toFixed(1)}%`,
-    `сід:        ${manifest.groundTruth.seed}`,
+    `dataset:   ${base}.ndjson`,
+    `records:   ${manifest.recordCount}`,
+    `markers:   ${manifest.markerCount}`,
+    `causal:    ${manifest.groundTruth.causalMarkers.join(', ')}`,
+    `affected:  ${(manifest.statistics.affectedRate * 100).toFixed(1)}%`,
+    `seed:      ${manifest.groundTruth.seed}`,
     '',
   ].join('\n'),
 )

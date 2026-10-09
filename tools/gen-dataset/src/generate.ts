@@ -68,14 +68,15 @@ export function generateDataset(options: GenerateOptions): GeneratedDataset {
     baselineRisk = 0.1,
   } = options
 
-  if (records <= 0) throw new RangeError('records має бути додатним')
-  if (markers <= 0) throw new RangeError('markers має бути додатним')
-  if (causalMarkers > markers) throw new RangeError('причинних маркерів не може бути більше за всі')
+  if (records <= 0) throw new RangeError('records must be positive')
+  if (markers <= 0) throw new RangeError('markers must be positive')
+  if (causalMarkers > markers)
+    throw new RangeError('there cannot be more causal markers than markers')
   if (minorAlleleFrequency <= 0 || minorAlleleFrequency >= 1) {
-    throw new RangeError('частота мінорного алеля має бути строго між 0 і 1')
+    throw new RangeError('the minor allele frequency must be strictly between 0 and 1')
   }
   if (baselineRisk <= 0 || baselineRisk >= 1) {
-    throw new RangeError('базовий ризик має бути строго між 0 і 1')
+    throw new RangeError('the baseline risk must be strictly between 0 and 1')
   }
 
   const rng = new Rng(seed)
@@ -123,14 +124,14 @@ export function generateDataset(options: GenerateOptions): GeneratedDataset {
   }
 
   const schema: DatasetManifest['schema'] = [
-    { field: 'subjectId', type: 'string', description: 'синтетичний ідентифікатор особи' },
-    { field: 'sex', type: 'integer', description: '0 — жіноча, 1 — чоловіча' },
-    { field: 'age', type: 'integer', description: 'вік у роках' },
-    { field: 'affected', type: 'integer', description: 'фенотип: 0 — ні, 1 — так' },
+    { field: 'subjectId', type: 'string', description: 'synthetic subject identifier' },
+    { field: 'sex', type: 'integer', description: '0 — female, 1 — male' },
+    { field: 'age', type: 'integer', description: 'age in years' },
+    { field: 'affected', type: 'integer', description: 'phenotype: 0 — no, 1 — yes' },
     ...Array.from({ length: markers }, (_, m) => ({
       field: `marker_${String(m + 1).padStart(4, '0')}`,
       type: 'integer' as const,
-      description: 'копій мінорного алеля: 0, 1 або 2',
+      description: 'minor-allele copies: 0, 1 or 2',
     })),
   ]
 

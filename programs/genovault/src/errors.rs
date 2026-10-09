@@ -7,134 +7,134 @@ use anchor_lang::prelude::*;
 /// рівно одній перевірці, і повідомлення можна показати покупцю без здогадок.
 #[error_code]
 pub enum GenoVaultError {
-    #[msg("Обчислення перервано")]
+    #[msg("The computation was aborted")]
     AbortedComputation,
-    #[msg("Комісія платформи перевищує дозволену межу")]
+    #[msg("The platform fee exceeds the allowed limit")]
     FeeBpsTooHigh,
-    #[msg("Ідентифікатор датасету порожній або довший за 32 байти")]
+    #[msg("The dataset id is empty or longer than 32 bytes")]
     DatasetIdLength,
-    #[msg("Датасет без записів не реєструється")]
+    #[msg("A dataset without records cannot be registered")]
     EmptyDataset,
-    #[msg("Відбиток вмісту порожній")]
+    #[msg("The content hash is empty")]
     EmptyContentHash,
-    #[msg("Ви не власник цього датасету")]
+    #[msg("You are not the owner of this dataset")]
     NotDatasetOwner,
-    #[msg("Датасет знято з каталогу")]
+    #[msg("The dataset is retired")]
     DatasetNotActive,
-    #[msg("Вміст датасету не змінився — нова версія не потрібна")]
+    #[msg("The dataset content did not change — no new version is needed")]
     DatasetContentUnchanged,
-    #[msg("Лічильник версій датасету переповнився")]
+    #[msg("The dataset version counter overflowed")]
     DatasetVersionOverflow,
-    #[msg("Згода, яка нічого не дозволяє, — це відкликання, а не згода")]
+    #[msg("Consent that allows nothing is a revocation, not a consent")]
     ConsentAllowsNothing,
-    #[msg("Строк дії згоди вже минув на момент її запису")]
+    #[msg("The consent expiry had already passed when it was written")]
     ConsentExpiryInPast,
-    #[msg("Згоду вже відкликано")]
+    #[msg("The consent is already revoked")]
     ConsentAlreadyRevoked,
-    #[msg("Згоду відкликано")]
+    #[msg("The consent was revoked")]
     ConsentIsRevoked,
-    #[msg("Строк дії згоди минув")]
+    #[msg("The consent has expired")]
     ConsentExpired,
-    #[msg("Невідомий тип використання")]
+    #[msg("Unknown use type")]
     UnknownUseType,
-    #[msg("Невідома категорія покупця")]
+    #[msg("Unknown buyer category")]
     UnknownBuyerCategory,
-    #[msg("Цей тип використання прямо заборонений власником")]
+    #[msg("The owner explicitly forbids this use type")]
     UseTypeForbidden,
-    #[msg("Цей тип використання не дозволений згодою")]
+    #[msg("This use type is not allowed by the consent")]
     UseTypeNotAllowed,
-    #[msg("Ця категорія покупця не дозволена згодою")]
+    #[msg("This buyer category is not allowed by the consent")]
     BuyerCategoryNotAllowed,
-    #[msg("Лічильник версій згоди переповнився")]
+    #[msg("The consent version counter overflowed")]
     ConsentVersionOverflow,
-    #[msg("Не передано попередню версію згоди")]
+    #[msg("The previous consent version was not passed")]
     PreviousConsentMissing,
-    #[msg("Прогін без жодного датасету")]
+    #[msg("A run without any dataset")]
     RunWithoutDatasets,
-    #[msg("У прогоні забагато датасетів")]
+    #[msg("Too many datasets in the run")]
     RunTooManyDatasets,
-    #[msg("Датасет повторюється у складі прогону")]
+    #[msg("A dataset repeats in the run")]
     RunDuplicateDataset,
-    #[msg("Прогін не в статусі «прийнято»")]
+    #[msg("The run is not in the accepted status")]
     RunNotAccepted,
-    #[msg("Прогін не виконується")]
+    #[msg("The run is not running")]
     RunNotRunning,
-    #[msg("Прогін уже в кінцевому статусі")]
+    #[msg("The run is already in a final status")]
     RunIsFinal,
-    #[msg("Результат прогону вже записано")]
+    #[msg("The run result is already written")]
     RunResultAlreadyRecorded,
-    #[msg("Результату прогону ще немає")]
+    #[msg("The run has no result yet")]
     RunResultMissing,
-    #[msg("Усім датасетам прогону вже нараховано")]
+    #[msg("Every dataset of the run is already settled")]
     RunAlreadySettled,
-    #[msg("Нарахування перевищує заблоковане в депозиті")]
+    #[msg("The payout exceeds what is locked in escrow")]
     RunSettlementExceedsEscrow,
-    #[msg("Переповнення суми нарахувань")]
+    #[msg("The payout sum overflowed")]
     RunSettlementOverflow,
-    #[msg("Нараховано не всім датасетам прогону")]
+    #[msg("Not every dataset of the run is settled")]
     RunSettlementIncomplete,
-    #[msg("Платформу поставлено на паузу — нові прогони не приймаються")]
+    #[msg("The platform is paused — no new runs are accepted")]
     PlatformPaused,
-    #[msg("Такого рецепта немає в каталозі")]
+    #[msg("No such recipe in the catalog")]
     UnknownRecipe,
-    #[msg("Склад прогону передано неповними парами «датасет + згода»")]
+    #[msg("The run pool was passed as incomplete dataset and consent pairs")]
     RunAccountsMalformed,
-    #[msg("Власник ще не задав згоди для цього датасету")]
+    #[msg("The owner has not set consent for this dataset yet")]
     ConsentMissing,
-    #[msg("Передана згода належить іншому датасету")]
+    #[msg("The passed consent belongs to another dataset")]
     ConsentDatasetMismatch,
-    #[msg("Передана згода не є чинною версією")]
+    #[msg("The passed consent is not the current version")]
     ConsentVersionStale,
-    #[msg("Вартість прогону не вміщається в u64")]
+    #[msg("The run price does not fit in u64")]
     RunEscrowOverflow,
-    #[msg("Вартість прогону перевищує названу покупцем межу")]
+    #[msg("The run price exceeds the ceiling the buyer named")]
     RunEscrowAboveMax,
-    #[msg("Цю дію може виконати лише диспетчер прогону")]
+    #[msg("Only the dispatcher of the run can do this")]
     RunNotDispatcher,
-    #[msg("Параметри рецепта не проходять перевірку")]
+    #[msg("The recipe parameters do not pass validation")]
     RecipeParamsInvalid,
-    #[msg("Попереднє обчислення прогону ще не повернулось")]
+    #[msg("The previous computation of the run has not returned yet")]
     AccumulatorBusy,
-    #[msg("Накопичувач прогону ще не створено")]
+    #[msg("The run accumulator is not created yet")]
     AccumulatorNotReady,
-    #[msg("Накопичувач прогону вже створено")]
+    #[msg("The run accumulator is already created")]
     AccumulatorAlreadyReady,
-    #[msg("Callback належить іншому обчисленню")]
+    #[msg("The callback belongs to another computation")]
     AccumulatorOffsetMismatch,
-    #[msg("Буферний акаунт не має заголовка")]
+    #[msg("The buffer account has no header")]
     BatchBufferMalformed,
-    #[msg("Буферний акаунт належить іншому прогону")]
+    #[msg("The buffer account belongs to another run")]
     BatchBufferForeignRun,
-    #[msg("Буферний акаунт ще не дорощено до розміру батча")]
+    #[msg("The buffer account has not grown to the batch size yet")]
     BatchBufferTooSmall,
-    #[msg("Буферний акаунт уже такого розміру або більший")]
+    #[msg("The buffer account is already this size or larger")]
     BatchBufferNotGrowing,
-    #[msg("Запис виходить за межі буферного акаунта")]
+    #[msg("The write goes past the end of the buffer account")]
     BatchWriteOutOfBounds,
-    #[msg("У батчі має бути від 1 до RECIPE_BATCH живих записів")]
+    #[msg("A batch must hold from 1 to RECIPE_BATCH live records")]
     BatchLiveOutOfRange,
-    #[msg("Усі датасети прогону вже закриті")]
+    #[msg("Every dataset of the run is already closed")]
     RunPoolExhausted,
-    #[msg("У прогоні лишились незакриті датасети")]
+    #[msg("The run still has open datasets")]
     RunPoolNotExhausted,
-    #[msg("Лічильник згорнутих батчів переповнився")]
+    #[msg("The folded batch counter overflowed")]
     RunFoldOverflow,
-    #[msg("Переповнення балансу при поверненні rent")]
+    #[msg("Balance overflow while returning rent")]
     LamportsOverflow,
-    #[msg("Звіт прогону вже розкрито")]
+    #[msg("The run report is already revealed")]
     RunRevealAlreadyDone,
-    #[msg("У прогоні немає датасету під таким індексом")]
+    #[msg("The run has no dataset at this index")]
     RunDatasetIndexOutOfRange,
-    #[msg("Переданий датасет не той, що стоїть під цим індексом у прогоні")]
+    #[msg("The passed dataset is not the one at this index in the run")]
     RunDatasetMismatch,
-    #[msg("Записів у звіті менше, ніж оголошено внесками датасетів")]
+    #[msg("The report holds fewer records than the dataset contributions declare")]
     RunRecordsBelowContributions,
-    #[msg("Переповнення балансу нарахувань власника")]
+    #[msg("The owner balance overflowed")]
     OwnerBalanceOverflow,
-    #[msg("Результат прогону належить іншому прогону")]
+    #[msg("The run result belongs to another run")]
     RunResultForeignRun,
-    #[msg("Повернення депозиту можливе лише з невдалого прогону")]
+    #[msg("Escrow can only be refunded from a failed run")]
     RunNotFailed,
-    #[msg("Депозит цього прогону вже повернуто покупцю")]
+    #[msg("The escrow of this run is already refunded to the buyer")]
     RunAlreadyRefunded,
 }

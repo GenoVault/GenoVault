@@ -71,7 +71,10 @@ export const MAX_SCHEMA_FIELDS = MAX_MARKERS + FIXED_FIELDS
 export const datasetFieldSchema = z.strictObject({
   field: z
     .string()
-    .regex(/^[a-z][a-zA-Z0-9_]{0,31}$/, 'очікувалось ім’я поля з літери, далі букви, цифри або _'),
+    .regex(
+      /^[a-z][a-zA-Z0-9_]{0,31}$/,
+      'expected a field name: a letter, then letters, digits or _',
+    ),
   type: z.enum(['integer', 'string']),
   description: z.string().min(1).max(200),
 })
@@ -143,7 +146,7 @@ export const datasetMetadataSchema = baseMetadataSchema.superRefine((value, ctx)
     ctx.addIssue({
       code: 'custom',
       path: ['statistics', 'alleleFrequencies'],
-      message: `очікувалось ${markerCount} частот — по одній на маркер, отримано ${frequencies.length}`,
+      message: `expected ${markerCount} frequencies — one per marker, got ${frequencies.length}`,
     })
   }
 
@@ -156,14 +159,14 @@ export const datasetMetadataSchema = baseMetadataSchema.superRefine((value, ctx)
       ctx.addIssue({
         code: 'custom',
         path: ['statistics'],
-        message: `статистика приймається від ${MIN_COHORT} записів: на меншій когорті вона описує окрему людину`,
+        message: `statistics are accepted from ${MIN_COHORT} records: on a smaller cohort they describe a single person`,
       })
     }
     if (recordCount >= MIN_COHORT && value.statistics === undefined) {
       ctx.addIssue({
         code: 'custom',
         path: ['statistics'],
-        message: 'датасет від MIN_COHORT записів має нести агрегований опис',
+        message: 'a dataset of MIN_COHORT records or more must carry aggregate statistics',
       })
     }
   }
@@ -174,7 +177,7 @@ export const datasetMetadataSchema = baseMetadataSchema.superRefine((value, ctx)
     ctx.addIssue({
       code: 'custom',
       path: ['provenance', 'collectedTo'],
-      message: 'вікно збору закінчується раніше, ніж починається',
+      message: 'the collection window ends before it starts',
     })
   }
 })

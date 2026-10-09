@@ -47,7 +47,7 @@ function productionBuild<T>(build: () => T): T {
 
 const REVOKED_LOGS = [
   `Program ${PROGRAM} invoke [1]`,
-  'Program log: AnchorError occurred. Error Code: ConsentIsRevoked. Error Number: 6012. Error Message: Згоду відкликано.',
+  'Program log: AnchorError occurred. Error Code: ConsentIsRevoked. Error Number: 6012. Error Message: The consent was revoked.',
   `Program ${PROGRAM} consumed 14203 of 200000 compute units`,
   `Program ${PROGRAM} failed: custom program error: 0x177c`,
 ]

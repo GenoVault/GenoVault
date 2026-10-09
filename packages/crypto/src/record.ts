@@ -56,7 +56,7 @@ export function toFieldElements(record: DatasetRecord): bigint[] {
  */
 export function fromFieldElements(elements: bigint[]): DatasetRecord {
   if (elements.length <= SCALAR_FIELD_COUNT) {
-    throw new RangeError(`очікувалось більше за ${SCALAR_FIELD_COUNT} польових елементів`)
+    throw new RangeError(`expected more than ${SCALAR_FIELD_COUNT} field elements`)
   }
 
   const [sex, age, affected] = elements
@@ -72,7 +72,7 @@ export function fromFieldElements(elements: bigint[]): DatasetRecord {
 
 function asSmallNumber(value: bigint | undefined, field: string): number {
   if (value === undefined || value < 0n || value > BigInt(MAX_AGE)) {
-    throw new RangeError(`поле ${field} поза межами після розшифрування: ${value}`)
+    throw new RangeError(`field ${field} is out of range after decryption: ${value}`)
   }
   return Number(value)
 }

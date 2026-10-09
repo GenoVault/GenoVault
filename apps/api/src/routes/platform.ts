@@ -33,7 +33,7 @@ export function platformRoutes(deps: PlatformRoutesDeps) {
   const routes = new Hono()
 
   routes.get('/platform', async (c) => {
-    if (deps.readPlatform === undefined) return fail(c, 'INTERNAL', 'внутрішня помилка')
+    if (deps.readPlatform === undefined) return fail(c, 'INTERNAL', 'internal error')
 
     let state: Awaited<ReturnType<PlatformReader>>
     try {
@@ -41,8 +41,12 @@ export function platformRoutes(deps: PlatformRoutesDeps) {
     } catch (error) {
       if (error instanceof ChainStateError) {
         return error.reason === 'unavailable'
-          ? fail(c, 'UPSTREAM_UNAVAILABLE', 'мережа зараз не відповідає — спробуйте пізніше')
-          : fail(c, 'INTERNAL', 'платформу ще не розгорнуто в цій мережі')
+          ? fail(
+              c,
+              'UPSTREAM_UNAVAILABLE',
+              'the network is not responding right now — try again later',
+            )
+          : fail(c, 'INTERNAL', 'the platform is not deployed on this network yet')
       }
       throw error
     }

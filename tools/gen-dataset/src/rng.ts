@@ -11,7 +11,7 @@ export class Rng {
 
   constructor(seed: number) {
     if (!Number.isInteger(seed) || seed < 0) {
-      throw new RangeError('сід має бути невід’ємним цілим')
+      throw new RangeError('the seed must be a non-negative integer')
     }
     this.state = seed >>> 0
   }
