@@ -209,3 +209,7 @@ above are done. Consent enforcement, multi-owner settlement and withdrawals,
 confidential amounts and journal export are the next milestones, in that
 order. Product truth lives in the spec; this file only says what is
 measured.
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
