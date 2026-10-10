@@ -24,7 +24,7 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { HAS_PRIVY, LOGIN_METHODS, PRIVY_APP_ID } from '@/lib/privy'
+import { HAS_PRIVY, LOGIN_METHODS, PRIVY_APP_ID, signInMethodOf } from '@/lib/privy'
 import { RPC_URL, RPC_WS_URL, SOLANA_CHAIN } from '@/lib/rpc'
 import { MOCK_SESSION, type Role } from '@/mockData'
 
@@ -102,7 +102,7 @@ const useSession = (): Session => {
  * гаманцем ми показали б власнику чужу адресу як його ончейн-ідентичність.
  */
 const PrivySession = ({ children }: { children: ReactNode }) => {
-  const { ready, authenticated, getAccessToken } = usePrivy()
+  const { ready, authenticated, user, getAccessToken } = usePrivy()
   const { login } = useLogin()
   const { logout } = useLogout()
   const { wallets } = useSolanaWallets()
@@ -147,7 +147,8 @@ const PrivySession = ({ children }: { children: ReactNode }) => {
     () => ({
       ready,
       signedIn: authenticated,
-      method,
+      // The method clicked in this tab, else the restored session's own.
+      method: method ?? (authenticated ? signInMethodOf(user) : null),
       address: wallet?.address ?? null,
       signIn,
       signOut,
@@ -184,6 +185,7 @@ const PrivySession = ({ children }: { children: ReactNode }) => {
     [
       ready,
       authenticated,
+      user,
       method,
       wallet,
       signIn,

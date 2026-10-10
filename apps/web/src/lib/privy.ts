@@ -28,3 +28,17 @@ export const HAS_PRIVY: boolean = PRIVY_APP_ID !== null
  * цього не отримує нічого: після входу обидва шляхи не відрізняються нічим.
  */
 export const LOGIN_METHODS = ['wallet', 'email'] as const
+
+/**
+ * How a restored session signed in. `login()` in this tab knows the method it
+ * was asked for; a session Privy restores after a reload does not, and the
+ * header would read "signed in ·" with nothing after it. Email sign-in links an
+ * email account to the user, and the wallet path links none — so the account
+ * answers the question. `null` while there is no user.
+ */
+export const signInMethodOf = (
+  user: { email?: unknown } | null | undefined,
+): (typeof LOGIN_METHODS)[number] | null => {
+  if (user === null || user === undefined) return null
+  return user.email === undefined || user.email === null ? 'wallet' : 'email'
+}
