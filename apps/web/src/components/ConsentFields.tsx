@@ -72,6 +72,26 @@ export function draftToTerms(draft: ConsentDraft): ConsentTerms {
   }
 }
 
+/**
+ * What the summary under the form says (`T078`).
+ *
+ * A draft that misses a part is not a consent yet, and the plain-language
+ * sentence cannot be built from it truthfully: with nothing ticked it read
+ * "Any no one buyer may run no one computations…", and an empty date read
+ * "with no expiry" though the owner had chosen nothing of the kind. Until every
+ * part is there, the summary names what is missing, in the form's order.
+ */
+export function consentDraftSentence(draft: ConsentDraft): string {
+  const missing: string[] = []
+  if (draft.allowedUses.length === 0) missing.push('an allowed use type')
+  if (draft.buyerCategories.length === 0) missing.push('a buyer category')
+  if (!draft.noExpiry && draft.expiresAt === '') missing.push('an expiry date or “no expiry”')
+  const last = missing.pop()
+  if (last === undefined) return consentSentence(draftToTerms(draft))
+  const parts = missing.length === 0 ? last : `${missing.join(', ')} and ${last}`
+  return `Not a consent yet: pick ${parts} to see what it allows.`
+}
+
 /** The body of `POST /datasets/:id/consent`: names, expiry at the end of the chosen day. */
 export function draftToRequest(draft: ConsentDraft): SetConsentRequest {
   return {
@@ -201,7 +221,7 @@ export const ConsentFields = ({
       <FieldError>{errors?.expiresAt}</FieldError>
 
       <p className="mt-5 rounded border border-border bg-surface-sunken/60 p-3 text-[13.5px] leading-6">
-        {consentSentence(draftToTerms(draft))}
+        {consentDraftSentence(draft)}
       </p>
     </>
   )

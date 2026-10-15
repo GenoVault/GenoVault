@@ -137,6 +137,10 @@ export const consentSentence = (consent: ConsentTerms | null): string => {
   if (!consent) return 'No consent has been set, so this dataset cannot enter any run.'
   // The chain view carries no revocation date, so the sentence names none.
   if (consent.revoked) return 'Consent was revoked. No run can include this dataset.'
+  // The program refuses such a consent, so none comes from the chain; the
+  // guard keeps "Any no one buyer…" off the screen if one ever does.
+  if (consent.allowedUses.length === 0 || consent.buyerCategories.length === 0)
+    return 'This consent allows no run, so this dataset cannot enter one.'
   const buyers = joinNames(
     consent.buyerCategories.map((c) => BUYER_CATEGORY_LABEL[c].toLowerCase()),
   )

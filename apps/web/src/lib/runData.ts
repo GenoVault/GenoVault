@@ -302,12 +302,40 @@ export function useQuote(
 }
 
 /**
+ * How often an open run page re-reads the run (`T078`).
+ *
+ * One `GET /runs/:buyer/:nonce` is one account read on the chain. A batch
+ * folds in about five seconds on the demo cluster, so three seconds moves the
+ * counter batch by batch without reading the same state many times over.
+ */
+export const RUN_POLL_MS = 3_000
+
+/**
+ * Whether a run can still change on the chain.
+ *
+ * `completed` already means every owner is paid and the rest returned
+ * (`Run::complete` sets `refunded`). A `failed` run still waits for its
+ * refund, which is a separate transaction, so the page keeps watching until it
+ * lands. A `rejected` run never moves again.
+ */
+export function runIsSettled(run: RunView): boolean {
+  if (run.status === 'completed' || run.status === 'rejected') return true
+  return run.status === 'failed' && run.refunded
+}
+
+/**
  * Стан прогону.
  *
- * `refresh` — руками, без інтервалу. Прогін на 10 000 записів іде хвилинами
- * (`SC-003`), і опитування щосекунди дало б сотні читань ланцюга заради
- * незміненого статусу. Автоматичне оновлення з'явиться тоді, коли буде що
- * оновлювати, — після `T030`.
+ * Until `T078` it was read once and `refresh` was the only way forward — and
+ * nothing on the page called it, so a running run stayed "Running · folded 0"
+ * until F5. Now an unsettled run is re-read every `RUN_POLL_MS`, while the tab
+ * is visible; a hidden tab reads once when it comes back.
+ *
+ * A failed poll keeps the run already on screen and shows the error next to
+ * it: a network hiccup on the third poll must not blank a page that was
+ * right a moment ago. Polling only runs while there is a run on screen, so a
+ * first read that fails (a wrong link, a run that does not exist) stops there
+ * and waits for `refresh`, instead of asking the chain every three seconds.
  */
 export function useRunView(
   buyer: string | null,
@@ -321,14 +349,14 @@ export function useRunView(
   })
 
   /**
-   * Читання винесене з ефекту, щоб `refresh` кликало рівно те саме.
+   * The read lives outside the effects so `refresh` and polling call exactly the same thing.
    *
-   * Лічильник-тригер у списку залежностей ефекту працював би так само, але
-   * читався б як «оновити, коли зміниться число», а насправді означає «оновити
-   * зараз». Одна функція на два виклики не лишає місця для цієї різниці.
+   * `keep` — a background read: a failure leaves the run on screen. The first
+   * read of a run has nothing worth keeping, and an error from it replaces
+   * whatever the previous run left.
    */
   const load = useCallback(
-    (signal?: AbortSignal) => {
+    async (signal?: AbortSignal, keep = false): Promise<void> => {
       if (!LIVE_DATA) {
         // У моці «прогін» обирається статусом із URL: інших прогонів немає.
         const run = RUNS[(nonce ?? 'completed') as keyof typeof RUNS] ?? RUNS.completed
@@ -340,29 +368,70 @@ export function useRunView(
         return
       }
 
-      setState((prev) => ({ ...prev, loading: true }))
-      getRun(buyer, nonce, signal === undefined ? {} : { signal })
-        .then((run) => {
-          if (signal?.aborted !== true) {
-            setState({ data: run, loading: false, error: null, live: true })
-          }
-        })
-        .catch((error: unknown) => {
-          if (signal?.aborted !== true) {
-            setState({ data: null, loading: false, error: toApiError(error), live: true })
-          }
-        })
+      if (!keep) setState((prev) => ({ ...prev, loading: true }))
+      try {
+        const run = await getRun(buyer, nonce, signal === undefined ? {} : { signal })
+        if (signal?.aborted !== true) {
+          setState({ data: run, loading: false, error: null, live: true })
+        }
+      } catch (error: unknown) {
+        if (signal?.aborted !== true) {
+          setState((prev) => ({
+            data: keep ? prev.data : null,
+            loading: false,
+            error: toApiError(error),
+            live: true,
+          }))
+        }
+      }
     },
     [buyer, nonce],
   )
 
   useEffect(() => {
     const controller = new AbortController()
-    load(controller.signal)
+    void load(controller.signal)
     return () => controller.abort()
   }, [load])
 
-  return { ...state, refresh: useCallback(() => load(), [load]) }
+  const polling = state.live && state.data !== null && !runIsSettled(state.data)
+
+  useEffect(() => {
+    if (!polling) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let reading = false
+
+    // A chain of timeouts, not an interval: a read slower than the period
+    // would otherwise start the next one while it is still in flight.
+    const tick = () => {
+      timer = undefined
+      if (document.visibilityState === 'hidden') return
+      reading = true
+      void load(controller.signal, true).then(() => {
+        reading = false
+        if (!controller.signal.aborted) timer = setTimeout(tick, RUN_POLL_MS)
+      })
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && timer === undefined && !reading) tick()
+    }
+
+    timer = setTimeout(tick, RUN_POLL_MS)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      controller.abort()
+      if (timer !== undefined) clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [polling, load])
+
+  return {
+    ...state,
+    refresh: useCallback(() => {
+      void load()
+    }, [load]),
+  }
 }
 
 /**
