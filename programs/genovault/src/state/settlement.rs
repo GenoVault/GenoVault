@@ -15,45 +15,64 @@ use crate::state::{Run, RunDataset, BPS_DENOMINATOR, RECORDS_PER_PRICE_UNIT};
 /// дотягнув до `MIN_CONTRIBUTION`, оголошує нуль, але його записи вже в
 /// когорті й відкотити їх нічим.
 ///
-/// # Продуктове рішення 2026-09-07: середня ціна пулу
+/// # The surplus goes to the datasets that stayed silent (`T043`)
 ///
-/// За надлишок — записи в когорті без оголошеного внеску — покупець платить
-/// **середньою ціною пулу**, а гроші дістаються власникам, які поріг пройшли,
-/// пропорційно тому, що вони вже заробили. Це те саме, що сказати: внесок
-/// кожного платного власника масштабується на `records_included / Σ внесків`.
+/// Records in the cohort without a declared contribution — the surplus,
+/// `R − C` — are still paid for by the buyer **at the pool average**
+/// (decision 2026-09-07): the bill is every declared contribution scaled by
+/// `records_included / Σ contributions`. What changed on 2026-10-18 is who
+/// receives it.
 ///
-/// Альтернативу («платить лише за оголошені внески») відкинуто в `T019`: пул
-/// із 50 датасетів по 9 записів віддав би покупцю 450 записів безкоштовно, і
-/// поріг приватності перетворився б на спосіб не платити. Віддати надлишок
-/// платформі — гірше: у платформи з'явився б мотив, щоб датасети до порога не
-/// дотягували, а `fee_bps` перестав би бути повною відповіддю на питання
-/// «скільки бере платформа» (`FR-019`).
+/// A dataset that cleared the floor is paid exactly its own price for its own
+/// records, `ceil(price × records / 1000)` — `FR-018b` word for word, no
+/// scaling. The rest of the bill is the price of the surplus, and the surplus
+/// came from the datasets under the floor, so it is split **equally** between
+/// the datasets with `below_floor`. Before, it went to the owners who had
+/// cleared the floor, and a dataset of one person (`FR-009`) could never earn
+/// anything in a pool with a clinic in it: one record is always under a floor
+/// of ten.
 ///
-/// # Стеля
+/// Equally, not by contribution, for the same reason as in the silent pool:
+/// the circuit reveals one bit per dataset, and splitting by anything finer
+/// would reveal more. The silent pool (`C = 0`) is the same rule with nobody
+/// above the floor; it only needs its own price, because there is no pool
+/// average to take — see `silent_pool_share`.
 ///
-/// Масштаб `R / C` може вивести суму за межу депозиту: коли дорогий датасет
-/// дав усі свої записи, а дешевий придушено, середня ціна пулу виявляється
-/// вищою за ту, з якої рахувалась верхня оцінка. Тому є друга гілка: коли
-/// повна ціна не вміщається в депозит, депозит ділиться між власниками
-/// **рівно** — пропорційно вже заробленому. Покупець ніколи не платить більше,
-/// ніж заблокував, і це не «захист», а умова, під якою він підписував.
+/// Named costs of this rule:
+/// - a dataset that gave no record under the filter is paid the same as one
+///   that gave nine: `below_floor` does not tell them apart;
+/// - a buyer can add datasets of their own under the floor and take a part
+///   of the surplus back. They pay for those records at the pool average
+///   like for any others, so what they win is a part of what the honest small
+///   owners in the same pool would have got.
 ///
-/// # Пул, у якому мовчать усі
+/// The alternative of paying only for declared contributions was rejected in
+/// `T019`: a pool of 50 datasets of 9 records would hand the buyer 450 records
+/// for free. Giving the surplus to the platform is worse: the platform would
+/// gain a motive for datasets to stay under the floor, and `fee_bps` would
+/// stop being the full answer to "how much does the platform take" (`FR-019`).
 ///
-/// Третя гілка (`T027a`): коли `Σ внесків = 0`, масштабу нема на що множити, і
-/// перші дві віддали б нуль усім при розкритій когорті. Правило й ціна цього
-/// рішення — у `silent_pool_share`.
+/// # Ceiling
 ///
-/// Усі три гілки — чисті функції від `Run`. Це навмисно: нарахування йдуть
-/// окремими транзакціями по одному датасету, і кожна мусить порахувати ту саму
-/// частку, не питаючи, які інші вже пройшли.
+/// The bill never exceeds the escrow. The pool average can come out above the
+/// price the upper bound was computed from — an expensive dataset gave all its
+/// records, a cheap one was suppressed — and then the surplus gets what is
+/// left of the escrow after the owners above the floor are paid. Their own
+/// price always fits: a contribution is never larger than the claimed volume
+/// the escrow was computed from. If it ever does not fit, the escrow is split
+/// between them in proportion to what they earned, and the surplus gets
+/// nothing — the buyer never pays more than they locked.
+///
+/// Every branch is a pure function of `Run`. This is deliberate: payouts go
+/// out in separate transactions, one dataset each, and each must compute the
+/// same share without asking which others have already gone through.
 
-/// Скільки покупець платить за внесок датасету під індексом `index`.
+/// How much the buyer pays for the dataset at `index`.
 ///
-/// Заокруглення в першій гілці — вгору, як і в `dataset_cost`: інакше внесок
-/// дрібнішого за тисячу записів датасету коштував би нуль, а `FR-009` прямо
-/// каже, що окрема особа реєструє датасет на одну людину. У другій гілці —
-/// вниз, бо там ділиться скінченна сума й перевищити її не можна.
+/// Own price is rounded up, as in `dataset_cost`: otherwise a contribution of
+/// fewer than a thousand records would cost nothing. Shares of a finite sum —
+/// the surplus and the ceiling — are rounded down, so they cannot exceed it;
+/// the remainder goes back to the buyer.
 pub fn gross_for(run: &Run, index: usize) -> Result<u64> {
     let entry = run
         .datasets
@@ -66,39 +85,65 @@ pub fn gross_for(run: &Run, index: usize) -> Result<u64> {
         return silent_pool_share(run, entry, records);
     }
 
-    let base = (entry.price_per_1k as u128) * (entry.records_included as u128);
-    if base == 0 {
-        return Ok(0);
-    }
-
-    let unit = RECORDS_PER_PRICE_UNIT as u128;
-    let raw = ceil_div(base * records, contributed * unit);
-
-    let total: u128 = run
-        .datasets
-        .iter()
-        .map(|other| {
-            let other_base = (other.price_per_1k as u128) * (other.records_included as u128);
-            ceil_div(other_base * records, contributed * unit)
-        })
-        .sum();
-
     let escrow = run.escrow_amount as u128;
-    let amount = if total <= escrow {
-        raw
-    } else {
-        // Повна ціна не вміщається в депозит: ділимо те, що є, пропорційно
-        // заробленому. Сума часток тут не перевищує депозит за побудовою —
-        // кожна заокруглена вниз, а їхня точна сума дорівнює йому.
+    let earned: u128 = run.datasets.iter().map(own_price).sum();
+
+    let amount = if earned > escrow {
+        // Unreachable while contributions do not exceed claimed volumes, and
+        // guarded rather than assumed: split what there is in proportion to
+        // what was earned. Each share is rounded down, so their sum fits.
+        let base = (entry.price_per_1k as u128) * (entry.records_included as u128);
         let total_base: u128 = run
             .datasets
             .iter()
             .map(|other| (other.price_per_1k as u128) * (other.records_included as u128))
             .sum();
-        escrow * base / total_base
+        if base == 0 {
+            0
+        } else {
+            escrow * base / total_base
+        }
+    } else if !entry.below_floor {
+        own_price(entry)
+    } else {
+        let bill = pool_bill(run, records, contributed).min(escrow);
+        surplus_share(run, bill.saturating_sub(earned))
     };
 
     u64::try_from(amount).map_err(|_| GenoVaultError::RunSettlementOverflow.into())
+}
+
+/// What a dataset above the floor is paid: its price for its own records.
+fn own_price(entry: &RunDataset) -> u128 {
+    let base = (entry.price_per_1k as u128) * (entry.records_included as u128);
+    ceil_div(base, RECORDS_PER_PRICE_UNIT as u128)
+}
+
+/// The buyer's bill before the ceiling: every contribution at the pool
+/// average, that is, scaled by `records / contributed`.
+fn pool_bill(run: &Run, records: u128, contributed: u128) -> u128 {
+    let unit = RECORDS_PER_PRICE_UNIT as u128;
+    run.datasets
+        .iter()
+        .map(|other| {
+            let base = (other.price_per_1k as u128) * (other.records_included as u128);
+            ceil_div(base * records, contributed * unit)
+        })
+        .sum()
+}
+
+/// One equal share of the surplus. Zero when nobody is under the floor —
+/// then there is no surplus either, since `records == contributed`.
+fn surplus_share(run: &Run, surplus: u128) -> u128 {
+    let recipients = run
+        .datasets
+        .iter()
+        .filter(|other| other.below_floor)
+        .count() as u128;
+    if recipients == 0 {
+        return 0;
+    }
+    surplus / recipients
 }
 
 /// Пул, у якому мовчать усі (`T027a`, продуктове рішення 2026-09-07).
@@ -381,17 +426,92 @@ mod tests {
 
     #[test]
     fn suppressed_records_are_paid_for_at_the_pool_average() {
-        // Другий датасет дав 9 записів — під порогом, оголошено нуль. Але
-        // записи в когорті, і покупець за них платить: R = 1009, C = 1000.
+        // The second dataset gave 9 records — under the floor, declared zero.
+        // The records are in the cohort and the buyer pays for them:
+        // R = 1009, C = 1000, the bill is 100 000 × 1 009 / 1 000 = 100 900.
         let r = run(1_000_000, 1_009, &[(100_000, 1_000), (100_000, 0)]);
 
-        // 100 000 × 1 000 × 1 009 / (1 000 × 1 000) = 100 900.
-        assert_eq!(gross_for(&r, 0).unwrap(), 100_900);
+        assert_eq!(total(&r), 100_900, "the buyer pays for all 1 009 records");
+        assert_eq!(
+            gross_for(&r, 0).unwrap(),
+            100_000,
+            "above the floor: its own price for its own records, not scaled"
+        );
         assert_eq!(
             gross_for(&r, 1).unwrap(),
-            0,
-            "власник, який не дотягнув до порога, не отримує нічого — `T019`"
+            900,
+            "the surplus goes to the dataset it came from — `T043`"
         );
+    }
+
+    #[test]
+    fn a_dataset_of_one_person_is_paid_in_a_pool_with_a_clinic() {
+        // `FR-009`: one record is always under a floor of ten. Before `T043`
+        // its owner got nothing in any pool where someone cleared the floor.
+        // 2 000 × 1 000 × 1 001 / 1 000 000 = 2 002, of which 2 000 is the
+        // clinic's own price.
+        let r = run(1_000_000, 1_001, &[(2_000, 1_000), (2_000, 0)]);
+
+        assert_eq!(gross_for(&r, 0).unwrap(), 2_000);
+        assert_eq!(gross_for(&r, 1).unwrap(), 2);
+        assert_eq!(total(&r), 2_002);
+    }
+
+    #[test]
+    fn the_surplus_is_split_equally_between_the_silent() {
+        // Two datasets under the floor gave 1 and 9 records, but only the sum
+        // is known: 10 surplus records at 1 000 per thousand is 10, five each.
+        let r = run(1_000_000, 1_010, &[(1_000, 1_000), (1_000, 0), (1_000, 0)]);
+
+        assert_eq!(gross_for(&r, 0).unwrap(), 1_000);
+        assert_eq!(gross_for(&r, 1).unwrap(), 5);
+        assert_eq!(gross_for(&r, 2).unwrap(), 5);
+    }
+
+    #[test]
+    fn the_remainder_of_the_surplus_goes_back_to_the_buyer() {
+        // 10 on three is 3 each and 1 left over. The order of the pool is the
+        // buyer's, so it does not decide who gets the extra unit.
+        let r = run(1_000_000, 1_010, &[(1_000, 1_000), (1_000, 0), (1_000, 0), (1_000, 0)]);
+
+        assert_eq!(gross_for(&r, 1).unwrap(), 3);
+        assert_eq!(total(&r), 1_009);
+    }
+
+    #[test]
+    fn with_no_surplus_the_silent_get_nothing() {
+        // R = C: the dataset under the floor gave no record under the filter —
+        // there is nothing to pay it for, and nothing was taken from the buyer.
+        let r = run(1_000_000, 1_000, &[(1_000, 1_000), (1_000, 0)]);
+
+        assert_eq!(gross_for(&r, 0).unwrap(), 1_000);
+        assert_eq!(gross_for(&r, 1).unwrap(), 0);
+    }
+
+    #[test]
+    fn the_ceiling_cuts_the_surplus_not_the_owners_above_the_floor() {
+        // The expensive dataset gave everything, the cheap one was suppressed:
+        // the pool average is above the price the escrow was computed from.
+        // The owner above the floor still gets exactly its own price; the
+        // surplus gets what is left of the escrow.
+        let r = run(1_000_001, 1_009, &[(1_000_000, 1_000), (1, 0)]);
+
+        assert_eq!(gross_for(&r, 0).unwrap(), 1_000_000);
+        assert_eq!(gross_for(&r, 1).unwrap(), 1);
+        assert_eq!(total(&r), r.escrow_amount);
+    }
+
+    #[test]
+    fn a_contribution_above_the_escrow_splits_the_escrow() {
+        // Unreachable while contributions do not exceed claimed volumes, and
+        // guarded rather than assumed: the escrow is split in proportion to
+        // what was earned, and the surplus gets nothing.
+        let r = run(150, 2_010, &[(1_000, 1_000), (1_000, 1_000), (1_000, 0)]);
+
+        assert_eq!(gross_for(&r, 0).unwrap(), 75);
+        assert_eq!(gross_for(&r, 1).unwrap(), 75);
+        assert_eq!(gross_for(&r, 2).unwrap(), 0);
+        assert_eq!(total(&r), 150);
     }
 
     #[test]
@@ -503,6 +623,7 @@ mod tests {
 
         assert_eq!(owners + fees + refund, r.escrow_amount);
         assert!(gross_total > 200_000, "надлишок за придушені записи оплачено");
+        assert_eq!(gross_for(&r, 2).unwrap(), 668, "and it went to the silent dataset");
     }
 
     #[test]

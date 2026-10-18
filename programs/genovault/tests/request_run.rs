@@ -390,6 +390,93 @@ fn a_dataset_smaller_than_a_thousand_records_is_not_free() {
     assert_eq!(run.escrow_amount, 9, "9 записів за ціною 1000 — це 9, не 0");
 }
 
+#[test]
+fn a_dataset_of_one_person_goes_the_same_path_as_a_clinic() {
+    // `FR-009`, `T043`: an individual registers a dataset of one record, sets
+    // consent, enters a pool next to a clinic — and a revocation stops the
+    // next order exactly as it does for the clinic. No branch of the program
+    // knows how many people a dataset holds.
+    let f = fixture_with(&["exome-alpha"], &[]);
+    let person = Pubkey::new_unique();
+    let dataset_id = "my-genome";
+    let dataset = dataset_pda(&person, dataset_id);
+
+    let mut accounts = f.accounts.clone();
+    accounts.push((person, funded_wallet()));
+    accounts.push(empty(dataset));
+    accounts.push(empty(consent_pda(&dataset, 1)));
+
+    let register = Instruction {
+        program_id: genovault::ID,
+        accounts: genovault::accounts::RegisterDataset {
+            owner: person,
+            dataset,
+            system_program: system_program_id(),
+        }
+        .to_account_metas(None),
+        data: genovault::instruction::RegisterDataset {
+            args: RegisterDatasetArgs {
+                dataset_id: dataset_id.to_string(),
+                content_hash: [3u8; 32],
+                record_count_claimed: 1,
+                price_per_1k: PRICE_PER_1K,
+            },
+        }
+        .data(),
+    };
+    let result = f.mollusk.process_instruction(&register, &accounts);
+    assert!(is_success(&result), "{:?}", result.program_result);
+    accounts = result.resulting_accounts;
+
+    let registered: Dataset = read(&accounts, &dataset);
+    assert_eq!(registered.owner, person);
+    assert_eq!(registered.record_count_claimed, 1);
+
+    let result = f.mollusk.process_instruction(
+        &set_consent_ix(person, dataset, None, 1, default_consent()),
+        &accounts,
+    );
+    assert!(is_success(&result), "{:?}", result.program_result);
+    accounts = result.resulting_accounts;
+
+    let pool = f.pool(&[f.datasets[0], dataset]);
+    let ordered = f
+        .mollusk
+        .process_instruction(&f.request_ix(pool.clone(), args()), &accounts);
+    assert!(is_success(&ordered), "{:?}", ordered.program_result);
+
+    let run: Run = read(&ordered.resulting_accounts, &run_pda(&f.buyer, NONCE));
+    assert_eq!(run.datasets.len(), 2);
+    assert_eq!(run.datasets[1].dataset, dataset);
+    assert_eq!(
+        run.escrow_amount,
+        COST + PRICE_PER_1K / 1_000,
+        "one record is priced like any other record, rounded up"
+    );
+
+    let revoke = Instruction {
+        program_id: genovault::ID,
+        accounts: genovault::accounts::RevokeConsent {
+            owner: person,
+            dataset,
+            consent: consent_pda(&dataset, 1),
+        }
+        .to_account_metas(None),
+        data: genovault::instruction::RevokeConsent {}.data(),
+    };
+    let revoked = f.mollusk.process_instruction(&revoke, &accounts);
+    assert!(is_success(&revoked), "{:?}", revoked.program_result);
+
+    let refused = f
+        .mollusk
+        .process_instruction(&f.request_ix(pool, args()), &revoked.resulting_accounts);
+    assert_eq!(
+        custom_error_code(&refused),
+        Some(expected(GenoVaultError::ConsentIsRevoked)),
+        "the person's revocation stops the pool, as a clinic's does"
+    );
+}
+
 // ── Згода як умова ───────────────────────────────────────────────────────────
 
 #[test]

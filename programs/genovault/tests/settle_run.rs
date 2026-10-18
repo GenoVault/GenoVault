@@ -320,27 +320,32 @@ fn the_sums_add_up_to_the_escrow() {
 }
 
 #[test]
-fn a_suppressed_dataset_is_paid_for_by_the_buyer_but_not_to_its_owner() {
-    // Другий датасет дав 9 записів — під порогом, внесок оголошено нулем. Його
-    // записи в когорті, і покупець за них платить середньою ціною пулу; гроші
-    // дістаються власнику, який поріг пройшов (`T019`).
+fn a_suppressed_dataset_is_paid_for_by_the_buyer_and_to_its_owner() {
+    // The second dataset gave 9 records — under the floor, contribution
+    // declared zero. Its records are in the cohort, and the buyer pays for
+    // them at the pool average; since `T043` that money goes to the dataset
+    // under the floor, not to the owner who cleared it.
     let mut f = Fixture::revealed(&[(PRICE_A, RECORDS_A), (PRICE_B, 0)], RECORDS_A + 9);
 
     f.settle(0);
     f.settle(1);
 
-    let gross_a = 25_225_000u64;
+    let surplus = 225_000u64;
     assert_eq!(
         f.run_state().settled_amount,
-        gross_a,
-        "покупець платить за всі 1 009 записів, а не за 1 000"
+        GROSS_A + surplus,
+        "the buyer pays for all 1 009 records, not for 1 000"
+    );
+    assert_eq!(
+        f.balance(&f.owners[0]).accrued,
+        GROSS_A - FEE_A,
+        "above the floor: exactly its own price"
     );
     assert_eq!(
         f.balance(&f.owners[1]).accrued,
-        0,
-        "власник, який не дотягнув до порога, не отримує нічого"
+        surplus - surplus * FEE_BPS as u64 / 10_000,
+        "under the floor: the surplus, minus the fee like any payout"
     );
-    assert!(f.balance(&f.owners[0]).accrued > GROSS_A - FEE_A);
 }
 
 #[test]

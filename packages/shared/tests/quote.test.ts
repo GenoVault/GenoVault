@@ -136,20 +136,23 @@ describe('рахунок ніколи не перевищує межу', () => {
   })
 
   it('коли дешевий датасет мовчить поруч із дорогим', () => {
-    // Саме цей випадок ламає «середню ціну пулу»: за середньою залишок
-    // мовчазного датасету коштував би 9 одиниць проти 0,009 у межі. Межа
-    // тримається — але стелею депозиту, і тест це називає: дорогий власник
-    // отримує 1 000 001 замість 1 009 000, на які тягне правило розподілу.
+    // This is the case that breaks the pool average: at the average the silent
+    // dataset's surplus would cost 9 000 units against 1 in the bound. The
+    // bound holds — by the escrow ceiling, and the test names it: since `T043`
+    // the expensive owner gets exactly its own 1 000 000, and the silent one
+    // gets the 1 unit left in the escrow instead of the 9 000 the rule asks.
     const pool = [
       { price: 1n, claimed: 9n, included: 9n },
       { price: 1_000_000n, claimed: 1_000n, included: 1_000n },
     ]
     const settlement = charge(pool)
 
-    expect(settlement.grossTotal).toBeLessThanOrEqual(bound(pool))
+    expect(settlement.grossTotal).toBe(bound(pool))
     expect(settlement.escrowCapped).toBe(true)
-    expect(settlement.lines[1]?.gross).toBe(bound(pool))
-    expect(settlement.lines[1]?.grossUncapped).toBe(1_009_000n)
+    expect(settlement.lines[1]?.gross).toBe(1_000_000n)
+    expect(settlement.lines[1]?.escrowCapped).toBe(false)
+    expect(settlement.lines[0]?.gross).toBe(1n)
+    expect(settlement.lines[0]?.grossUncapped).toBe(9_000n)
   })
 
   it('коли мовчать кілька датасетів із різними цінами', () => {

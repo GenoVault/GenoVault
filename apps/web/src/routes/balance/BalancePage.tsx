@@ -72,12 +72,25 @@ const PayoutTable = ({ rows }: { rows: PayoutRow[] }) => (
                 </p>
               </TableCell>
               <TableCell className="text-right">
-                <span className="num text-[13px]">
-                  {formatInt(row.recordsIncluded)} of {formatInt(row.cohortSize)}
-                </span>
-                <p className="text-[12px] text-muted-foreground">
-                  {((row.recordsIncluded / row.cohortSize) * 100).toFixed(2)}% of the cohort
-                </p>
+                {row.belowContributionFloor ? (
+                  // Under the floor the chain holds zero, not the real count:
+                  // naming it would answer a question about a specific person.
+                  <>
+                    <span className="num text-[13px]">
+                      under {LIMITS.MIN_CONTRIBUTION} of {formatInt(row.cohortSize)}
+                    </span>
+                    <p className="text-[12px] text-muted-foreground">not named</p>
+                  </>
+                ) : (
+                  <>
+                    <span className="num text-[13px]">
+                      {formatInt(row.recordsIncluded)} of {formatInt(row.cohortSize)}
+                    </span>
+                    <p className="text-[12px] text-muted-foreground">
+                      {((row.recordsIncluded / row.cohortSize) * 100).toFixed(2)}% of the cohort
+                    </p>
+                  </>
+                )}
               </TableCell>
               <TableCell className="text-right">
                 <Amount value={row.pricePer1k} />
@@ -111,15 +124,17 @@ const PayoutTable = ({ rows }: { rows: PayoutRow[] }) => (
                     <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <div className="text-[12.5px] leading-6">
                       <p>
-                        This dataset contributed <span className="num">{row.recordsIncluded}</span>{' '}
-                        records — fewer than the floor of{' '}
-                        <span className="num">{LIMITS.MIN_CONTRIBUTION}</span>, so the payout is
-                        declared zero. Otherwise that very number becomes an answer about a specific
+                        This dataset gave fewer records than the floor of{' '}
+                        <span className="num">{LIMITS.MIN_CONTRIBUTION}</span>, so its contribution
+                        is not named. Otherwise that very number becomes an answer about a specific
                         person.
                       </p>
                       <p className="text-muted-foreground">
-                        Those records did stay in the buyer's report and the buyer did pay for them.
-                        That money went to the other owners in the pool.
+                        Its records stayed in the buyer's report, and the buyer paid for every
+                        record in the cohort. What was paid for the unnamed ones is split equally
+                        between the datasets under the floor — this is your share. A dataset that
+                        gave no record under the filter gets the same share: telling the two apart
+                        would name the number.
                       </p>
                     </div>
                   </div>
@@ -134,13 +149,14 @@ const PayoutTable = ({ rows }: { rows: PayoutRow[] }) => (
                     <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                     <div className="text-[12.5px] leading-6">
                       <p>
-                        The payout by the distribution rule did not fit inside the locked escrow, so
+                        Your share of the unnamed records did not fit inside the locked escrow, so
                         you received <span className="num">{formatAmount(row.paidGross)}</span>{' '}
                         instead of <span className="num">{formatAmount(row.expectedGross)}</span>.
                       </p>
                       <p className="text-muted-foreground">
                         The escrow was computed at a lower price than the pool's average turned out
-                        to be. This is a named boundary of the escrow, not a bug.
+                        to be. Owners above the floor are always paid their own price, so the
+                        ceiling cuts only this share. A named boundary of the escrow, not a bug.
                       </p>
                     </div>
                   </div>

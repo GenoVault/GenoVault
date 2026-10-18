@@ -60,9 +60,83 @@ describe('нарахування за внесок', () => {
       [100_000n, 0],
     ])
 
-    // 100 000 × 1 000 × 1 009 / (1 000 × 1 000) = 100 900.
-    expect(grossFor(r, 0)).toBe(100_900n)
+    // The bill is 100 000 × 1 009 / 1 000 = 100 900. Above the floor: its own
+    // price, not scaled; the surplus goes to the dataset it came from (`T043`).
+    expect(total(r)).toBe(100_900n)
+    expect(grossFor(r, 0)).toBe(100_000n)
+    expect(grossFor(r, 1)).toBe(900n)
+  })
+
+  it('pays a dataset of one person in a pool with a clinic — `FR-009`', () => {
+    // One record is always under a floor of ten. Before `T043` its owner got
+    // nothing in any pool where someone cleared the floor.
+    const r = run(1_000_000n, 1_001, [
+      [2_000n, 1_000],
+      [2_000n, 0],
+    ])
+
+    expect(grossFor(r, 0)).toBe(2_000n)
+    expect(grossFor(r, 1)).toBe(2n)
+    expect(total(r)).toBe(2_002n)
+  })
+
+  it('splits the surplus equally between the silent', () => {
+    const r = run(1_000_000n, 1_010, [
+      [1_000n, 1_000],
+      [1_000n, 0],
+      [1_000n, 0],
+    ])
+
+    expect(grossFor(r, 0)).toBe(1_000n)
+    expect(grossFor(r, 1)).toBe(5n)
+    expect(grossFor(r, 2)).toBe(5n)
+  })
+
+  it('returns the remainder of the surplus to the buyer', () => {
+    const r = run(1_000_000n, 1_010, [
+      [1_000n, 1_000],
+      [1_000n, 0],
+      [1_000n, 0],
+      [1_000n, 0],
+    ])
+
+    expect(grossFor(r, 1)).toBe(3n)
+    expect(total(r)).toBe(1_009n)
+  })
+
+  it('pays the silent nothing when there is no surplus', () => {
+    const r = run(1_000_000n, 1_000, [
+      [1_000n, 1_000],
+      [1_000n, 0],
+    ])
+
+    expect(grossFor(r, 0)).toBe(1_000n)
     expect(grossFor(r, 1)).toBe(0n)
+  })
+
+  it('lets the ceiling cut the surplus, not the owners above the floor', () => {
+    const r = run(1_000_001n, 1_009, [
+      [1_000_000n, 1_000],
+      [1n, 0],
+    ])
+
+    expect(grossFor(r, 0)).toBe(1_000_000n)
+    expect(grossFor(r, 1)).toBe(1n)
+    expect(total(r)).toBe(r.escrowAmount)
+  })
+
+  it('splits the escrow when contributions exceed it', () => {
+    // Unreachable while contributions do not exceed claimed volumes; guarded
+    // rather than assumed.
+    const r = run(150n, 2_010, [
+      [1_000n, 1_000],
+      [1_000n, 1_000],
+      [1_000n, 0],
+    ])
+
+    expect(grossFor(r, 0)).toBe(75n)
+    expect(grossFor(r, 1)).toBe(75n)
+    expect(grossFor(r, 2)).toBe(0n)
   })
 
   it('покупець ніколи не платить більше за депозит', () => {
@@ -166,10 +240,14 @@ describe('розподіл усього прогону', () => {
         [1n, 0],
       ]),
     )
-    const line = settlement.lines[0]
+    // Since `T043` the ceiling cuts the surplus, so it is the silent dataset's
+    // line that is capped; the owner above the floor gets its own price.
+    expect(settlement.lines[0]?.gross).toBe(100n)
+    expect(settlement.lines[0]?.escrowCapped).toBe(false)
 
-    expect(line?.gross).toBe(100n)
-    expect(line?.grossUncapped).toBe(109n)
+    const line = settlement.lines[1]
+    expect(line?.gross).toBe(0n)
+    expect(line?.grossUncapped).toBe(9n)
     expect(line?.escrowCapped).toBe(true)
     expect(settlement.escrowCapped).toBe(true)
     expect(settlement.escrowShortfall).toBe(9n)
@@ -186,7 +264,8 @@ describe('розподіл усього прогону', () => {
     )
 
     expect(settlement.lines[1]?.belowFloor).toBe(true)
-    expect(settlement.lines[1]?.net).toBe(0n)
+    // 900 of surplus minus 7 % of fee.
+    expect(settlement.lines[1]?.net).toBe(837n)
     expect(settlement.lines.map((line) => line.index)).toEqual([0, 1])
   })
 
@@ -266,6 +345,13 @@ describe('дзеркало формули', () => {
     // де ніхто не оголосив внеску, дорівнює нулю.
     expect(source).toContain('if contributed == 0 {')
     expect(source).toContain('return silent_pool_share(run, entry, records);')
+  })
+
+  it('owners above the floor are paid their own price, the surplus goes to the silent', () => {
+    expect(source).toContain('ceil_div(base, RECORDS_PER_PRICE_UNIT as u128)')
+    expect(source).toContain('} else if !entry.below_floor {')
+    expect(source).toContain('surplus_share(run, bill.saturating_sub(earned))')
+    expect(source).toContain('surplus / recipients')
   })
 
   it('рання відмова на нульовій ціні внеску лишається ранньою', () => {

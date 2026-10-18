@@ -26,21 +26,24 @@ import { RECORDS_PER_PRICE_UNIT } from './quote.ts'
  * програми), і текстом (регекс по `settlement.rs`: зміна формули там валить
  * тест тут).
  *
- * # Правило
+ * # Rule
  *
- * MPC повертає два числа: розмір когорти (`recordsIncluded` прогону, `R`) і
- * внесок кожного датасету окремо (`recordsIncluded` рядка, разом `C`). Вони не
- * зобов'язані збігатися: датасет, чий внесок не дотягнув до `MIN_CONTRIBUTION`,
- * оголошує нуль, але його записи вже в когорті. За цей надлишок покупець
- * платить середньою ціною пулу, а гроші дістаються власникам, які поріг
- * пройшли, — тобто внесок кожного платного власника масштабується на `R / C`
- * (продуктове рішення 2026-09-07, `T019` + `T026`).
+ * MPC returns two numbers: the cohort size (`recordsIncluded` of the run, `R`)
+ * and each dataset's own contribution (`recordsIncluded` of the row, `C` in
+ * total). They need not match: a dataset whose contribution did not reach
+ * `MIN_CONTRIBUTION` declares zero, but its records are already in the cohort.
+ * For that surplus the buyer pays at the pool average — every contribution
+ * scaled by `R / C` (decision 2026-09-07, `T019` + `T026`). A dataset above the
+ * floor is paid exactly its own price for its own records; the rest of the
+ * bill is split equally between the datasets under the floor, the ones the
+ * surplus came from (`T043`, 2026-10-18).
  *
- * Стеля — депозит. Коли `R / C` виводить повну ціну за заблоковане (дорогий
- * датасет дав усе, дешевий придушено), депозит ділиться пропорційно вже
- * заробленому. Покупець ніколи не платить більше, ніж заблокував, — і саме
- * стеля, а не арифметика, тримає `FR-015a` у пулах із дешевим мовчазним
- * датасетом поруч із дорогим гучним.
+ * The ceiling is the escrow. When the pool average comes out above the price
+ * the escrow was computed from (an expensive dataset gave everything, a cheap
+ * one was suppressed), the surplus gets what is left after the owners above
+ * the floor are paid. The buyer never pays more than they locked — and it is
+ * the ceiling, not the arithmetic, that keeps `FR-015a` in pools with a cheap
+ * silent dataset next to an expensive loud one.
  */
 
 const U64_MAX = 0xffff_ffff_ffff_ffffn
@@ -158,6 +161,39 @@ function silentShare(run: SettlementRun, entry: SettlementDataset, cap: boolean)
   return total / BigInt(recipients)
 }
 
+/** What a dataset above the floor is paid — mirror of `own_price`. */
+function ownPrice(entry: SettlementDataset): bigint {
+  return ceilDiv(entry.pricePer1k * BigInt(entry.recordsIncluded), RECORDS_PER_PRICE_UNIT)
+}
+
+/** Everything the owners above the floor earned at their own prices. */
+function earnedTotal(run: SettlementRun): bigint {
+  return run.datasets.reduce((sum, other) => sum + ownPrice(other), 0n)
+}
+
+/**
+ * The buyer's bill before the ceiling — mirror of `pool_bill`: every
+ * contribution at the pool average, that is, scaled by `R / C`.
+ */
+function poolBill(run: SettlementRun, records: bigint, contributed: bigint): bigint {
+  return run.datasets.reduce(
+    (sum, other) =>
+      sum +
+      ceilDiv(
+        other.pricePer1k * BigInt(other.recordsIncluded) * records,
+        contributed * RECORDS_PER_PRICE_UNIT,
+      ),
+    0n,
+  )
+}
+
+/** One equal share of the surplus — mirror of `surplus_share`. */
+function surplusShare(run: SettlementRun, surplus: bigint): bigint {
+  const recipients = run.datasets.filter((other) => other.belowFloor).length
+  if (recipients === 0) return 0n
+  return surplus / BigInt(recipients)
+}
+
 /** Повна ціна внеску за правилом розподілу, без стелі депозиту. */
 function uncappedFor(run: SettlementRun, index: number): bigint {
   const entry = run.datasets[index]
@@ -168,21 +204,24 @@ function uncappedFor(run: SettlementRun, index: number): bigint {
   const records = BigInt(run.recordsIncluded)
   const contributed = contributedRecords(run)
   if (contributed === 0n) return silentShare(run, entry, false)
+  if (!entry.belowFloor) return ownPrice(entry)
 
-  const base = entry.pricePer1k * BigInt(entry.recordsIncluded)
-  if (base === 0n) return 0n
-
-  return ceilDiv(base * records, contributed * RECORDS_PER_PRICE_UNIT)
+  const bill = poolBill(run, records, contributed)
+  const earned = earnedTotal(run)
+  return surplusShare(run, bill > earned ? bill - earned : 0n)
 }
 
 /**
  * Скільки покупець платить за внесок датасету під індексом `index` — дзеркало
  * `gross_for` до найменшої одиниці.
  *
- * Заокруглення в першій гілці — вгору, як і у верхній оцінці (`FR-015a`):
- * інакше внесок датасету, дрібнішого за тисячу записів, коштував би нуль, а
- * `FR-009` прямо каже, що окрема особа реєструє датасет на одну людину. У
- * другій гілці — вниз, бо там ділиться скінченна сума й перевищити її не можна.
+ * A dataset above the floor is paid its own price for its own records, rounded
+ * up as in the upper bound (`FR-015a`) — otherwise a contribution of fewer than
+ * a thousand records would cost nothing. The surplus, `R − C` at the pool
+ * average, is split equally between the datasets under the floor (`T043`):
+ * a dataset of one person (`FR-009`) is always under a floor of ten, and
+ * before this it could not earn in any pool where someone cleared it. Shares
+ * of a finite sum are rounded down, and the remainder goes back to the buyer.
  *
  * Вхід не перевіряється на узгодженість (`R ≥ C`) навмисно: `gross_for` ончейн
  * теж не перевіряє, бо цей стан не пропускає `record_reveal`. Перевірка живе в
@@ -195,30 +234,33 @@ export function grossFor(run: SettlementRun, index: number): TokenAmount {
   }
   // Мовчазний пул має власну стелю й ділиться порівну, а не пропорційно
   // заробленому: ділити тут нема на що — усі оголосили нуль.
-  if (contributedRecords(run) === 0n) {
+  const records = BigInt(run.recordsIncluded)
+  const contributed = contributedRecords(run)
+  if (contributed === 0n) {
     return toU64(silentShare(run, entry, true), 'payout')
   }
 
-  const raw = uncappedFor(run, index)
-  if (raw === 0n) return toU64(0n, 'payout')
-
-  let total = 0n
-  for (let other = 0; other < run.datasets.length; other += 1) {
-    total += uncappedFor(run, other)
-  }
   const escrow = run.escrowAmount as bigint
+  const earned = earnedTotal(run)
 
-  if (total <= escrow) return toU64(raw, 'payout')
+  if (earned > escrow) {
+    // Unreachable while contributions do not exceed claimed volumes, and
+    // guarded rather than assumed: split what there is in proportion to what
+    // was earned. Each share is rounded down, so their sum fits.
+    const base = entry.pricePer1k * BigInt(entry.recordsIncluded)
+    if (base === 0n) return toU64(0n, 'payout')
+    const totalBase = run.datasets.reduce(
+      (sum, other) => sum + other.pricePer1k * BigInt(other.recordsIncluded),
+      0n,
+    )
+    return toU64((escrow * base) / totalBase, 'payout')
+  }
 
-  // Повна ціна не вміщається в депозит: ділимо те, що є, пропорційно
-  // заробленому. Сума часток тут не перевищує депозит за побудовою — кожна
-  // заокруглена вниз, а їхня точна сума дорівнює йому.
-  const base = entry.pricePer1k * BigInt(entry.recordsIncluded)
-  const totalBase = run.datasets.reduce(
-    (sum, other) => sum + other.pricePer1k * BigInt(other.recordsIncluded),
-    0n,
-  )
-  return toU64((escrow * base) / totalBase, 'payout')
+  if (!entry.belowFloor) return toU64(ownPrice(entry), 'payout')
+
+  const full = poolBill(run, records, contributed)
+  const bill = full < escrow ? full : escrow
+  return toU64(surplusShare(run, bill > earned ? bill - earned : 0n), 'payout')
 }
 
 /**

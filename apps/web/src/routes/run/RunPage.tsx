@@ -170,6 +170,11 @@ const SettlementBlock = ({ run }: { run: RunView }) => {
                   </TableCell>
                   <TableCell className="text-right">
                     <Amount value={line.gross} />
+                    {line.belowFloor && line.gross > 0n && (
+                      <p className="text-[11.5px] text-muted-foreground">
+                        an equal share of the unnamed records
+                      </p>
+                    )}
                     {line.escrowCapped && (
                       <p className="text-[11.5px] text-muted-foreground">
                         capped by the escrow · rule says <Amount value={line.grossUncapped} />
