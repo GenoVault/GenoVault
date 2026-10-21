@@ -72,16 +72,23 @@ fn fold(
     sex_filter: u8,
     affected_filter: u8,
 ) -> Enc<Mxe, Pack<Frequencies>> {
-    let live = u8::try_from(records.len()).expect("батч не довший за 255");
-    get_instruction("frequencies_fold").eval((
-        seal(records),
-        accumulator,
-        live,
-        min_age,
-        max_age,
-        sex_filter,
-        affected_filter,
-    ))
+    // `BATCH` at a time, the way the dispatcher walks a dataset. Since `T030`
+    // cut the batch from 32 to 4 these tests fold 10-20 records per call, and
+    // one call per test no longer holds them.
+    let mut acc = accumulator;
+    for chunk in records.chunks(BATCH) {
+        let live = u8::try_from(chunk.len()).expect("батч не довший за 255");
+        acc = get_instruction("frequencies_fold").eval((
+            seal(chunk),
+            acc,
+            live,
+            min_age,
+            max_age,
+            sex_filter,
+            affected_filter,
+        ));
+    }
+    acc
 }
 
 /// Закриває поточний датасет: новий накопичувач, оголошений внесок і прапорець

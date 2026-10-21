@@ -170,6 +170,20 @@ export {
   recipeView,
   recipeViewSchema,
 } from './recipes.ts'
+export type { RegressionModel, RegressionMoments } from './regression.ts'
+export {
+  EVENTS_PER_PARAMETER,
+  FEATURE_AGE,
+  FEATURE_MARKER_BASE,
+  FEATURE_NONE,
+  FEATURE_SEX,
+  PIVOT_FLOOR,
+  REGRESSION_FEATURE_PAIRS,
+  REGRESSION_FEATURES,
+  RIDGE,
+  regressionMomentsSchema,
+  solveRegression,
+} from './regression.ts'
 export type { AgeBin, FrequenciesReport } from './report.ts'
 export {
   AGE_THRESHOLDS,

@@ -3,7 +3,8 @@ use arcis::*;
 /// Рецепти, які виконуються над зашифрованими даними (`FR-011`).
 ///
 /// Тут «частоти й розподіли за полями» — перший рецепт каталогу. Кореляції,
-/// GWAS-асоціація і логістична регресія приходять задачами T044-T045.
+/// GWAS-асоціація приходять задачею T045; логістична регресія (T044) — у
+/// кінці модуля, з власним поясненням.
 ///
 /// # Чому рецепт складається з чотирьох інструкцій, а не з однієї
 ///
@@ -352,6 +353,300 @@ pub mod circuits {
         // Придушена когорта оголошує нуль. Це і є та відповідь, яку має чути
         // ланцюг: прогін нікого не включив, платити нема за що, повернути
         // депозит повністю (`FR-016`).
+        let records_included = report.included.reveal();
+        let unclosed: u32 = if acc.dataset_included > 0 { 1 } else { 0 };
+
+        (
+            Shared::new(buyer).from_arcis(Pack::new(report)),
+            records_included,
+            unclosed.reveal(),
+        )
+    }
+
+    // ---------------------------------------------------------------------
+    // Logistic regression (`T044`).
+    //
+    // # One pass, one Newton step
+    //
+    // A pass over the pool is the expensive thing here: 10 000 records are
+    // 2 500 folds and 3.3-3.7 hours (`T033`), so an iterative fit that walks
+    // the pool once per iteration multiplies that by the number of
+    // iterations. The recipe walks it once. The folds accumulate the exact
+    // integer sufficient statistics `Σx`, `Σxy`, `Σxxᵀ`, and the model is one
+    // Newton step of the logistic log-likelihood from `β = 0`, where every
+    // `p` is `1/2` and every Newton weight `p(1 − p)` is `1/4`:
+    //
+    // ```text
+    // β = 4 · (Cov(x) + ridge)⁻¹ · Cov(x, y)
+    // β₀ = 4 · (ȳ − 1/2) − β · x̄
+    // ```
+    //
+    // The price is said out loud: this is the quadratic approximation of the
+    // likelihood at zero, so the coefficients are shrunk compared with the
+    // fully converged fit, and the direction is the one a linear probability
+    // model would give. How much that costs in ranking quality is what the
+    // `SC-002` measurement in `encrypted-ixs/tests/regression.rs` is for.
+    //
+    // # Why the circuit does not solve the system itself
+    //
+    // It was written to, and measured: Arcis `f64` is fixed point, and every
+    // multiplication truncates 52 bits — a bit decomposition, ~100 M ACU — and
+    // every division is a Chebyshev series, ~650 M ACU. The solve for ten
+    // features is ~500 multiplications and ~21 divisions, ~64 G ACU against a
+    // ceiling of 5 G per computation; three features already weighed 8.3 G.
+    // Splitting it over several computations needs the half-solved matrix in
+    // a callback, and 66 fixed-point values do not fit in one transaction.
+    //
+    // So the reveal checks the thresholds inside MPC — that is the part the
+    // buyer must not be able to skip — and hands the buyer the moments under
+    // the buyer's key; the Newton step runs in the buyer's browser
+    // (`packages/shared/src/regression.ts`). Decision of 2026-10-21. The
+    // buyer sees second moments of the chosen features over a cohort of at
+    // least `EVENTS_PER_PARAMETER · (k + 1)` — aggregates of the same kind as
+    // `Σg` in the frequencies report, and `FR-011` allows "a model or a
+    // statistic".
+    //
+    // # What the buyer chooses
+    //
+    // Up to `FEATURES` features out of `sex`, `age` and the 64 markers; the
+    // target is `affected`, the only binary phenotype a record has. That is
+    // also why this recipe has no `affected` filter: it would make the
+    // target constant. The choice travels as plain parameters, like the
+    // frequencies filters, because the owner checks it against the consent
+    // (`FR-006`) and the auditor against `Run` (`FR-025`).
+    // ---------------------------------------------------------------------
+
+    /// How many features one model takes, unused slots included.
+    pub const FEATURES: usize = 10;
+
+    /// `Σ xⱼxₖ` for `j ≤ k` — the upper triangle of `XᵀX`, row by row.
+    pub const FEATURE_PAIRS: usize = FEATURES * (FEATURES + 1) / 2;
+
+    /// Feature codes. A marker is `FEATURE_MARKER_BASE + index`.
+    pub const FEATURE_SEX: u8 = 0;
+    pub const FEATURE_AGE: u8 = 1;
+    pub const FEATURE_MARKER_BASE: u8 = 2;
+    /// An unused slot. It reads as a constant zero column, which the ridge in
+    /// the buyer's solve turns into a zero coefficient rather than a singular
+    /// system.
+    pub const FEATURE_NONE: u8 = 255;
+
+    /// Records per model parameter the recipe insists on before it says
+    /// anything (`FR-012`).
+    ///
+    /// `MIN_COHORT` alone is not enough here. Eleven coefficients fitted on
+    /// ten records reproduce the records, so the cohort has to grow with the
+    /// model: `n ≥ EVENTS_PER_PARAMETER · (k + 1)` for `k` used features.
+    pub const EVENTS_PER_PARAMETER: u32 = 10;
+
+    /// The regression accumulator between folds. Lives on chain under the MXE
+    /// key and is never revealed.
+    ///
+    /// `included` is `n`, and `XᵀX` with the intercept column is `n`, `Σx`
+    /// and `Σxxᵀ` — so no separate count is kept for the intercept.
+    pub struct Regression {
+        /// Records that passed the filters — the number the settlement pays
+        /// for (`FR-018a`), counted here for the same reason as in
+        /// `Frequencies`.
+        pub included: u32,
+        /// Records of the **current** dataset; see `frequencies_close_dataset`.
+        pub dataset_included: u32,
+        /// `Σy` — affected records in the cohort.
+        pub cases: u32,
+        pub sum_x: [u32; FEATURES],
+        pub sum_xy: [u32; FEATURES],
+        /// `u64`, not `u32`: `age` reaches 200, so `Σ age²` would wrap a `u32`
+        /// at 107 374 records, and the pool has no cap in records.
+        pub sum_xx: [u64; FEATURE_PAIRS],
+    }
+
+    /// What the buyer sees: the moments the model is solved from.
+    ///
+    /// Every sum is a `u32` here, while the accumulator keeps `Σxxᵀ` in
+    /// `u64`. The reveal goes back in one callback transaction, and 55 `u64`
+    /// would make it ~23 ciphertexts against the 13 of the frequencies report,
+    /// which already takes 1 013 of the 1 232 bytes. A sum that does not fit
+    /// a `u32` suppresses the report under its own flag instead of wrapping.
+    pub struct Moments {
+        pub included: u32,
+        pub cases: u32,
+        /// 1 if the cohort is too small for this many features or one of the
+        /// classes is too small. Everything else is zero then.
+        pub suppressed: u32,
+        /// 1 if a sum outgrew a `u32` — `Σ age²` past ~107 000 records.
+        /// Everything else is zero then, `suppressed` included.
+        pub oversized: u32,
+        pub sum_x: [u32; FEATURES],
+        pub sum_xy: [u32; FEATURES],
+        pub sum_xx: [u32; FEATURE_PAIRS],
+    }
+
+    /// The value of feature `code` in `record`; zero for an unknown code.
+    ///
+    /// `code` is a plain parameter, so the comparisons are public and each
+    /// selection is linear in the secret value.
+    fn feature_value(record: &Record, code: u8) -> u8 {
+        let mut value = 0u8;
+        if code == FEATURE_SEX {
+            value = record.sex;
+        }
+        if code == FEATURE_AGE {
+            value = record.age;
+        }
+        for marker in 0..MARKERS {
+            if code == FEATURE_MARKER_BASE + marker as u8 {
+                value = record.genotypes[marker];
+            }
+        }
+        value
+    }
+
+    /// An empty regression accumulator for a new run.
+    #[instruction]
+    pub fn regression_init() -> Enc<Mxe, Pack<Regression>> {
+        let empty = Regression {
+            included: 0,
+            dataset_included: 0,
+            cases: 0,
+            sum_x: [0u32; FEATURES],
+            sum_xy: [0u32; FEATURES],
+            sum_xx: [0u64; FEATURE_PAIRS],
+        };
+        Mxe::get().from_arcis(Pack::new(empty))
+    }
+
+    /// Folds the next batch into the regression accumulator.
+    ///
+    /// The batch is the same `Record` as for frequencies — the buffer on chain
+    /// does not know which recipe reads it. `live` means what it means in
+    /// `frequencies_fold`.
+    #[instruction]
+    pub fn regression_fold(
+        batch: [Enc<Shared, Record>; BATCH],
+        accumulator: Enc<Mxe, Pack<Regression>>,
+        live: u8,
+        min_age: u8,
+        max_age: u8,
+        sex_filter: u8,
+        features: [u8; FEATURES],
+    ) -> Enc<Mxe, Pack<Regression>> {
+        let mut acc = accumulator.to_arcis().unpack();
+
+        for slot in 0..BATCH {
+            let record = batch[slot].to_arcis();
+
+            let present = (slot as u8) < live;
+            let age_ok = record.age >= min_age && record.age <= max_age;
+            let sex_ok = sex_filter == FILTER_ANY || record.sex == sex_filter;
+            let counted = present && age_ok && sex_ok;
+
+            acc.included += if counted { 1u32 } else { 0u32 };
+            acc.dataset_included += if counted { 1u32 } else { 0u32 };
+            let y = if counted { record.affected } else { 0u8 };
+            acc.cases += y as u32;
+
+            // A record outside the cohort contributes a zero row, so every
+            // sum below is gated by `counted` once, here.
+            let mut x = [0u8; FEATURES];
+            for f in 0..FEATURES {
+                let value = feature_value(&record, features[f]);
+                x[f] = if counted { value } else { 0u8 };
+            }
+
+            let mut pair = 0;
+            for j in 0..FEATURES {
+                acc.sum_x[j] += x[j] as u32;
+                acc.sum_xy[j] += (x[j] * y) as u32;
+                for k in j..FEATURES {
+                    acc.sum_xx[pair] += (x[j] as u64) * (x[k] as u64);
+                    pair += 1;
+                }
+            }
+        }
+
+        Mxe::get().from_arcis(Pack::new(acc))
+    }
+
+    /// Closes the current dataset of the pool. Same rule and same reasons as
+    /// `frequencies_close_dataset`; only the accumulator differs.
+    #[instruction]
+    pub fn regression_close_dataset(
+        accumulator: Enc<Mxe, Pack<Regression>>,
+    ) -> (Enc<Mxe, Pack<Regression>>, u32, u32) {
+        let mut acc = accumulator.to_arcis().unpack();
+
+        let payable = acc.dataset_included >= MIN_CONTRIBUTION;
+        let keep: u32 = if payable { 1 } else { 0 };
+        let contribution = acc.dataset_included * keep;
+        let below_floor = 1 - keep;
+
+        acc.dataset_included = 0;
+
+        (
+            Mxe::get().from_arcis(Pack::new(acc)),
+            contribution.reveal(),
+            below_floor.reveal(),
+        )
+    }
+
+    /// Checks the cohort against the model and hands the moments to the buyer.
+    ///
+    /// `features` is the same array the folds got — the program passes it
+    /// from `Run.recipe_params`, as it does for the filters. It decides how
+    /// big the cohort has to be: the reveal counts the used slots.
+    ///
+    /// The outputs mirror `frequencies_reveal`: the report under the buyer's
+    /// key, `records_included` in the open for the settlement, and the
+    /// `unclosed` guard. A suppressed or oversized report declares zero
+    /// records, so the deposit goes back in full (`FR-016`).
+    #[instruction]
+    pub fn regression_reveal(
+        accumulator: Enc<Mxe, Pack<Regression>>,
+        buyer: ArcisX25519Pubkey,
+        features: [u8; FEATURES],
+    ) -> (Enc<Shared, Pack<Moments>>, u32, u32) {
+        let acc = accumulator.to_arcis().unpack();
+
+        let mut used: u32 = 0;
+        for f in 0..FEATURES {
+            if features[f] != FEATURE_NONE {
+                used += 1;
+            }
+        }
+        let required = EVENTS_PER_PARAMETER * (used + 1);
+        let required = if required > MIN_COHORT { required } else { MIN_COHORT };
+        let controls = acc.included - acc.cases;
+        let disclosable =
+            acc.included >= required && acc.cases >= MIN_COHORT && controls >= MIN_COHORT;
+
+        let mut fits = true;
+        for pair in 0..FEATURE_PAIRS {
+            fits = fits && acc.sum_xx[pair] <= u32::MAX as u64;
+        }
+
+        let keep: u32 = if disclosable && fits { 1 } else { 0 };
+
+        let mut report = Moments {
+            included: acc.included * keep,
+            cases: acc.cases * keep,
+            suppressed: if disclosable { 0 } else { 1 },
+            oversized: if fits { 0 } else { 1 },
+            sum_x: [0u32; FEATURES],
+            sum_xy: [0u32; FEATURES],
+            sum_xx: [0u32; FEATURE_PAIRS],
+        };
+        // An oversized cohort says only that: whether it was also too small
+        // for the model is not the buyer's business.
+        report.suppressed = report.suppressed * (1 - report.oversized);
+        for j in 0..FEATURES {
+            report.sum_x[j] = acc.sum_x[j] * keep;
+            report.sum_xy[j] = acc.sum_xy[j] * keep;
+        }
+        for pair in 0..FEATURE_PAIRS {
+            let narrowed = if fits { acc.sum_xx[pair] as u32 } else { 0u32 };
+            report.sum_xx[pair] = narrowed * keep;
+        }
+
         let records_included = report.included.reveal();
         let unclosed: u32 = if acc.dataset_included > 0 { 1 } else { 0 };
 
