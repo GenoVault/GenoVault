@@ -137,4 +137,10 @@ pub enum GenoVaultError {
     RunNotFailed,
     #[msg("The escrow of this run is already refunded to the buyer")]
     RunAlreadyRefunded,
+    #[msg("A withdrawal must move at least one unit")]
+    WithdrawalIsZero,
+    #[msg("The balance changed since this withdrawal was built")]
+    WithdrawalIsStale,
+    #[msg("The withdrawal is larger than what is left to withdraw")]
+    WithdrawalExceedsBalance,
 }

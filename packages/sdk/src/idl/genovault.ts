@@ -2705,6 +2705,137 @@ export type Genovault = {
       ]
     },
     {
+      "name": "withdraw",
+      "docs": [
+        "Withdraws accrued funds from the vault to the owner's own token account",
+        "(`FR-020`).",
+        "",
+        "`withdrawn_before` is how much had been withdrawn when the request was",
+        "built: a second transaction from the same state is refused, however",
+        "much is left on the balance. The owner signs; the platform withdraws",
+        "its fee the same way."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "The only one who can move this balance. Unlike `settle_dataset` and",
+            "`finalize_run`, the signature here is the right itself."
+          ],
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The pause is deliberately not checked: it stops new runs, not payment",
+            "for work already done."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerBalance",
+          "docs": [
+            "The address comes from the signer, not from an argument: no choice of",
+            "accounts finds someone else's balance under one's own signature."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  108,
+                  97,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "ownerTokens",
+          "docs": [
+            "The money goes to the owner's own token account. The owner does sign",
+            "here, and a free recipient would look like a convenience, but the",
+            "transaction is built by the API (`POST /withdrawals`) and the owner",
+            "signs it in a wallet. A swapped recipient in such a transaction is a",
+            "withdrawal into someone else's pocket under the owner's signature; a",
+            "pinned one is at worst the wrong amount paid to the owner."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "withdrawnBefore",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "writeBatch",
       "docs": [
         "Кладе шматок шифротексту в буфер. Конверт їде в ланцюг транзакціями по",
@@ -3144,6 +3275,19 @@ export type Genovault = {
         3,
         75
       ]
+    },
+    {
+      "name": "withdrawn",
+      "discriminator": [
+        20,
+        89,
+        223,
+        198,
+        194,
+        124,
+        219,
+        13
+      ]
     }
   ],
   "errors": [
@@ -3471,6 +3615,21 @@ export type Genovault = {
       "code": 6064,
       "name": "runAlreadyRefunded",
       "msg": "The escrow of this run is already refunded to the buyer"
+    },
+    {
+      "code": 6065,
+      "name": "withdrawalIsZero",
+      "msg": "A withdrawal must move at least one unit"
+    },
+    {
+      "code": 6066,
+      "name": "withdrawalIsStale",
+      "msg": "The balance changed since this withdrawal was built"
+    },
+    {
+      "code": 6067,
+      "name": "withdrawalExceedsBalance",
+      "msg": "The withdrawal is larger than what is left to withdraw"
     }
   ],
   "types": [
@@ -6169,6 +6328,37 @@ export type Genovault = {
           {
             "name": "verifiedAt",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "withdrawn",
+      "docs": [
+        "An owner withdrew part of what was accrued (`FR-020`).",
+        "",
+        "`withdrawn` is already the total after this withdrawal: the next request is",
+        "built from it without reading the account, and the log reconciles without",
+        "summing."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "accrued",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn",
+            "type": "u64"
           }
         ]
       }
@@ -8874,6 +9064,137 @@ export const IDL: Genovault = {
       ]
     },
     {
+      "name": "withdraw",
+      "docs": [
+        "Withdraws accrued funds from the vault to the owner's own token account",
+        "(`FR-020`).",
+        "",
+        "`withdrawn_before` is how much had been withdrawn when the request was",
+        "built: a second transaction from the same state is refused, however",
+        "much is left on the balance. The owner signs; the platform withdraws",
+        "its fee the same way."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "The only one who can move this balance. Unlike `settle_dataset` and",
+            "`finalize_run`, the signature here is the right itself."
+          ],
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The pause is deliberately not checked: it stops new runs, not payment",
+            "for work already done."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerBalance",
+          "docs": [
+            "The address comes from the signer, not from an argument: no choice of",
+            "accounts finds someone else's balance under one's own signature."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  108,
+                  97,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "ownerTokens",
+          "docs": [
+            "The money goes to the owner's own token account. The owner does sign",
+            "here, and a free recipient would look like a convenience, but the",
+            "transaction is built by the API (`POST /withdrawals`) and the owner",
+            "signs it in a wallet. A swapped recipient in such a transaction is a",
+            "withdrawal into someone else's pocket under the owner's signature; a",
+            "pinned one is at worst the wrong amount paid to the owner."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "withdrawnBefore",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "writeBatch",
       "docs": [
         "Кладе шматок шифротексту в буфер. Конверт їде в ланцюг транзакціями по",
@@ -9313,6 +9634,19 @@ export const IDL: Genovault = {
         3,
         75
       ]
+    },
+    {
+      "name": "withdrawn",
+      "discriminator": [
+        20,
+        89,
+        223,
+        198,
+        194,
+        124,
+        219,
+        13
+      ]
     }
   ],
   "errors": [
@@ -9640,6 +9974,21 @@ export const IDL: Genovault = {
       "code": 6064,
       "name": "runAlreadyRefunded",
       "msg": "The escrow of this run is already refunded to the buyer"
+    },
+    {
+      "code": 6065,
+      "name": "withdrawalIsZero",
+      "msg": "A withdrawal must move at least one unit"
+    },
+    {
+      "code": 6066,
+      "name": "withdrawalIsStale",
+      "msg": "The balance changed since this withdrawal was built"
+    },
+    {
+      "code": 6067,
+      "name": "withdrawalExceedsBalance",
+      "msg": "The withdrawal is larger than what is left to withdraw"
     }
   ],
   "types": [
@@ -12338,6 +12687,37 @@ export const IDL: Genovault = {
           {
             "name": "verifiedAt",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "withdrawn",
+      "docs": [
+        "An owner withdrew part of what was accrued (`FR-020`).",
+        "",
+        "`withdrawn` is already the total after this withdrawal: the next request is",
+        "built from it without reading the account, and the log reconciles without",
+        "summing."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "accrued",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn",
+            "type": "u64"
           }
         ]
       }

@@ -337,4 +337,19 @@ export const PROGRAM_ERRORS = [
     name: 'runAlreadyRefunded',
     msg: 'The escrow of this run is already refunded to the buyer',
   },
+  {
+    code: 6065,
+    name: 'withdrawalIsZero',
+    msg: 'A withdrawal must move at least one unit',
+  },
+  {
+    code: 6066,
+    name: 'withdrawalIsStale',
+    msg: 'The balance changed since this withdrawal was built',
+  },
+  {
+    code: 6067,
+    name: 'withdrawalExceedsBalance',
+    msg: 'The withdrawal is larger than what is left to withdraw',
+  },
 ] as const

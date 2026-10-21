@@ -267,6 +267,43 @@ impl OwnerBalance {
             .ok_or(GenoVaultError::OwnerBalanceOverflow)?;
         Ok(())
     }
+
+    /// How much is still available to withdraw.
+    pub fn available(&self) -> u64 {
+        // `withdraw` keeps `withdrawn ≤ accrued`, so the subtraction does not
+        // underflow; saturation covers an account not written by us.
+        self.accrued.saturating_sub(self.withdrawn)
+    }
+
+    /// Debits `amount` from what was accrued (`T049`, `FR-020`).
+    ///
+    /// # Why `withdrawn_before`
+    ///
+    /// A balance check alone does not make a repeated withdrawal impossible:
+    /// on a balance of 10 a request for 3 passes three times, and a double
+    /// click or a wallet retry with a fresh blockhash takes out twice what the
+    /// owner meant. The chain will not accept the same signed transaction
+    /// twice, but a re-signed one is a different transaction. So the request
+    /// carries the `withdrawn` its builder saw and passes only while that
+    /// value is unchanged: a second transaction built from the same state is
+    /// refused whatever the balance.
+    ///
+    /// Accruals (`settle_dataset`) do not touch `withdrawn`, so a run that
+    /// closes between building and sending does not break the request.
+    pub fn withdraw(&mut self, amount: u64, withdrawn_before: u64) -> Result<()> {
+        require!(amount > 0, GenoVaultError::WithdrawalIsZero);
+        require!(
+            self.withdrawn == withdrawn_before,
+            GenoVaultError::WithdrawalIsStale
+        );
+        require!(
+            amount <= self.available(),
+            GenoVaultError::WithdrawalExceedsBalance
+        );
+        // Cannot overflow: `withdrawn + amount ≤ accrued`.
+        self.withdrawn += amount;
+        Ok(())
+    }
 }
 
 // ── Звіт покупця ─────────────────────────────────────────────────────────────
@@ -660,5 +697,85 @@ mod tests {
             base,
             RunResult::digest(&[1u8; 32], 7, &[[4u8; 32]; REPORT_CIPHERTEXTS])
         );
+    }
+
+    fn balance(accrued: u64, withdrawn: u64) -> OwnerBalance {
+        OwnerBalance {
+            owner: Pubkey::new_unique(),
+            accrued,
+            withdrawn,
+            bump: 255,
+        }
+    }
+
+    fn code_of(result: Result<()>) -> u32 {
+        match result.expect_err("a refusal was expected") {
+            Error::AnchorError(err) => err.error_code_number,
+            other => panic!("expected a program error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_withdrawal_moves_exactly_its_amount() {
+        let mut b = balance(10, 0);
+        b.withdraw(4, 0).unwrap();
+        assert_eq!(b.withdrawn, 4);
+        assert_eq!(b.accrued, 10, "a withdrawal does not touch the accrued total");
+        assert_eq!(b.available(), 6);
+    }
+
+    #[test]
+    fn the_same_request_does_not_go_through_twice() {
+        // The balance covers two more such requests, which is why the refusal
+        // here proves `withdrawn_before` and not the balance check.
+        let mut b = balance(10, 0);
+        b.withdraw(3, 0).unwrap();
+        assert_eq!(
+            code_of(b.withdraw(3, 0)),
+            expected(GenoVaultError::WithdrawalIsStale)
+        );
+        assert_eq!(b.withdrawn, 3, "the refusal debited nothing");
+    }
+
+    #[test]
+    fn a_request_built_from_the_new_state_goes_through() {
+        let mut b = balance(10, 0);
+        b.withdraw(3, 0).unwrap();
+        b.withdraw(3, 3).unwrap();
+        assert_eq!(b.available(), 4);
+    }
+
+    #[test]
+    fn more_than_is_left_is_refused() {
+        let mut b = balance(10, 4);
+        assert_eq!(
+            code_of(b.withdraw(7, 4)),
+            expected(GenoVaultError::WithdrawalExceedsBalance)
+        );
+        b.withdraw(6, 4).unwrap();
+        assert_eq!(b.available(), 0);
+        assert_eq!(
+            code_of(b.withdraw(1, 10)),
+            expected(GenoVaultError::WithdrawalExceedsBalance)
+        );
+    }
+
+    #[test]
+    fn a_zero_withdrawal_is_refused() {
+        // A zero transfer moves nothing but would leave a withdrawal event in
+        // the log with no money behind it.
+        let mut b = balance(10, 0);
+        assert_eq!(
+            code_of(b.withdraw(0, 0)),
+            expected(GenoVaultError::WithdrawalIsZero)
+        );
+    }
+
+    #[test]
+    fn an_accrual_between_build_and_send_does_not_break_the_request() {
+        let mut b = balance(10, 0);
+        b.accrue(5).unwrap();
+        b.withdraw(12, 0).unwrap();
+        assert_eq!(b.available(), 3);
     }
 }

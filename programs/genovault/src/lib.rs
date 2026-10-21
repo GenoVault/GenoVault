@@ -266,6 +266,17 @@ pub mod genovault {
         instructions::settle_run::reclaim(ctx)
     }
 
+    /// Withdraws accrued funds from the vault to the owner's own token account
+    /// (`FR-020`).
+    ///
+    /// `withdrawn_before` is how much had been withdrawn when the request was
+    /// built: a second transaction from the same state is refused, however
+    /// much is left on the balance. The owner signs; the platform withdraws
+    /// its fee the same way.
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64, withdrawn_before: u64) -> Result<()> {
+        instructions::withdraw::withdraw(ctx, amount, withdrawn_before)
+    }
+
     #[arcium_callback(encrypted_ix = "frequencies_close_dataset")]
     pub fn frequencies_close_dataset_callback(
         ctx: Context<FrequenciesCloseDatasetCallback>,
