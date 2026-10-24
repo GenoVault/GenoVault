@@ -107,7 +107,10 @@ function passes(record: DatasetRecord, params: FrequenciesParams): boolean {
   return true
 }
 
-function counts(pool: readonly (readonly DatasetRecord[])[], params: FrequenciesParams): number[] {
+export function counts(
+  pool: readonly (readonly DatasetRecord[])[],
+  params: FrequenciesParams,
+): number[] {
   return pool.map((records) => records.filter((record) => passes(record, params)).length)
 }
 
@@ -126,7 +129,7 @@ function variant(
 }
 
 /** Перебирає вікові вікна, поки не знайде те, що задовольняє умову. */
-function findWindow(
+export function findWindow(
   pool: readonly (readonly DatasetRecord[])[],
   accept: (perDataset: readonly number[], total: number) => boolean,
 ): FrequenciesParams | null {

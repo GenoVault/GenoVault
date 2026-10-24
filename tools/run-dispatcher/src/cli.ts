@@ -34,6 +34,7 @@ import { drive } from './drive.ts'
 import { buildParityCorpus } from './parity-corpus.ts'
 import { revocationPlanSchema, runRevocationLatency } from './revocation-latency.ts'
 import { prepareScenario } from './scenario.ts'
+import { buildSettlementCorpus, datasetCount } from './settlement-corpus.ts'
 import { buildTimingCorpus } from './timing-corpus.ts'
 import { seedWebStand } from './web-stand.ts'
 
@@ -82,6 +83,8 @@ const { values, positionals } = parseArgs({
     'api-port': { type: 'string', default: '8879' },
     /** `sc005`: the revocation latency plan. */
     plan: { type: 'string', default: 'fixtures/revocation-latency.json' },
+    /** `sc006`: only the first N runs of the corpus (the negative control). */
+    limit: { type: 'string' },
   },
 })
 
@@ -515,9 +518,14 @@ async function main(): Promise<void> {
     return
   }
 
+  if (command === 'sc006') {
+    await sc006(connection, provider, program, payer, storageDir)
+    return
+  }
+
   if (command !== 'e2e') {
     throw new Error(
-      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003, sc004, sc005 or web-stand`,
+      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003, sc004, sc005, sc006 or web-stand`,
     )
   }
 
@@ -733,6 +741,86 @@ async function sc001(
   log(
     `  node --experimental-strip-types tools/audit-verify/src/cli.ts no-plaintext --corpus ${out}`,
   )
+}
+
+/**
+ * The corpus of runs behind `SC-006` (`T050`).
+ *
+ * ```bash
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts sc006 \
+ *   --fee-bps 333 --out artifacts/sc006/corpus.json --storage artifacts/sc006/storage
+ * ```
+ *
+ * Like `sc001`, it only drives the runs; the verdict is
+ * `tools/audit-verify sc006`, which reads the chain and none of our packages.
+ */
+async function sc006(
+  connection: Connection,
+  provider: AnchorProvider,
+  program: GenoVaultProgram,
+  payer: Keypair,
+  storageDir: string,
+): Promise<void> {
+  const owners = Array.from({ length: datasetCount() }, () => Keypair.generate())
+  const buyer = Keypair.generate()
+  const dispatcher = Keypair.generate()
+  const mint = Keypair.generate()
+
+  log('funding the participants…')
+  await fund(connection, [...owners.map((owner) => owner.publicKey), buyer.publicKey], 2)
+  await fund(connection, [dispatcher.publicKey], 20)
+
+  log('deploying the platform…')
+  const platform = await bootstrapPlatform({
+    connection,
+    program,
+    authority: payer,
+    mint,
+    feeBps: Number(values['fee-bps']),
+  })
+  // An existing platform is taken as is, fee included — so the fee is printed
+  // from the chain, not from the flag.
+  log(`  mint ${platform.mint.toBase58()} · fee ${platform.feeBps} bps`)
+
+  log('deploying the computation definitions…')
+  const arcium = await loadArciumContext(provider, PROGRAM_ID)
+  await bootstrapCircuits({
+    provider,
+    program,
+    arcium,
+    payer,
+    circuitsDir: resolve('build'),
+    onProgress: (circuit, note) => log(`  ${circuit}: ${note}`),
+  })
+
+  const maxEscrow = 1_000_000_000_000n
+  await fundBuyer(connection, payer, platform.mint, buyer.publicKey, maxEscrow)
+
+  const out = resolve(values.out)
+  const corpus = await buildSettlementCorpus({
+    connection,
+    provider,
+    program,
+    arcium,
+    rpc: values.rpc,
+    owners,
+    buyer,
+    dispatcher,
+    mint: platform.mint,
+    storageDir,
+    out,
+    nonce: BigInt(Date.now()),
+    maxEscrow,
+    ...(values.limit === undefined ? {} : { limit: Number(values.limit) }),
+    writeConcurrency: Number(values.concurrency),
+    callbackTimeoutMs: Number(values['callback-timeout']),
+    onProgress: log,
+  })
+
+  log(`\ncorpus: ${out}`)
+  log(`runs: ${corpus.runs.length} · datasets: ${corpus.datasets.length}`)
+  log('\nnow the auditor, which does not see our code:')
+  log(`  node --experimental-strip-types tools/audit-verify/src/cli.ts sc006 --corpus ${out}`)
 }
 
 main().catch((error: unknown) => {

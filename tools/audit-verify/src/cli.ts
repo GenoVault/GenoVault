@@ -32,6 +32,8 @@ import { auditNoPlaintext, recordNeedles, sweepProgramAccounts } from './no-plai
 import { auditParity, RECIPE_MARKERS, readRecords } from './parity.ts'
 import { loadReportLayout } from './report.ts'
 import { auditRevocationLatency, readPlan, readRevocationReport } from './revocation-latency.ts'
+import type { SettlementCorpusFile } from './settlement.ts'
+import { auditSettlement } from './settlement.ts'
 import { auditTiming, LINEARITY_TOLERANCE, RECIPE_BATCH, SPEEDUP_FLOOR } from './timing.ts'
 
 const { values, positionals } = parseArgs({
@@ -860,16 +862,83 @@ async function revocationLatency(): Promise<void> {
   log('')
 }
 
+async function loadSettlementCorpus(path: string): Promise<SettlementCorpusFile> {
+  const raw: unknown = JSON.parse(await readFile(path, 'utf8'))
+  if (!isRecord(raw)) throw new Error('the corpus must be an object')
+  const runs = raw.runs
+  if (!Array.isArray(runs) || runs.length === 0) throw new Error('the corpus has no runs')
+  return {
+    rpc: text(raw, 'rpc'),
+    programId: text(raw, 'programId'),
+    buyer: text(raw, 'buyer'),
+    runs: runs.map((entry: unknown, at: number) => {
+      if (!isRecord(entry)) throw new Error(`run ${at} of the corpus is not an object`)
+      return { label: text(entry, 'label'), run: text(entry, 'run') }
+    }),
+  }
+}
+
+async function settlement(): Promise<void> {
+  if (values.corpus === undefined) throw new Error('need the corpus: --corpus <path>')
+  const corpus = await loadSettlementCorpus(resolve(values.corpus))
+  const connection = new Connection(values.rpc ?? corpus.rpc, 'confirmed')
+
+  const audit = await auditSettlement(connection, corpus)
+
+  log('')
+  log('== SC-006: shares + fee + refund = escrow ================')
+  log(`  program:   ${corpus.programId}`)
+  log(
+    `  examined:  ${audit.examined} of ${audit.onChain} runs ` +
+      `(count: Run accounts of the buyer on chain; the corpus names ${corpus.runs.length})`,
+  )
+  log('')
+  log(
+    '  run                                        shape        pool  under  escrow           shares           fee          refund           diff',
+  )
+  for (const j of audit.judgements) {
+    log(
+      `  ${j.label.slice(0, 42).padEnd(42)} ${j.shape.padEnd(12)} ${String(j.datasets).padEnd(5)} ` +
+        `${String(j.belowFloor).padEnd(6)} ${String(j.deposit).padEnd(16)} ${String(j.owners).padEnd(16)} ` +
+        `${String(j.fees).padEnd(12)} ${String(j.refund).padEnd(16)} ${j.difference}` +
+        (j.passed ? '' : '   ✗'),
+    )
+    for (const problem of j.problems.slice(0, 6)) log(`      ${problem}`)
+  }
+  log('')
+  const shapes = [...audit.shapes.entries()].map(([shape, n]) => `${shape} ${n}`).join(' · ')
+  log(`  shapes:    ${shapes}`)
+  const held = audit.owners.filter((owner) => owner.accrued === owner.events).length
+  log(
+    `  owners:    ${held} of ${audit.owners.length} balances on chain hold exactly the corpus's payouts`,
+  )
+  if (audit.fiveDifferent !== null) {
+    log(
+      `  T046:      "${audit.fiveDifferent.label}" pays ${audit.fiveDifferent.settled.length} owners ` +
+        audit.fiveDifferent.settled.map((event) => event.net).join(' / '),
+    )
+  }
+  for (const gap of audit.gaps) log(`  discrepancy: ${gap}`)
+  log('')
+  if (audit.passed) log('  SC-006 MET')
+  else {
+    log('  SC-006 NOT MET')
+    process.exitCode = 1
+  }
+  log('')
+}
+
 async function main(): Promise<void> {
   const command = positionals.at(0) ?? 'e2e-buyer'
   if (command === 'sc004') return consentMatrix()
   if (command === 'sc005') return revocationLatency()
+  if (command === 'sc006') return settlement()
   if (command === 'e2e-buyer') return buyerPath()
   if (command === 'no-plaintext') return noPlaintext()
   if (command === 'parity') return parityCheck()
   if (command === 'timing') return timingCheck()
   throw new Error(
-    `unknown command "${command}": expected e2e-buyer, no-plaintext, parity, timing, sc004 or sc005`,
+    `unknown command "${command}": expected e2e-buyer, no-plaintext, parity, timing, sc004, sc005 or sc006`,
   )
 }
 
