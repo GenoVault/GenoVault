@@ -29,6 +29,7 @@ import { loadArciumContext } from './arcium.ts'
 import { bootstrapCircuits, bootstrapPlatform, fundBuyer } from './bootstrap.ts'
 import { consentMatrixSchema, runConsentMatrix } from './consent-matrix.ts'
 import { buildCorpus } from './corpus.ts'
+import { buildDistributionCorpus, MEASURED_RUNS, ownerCount } from './distribution-corpus.ts'
 import type { Progress } from './drive.ts'
 import { drive } from './drive.ts'
 import { buildParityCorpus } from './parity-corpus.ts'
@@ -85,6 +86,9 @@ const { values, positionals } = parseArgs({
     plan: { type: 'string', default: 'fixtures/revocation-latency.json' },
     /** `sc006`: only the first N runs of the corpus (the negative control). */
     limit: { type: 'string' },
+    /** `sc007`: how many measured runs, and whether to add the control run. */
+    runs: { type: 'string', default: String(MEASURED_RUNS) },
+    'skip-control': { type: 'boolean', default: false },
   },
 })
 
@@ -523,9 +527,14 @@ async function main(): Promise<void> {
     return
   }
 
+  if (command === 'sc007') {
+    await sc007(connection, provider, program, payer, storageDir)
+    return
+  }
+
   if (command !== 'e2e') {
     throw new Error(
-      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003, sc004, sc005, sc006 or web-stand`,
+      `unknown command "${command}": expected e2e, drive, sc001, sc002, sc003, sc004, sc005, sc006, sc007 or web-stand`,
     )
   }
 
@@ -821,6 +830,97 @@ async function sc006(
   log(`runs: ${corpus.runs.length} · datasets: ${corpus.datasets.length}`)
   log('\nnow the auditor, which does not see our code:')
   log(`  node --experimental-strip-types tools/audit-verify/src/cli.ts sc006 --corpus ${out}`)
+}
+
+/**
+ * The runs behind `SC-007` (`T051`): three pools of 50 fresh owners and one
+ * control run whose payouts wait for `finalized`.
+ *
+ * ```bash
+ * node --experimental-strip-types tools/run-dispatcher/src/cli.ts sc007 \
+ *   --out artifacts/sc007/corpus.json --storage artifacts/sc007/storage
+ * ```
+ *
+ * Like `sc006`, this measures nothing itself; `tools/audit-verify sc007` does.
+ */
+async function sc007(
+  connection: Connection,
+  provider: AnchorProvider,
+  program: GenoVaultProgram,
+  payer: Keypair,
+  storageDir: string,
+): Promise<void> {
+  const runs = Number(values.runs)
+  const owners = Array.from({ length: ownerCount(runs) }, () => Keypair.generate())
+  const buyer = Keypair.generate()
+  const controlBuyer = Keypair.generate()
+  const dispatcher = Keypair.generate()
+  const mint = Keypair.generate()
+
+  log(`funding ${owners.length} owners, two buyers and the dispatcher…`)
+  await fund(connection, [...owners.map((owner) => owner.publicKey)], 1)
+  await fund(connection, [buyer.publicKey, controlBuyer.publicKey], 5)
+  await fund(connection, [dispatcher.publicKey], 50)
+
+  log('deploying the platform…')
+  const platform = await bootstrapPlatform({
+    connection,
+    program,
+    authority: payer,
+    mint,
+    feeBps: Number(values['fee-bps']),
+  })
+  log(`  mint ${platform.mint.toBase58()} · fee ${platform.feeBps} bps`)
+
+  log('deploying the computation definitions…')
+  const arcium = await loadArciumContext(provider, PROGRAM_ID)
+  await bootstrapCircuits({
+    provider,
+    program,
+    arcium,
+    payer,
+    circuitsDir: resolve('build'),
+    onProgress: (circuit, note) => log(`  ${circuit}: ${note}`),
+  })
+
+  const maxEscrow = 1_000_000_000_000n
+  await fundBuyer(connection, payer, platform.mint, buyer.publicKey, maxEscrow)
+  await fundBuyer(connection, payer, platform.mint, controlBuyer.publicKey, maxEscrow)
+
+  const out = resolve(values.out)
+  // The dispatcher key goes next to the corpus before the first run: a run of
+  // 50 datasets takes 15 minutes, and one cut short can only be finished by
+  // `drive --dispatcher` with this key.
+  const dispatcherPath = join(dirname(out), 'dispatcher.json')
+  await mkdir(dirname(out), { recursive: true })
+  await writeFile(dispatcherPath, JSON.stringify([...dispatcher.secretKey]))
+  log(`dispatcher key: ${dispatcherPath}`)
+  const corpus = await buildDistributionCorpus({
+    connection,
+    provider,
+    program,
+    arcium,
+    rpc: values.rpc,
+    owners,
+    buyer,
+    controlBuyer,
+    dispatcher,
+    mint: platform.mint,
+    storageDir,
+    out,
+    nonce: BigInt(Date.now()),
+    maxEscrow,
+    runs,
+    control: !values['skip-control'],
+    writeConcurrency: Number(values.concurrency),
+    callbackTimeoutMs: Number(values['callback-timeout']),
+    onProgress: log,
+  })
+
+  log(`\ncorpus: ${out}`)
+  log(`measured runs: ${corpus.measured.runs.length} · control runs: ${corpus.control.runs.length}`)
+  log('\nnow the auditor, which does not see our code:')
+  log(`  node --experimental-strip-types tools/audit-verify/src/cli.ts sc007 --corpus ${out}`)
 }
 
 main().catch((error: unknown) => {

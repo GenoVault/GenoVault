@@ -25,8 +25,14 @@ import {
   platformConfigAddress,
   TOKEN_2022_PROGRAM_ID,
 } from '@genovault/sdk'
-import type { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js'
-import { TransactionMessage, VersionedTransaction } from '@solana/web3.js'
+import type {
+  Commitment,
+  Connection,
+  Keypair,
+  PublicKey,
+  TransactionInstruction,
+} from '@solana/web3.js'
+import { ComputeBudgetProgram, TransactionMessage, VersionedTransaction } from '@solana/web3.js'
 import type { ArciumContext } from './arcium.ts'
 import { freshComputationOffset } from './arcium.ts'
 import { planWrites } from './chunks.ts'
@@ -106,8 +112,37 @@ export interface DriveOptions {
    * лише командою `sc003 --stall-ms` і в жодному шляху покупця не з'являється.
    */
   stallMs?: number
+  /**
+   * The commitment the payouts and `finalize_run` wait for — the negative
+   * control of `SC-007` (`T051`).
+   *
+   * `finalized` is a configuration a dispatcher could really choose, and it
+   * costs ~13 s per transaction instead of one slot: the distribution between
+   * 50 owners then runs for minutes, and an auditor that reads its clock from
+   * the chain must say so. Set only by `sc007`; the default is `confirmed`.
+   */
+  settleCommitment?: Commitment
   onProgress?(progress: Progress): void
 }
+
+/**
+ * The compute budget of every instruction that queues an MPC computation.
+ *
+ * The default 200 000 is not enough on a full pool. Measured 2026-10-28 on a
+ * run of 50 datasets (`T051`): `dispatch_fold` took 164 000–194 000 CU, of
+ * which the CPI into Arcium was 57 000–66 000 and moved with the state of its
+ * mempool — and the third run hit 200 000 on its first fold. Twice the
+ * observed peak leaves room for the part that is not ours.
+ */
+const DISPATCH_COMPUTE_UNITS = 400_000
+
+/** The stages that queue a computation in Arcium. */
+const QUEUEING_STAGES: ReadonlySet<ProgressStage> = new Set([
+  'init',
+  'fold',
+  'close-dataset',
+  'reveal',
+])
 
 const DEFAULT_WRITE_CONCURRENCY = 8
 const DEFAULT_CALLBACK_TIMEOUT_MS = 120_000
@@ -368,7 +403,17 @@ async function step(
   extra: Omit<Progress, 'stage' | 'elapsedMs'> = {},
 ): Promise<void> {
   const started = Date.now()
-  await send(options, await build())
+  const commitment =
+    stage === 'settle' || stage === 'finalize'
+      ? (options.settleCommitment ?? 'confirmed')
+      : 'confirmed'
+  const instructions = await build()
+  if (QUEUEING_STAGES.has(stage)) {
+    instructions.unshift(
+      ComputeBudgetProgram.setComputeUnitLimit({ units: DISPATCH_COMPUTE_UNITS }),
+    )
+  }
+  await send(options, instructions, false, commitment)
   options.onProgress?.({ stage, elapsedMs: Date.now() - started, ...extra })
 }
 
@@ -384,6 +429,7 @@ async function send(
   options: DriveOptions,
   instructions: TransactionInstruction[],
   skipPreflight = false,
+  commitment: Commitment = 'confirmed',
 ): Promise<string> {
   const { blockhash, lastValidBlockHeight } =
     await options.connection.getLatestBlockhash('confirmed')
@@ -402,7 +448,7 @@ async function send(
   })
   const status = await options.connection.confirmTransaction(
     { signature, blockhash, lastValidBlockHeight },
-    'confirmed',
+    commitment,
   )
   if (status.value.err !== null) {
     throw new DriveError(

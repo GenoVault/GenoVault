@@ -24,6 +24,8 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Connection, PublicKey } from '@solana/web3.js'
 import { auditConsentMatrix, readFixture, readReport } from './consent-matrix.ts'
+import type { DistributionCorpusFile } from './distribution.ts'
+import { auditDistribution, SC007_BUDGET_SECONDS, SC007_OWNERS } from './distribution.ts'
 import type { Audit } from './e2e-buyer.ts'
 import { auditBuyerPath, fetchMxePublicKey } from './e2e-buyer.ts'
 import { hex } from './fold-chain.ts'
@@ -928,17 +930,94 @@ async function settlement(): Promise<void> {
   log('')
 }
 
+async function loadDistributionCorpus(path: string): Promise<DistributionCorpusFile> {
+  const raw: unknown = JSON.parse(await readFile(path, 'utf8'))
+  if (!isRecord(raw)) throw new Error('the corpus must be an object')
+  const set = (name: 'measured' | 'control') => {
+    const entry = raw[name]
+    if (!isRecord(entry)) throw new Error(`the corpus has no "${name}" set`)
+    const runs = entry.runs
+    if (!Array.isArray(runs)) throw new Error(`"${name}" has no runs`)
+    return {
+      buyer: text(entry, 'buyer'),
+      runs: runs.map((run: unknown, at: number) => {
+        if (!isRecord(run)) throw new Error(`run ${at} of "${name}" is not an object`)
+        return { label: text(run, 'label'), run: text(run, 'run') }
+      }),
+    }
+  }
+  return {
+    rpc: text(raw, 'rpc'),
+    programId: text(raw, 'programId'),
+    measured: set('measured'),
+    control: set('control'),
+  }
+}
+
+function seconds(value: number | null): string {
+  return value === null ? '—' : `${value.toFixed(1)} s`
+}
+
+async function distribution(): Promise<void> {
+  if (values.corpus === undefined) throw new Error('need the corpus: --corpus <path>')
+  const corpus = await loadDistributionCorpus(resolve(values.corpus))
+  const connection = new Connection(values.rpc ?? corpus.rpc, 'confirmed')
+
+  const audit = await auditDistribution(connection, corpus)
+
+  log('')
+  log(`== SC-007: distribution between ${SC007_OWNERS} owners < ${SC007_BUDGET_SECONDS} s ========`)
+  log(`  program:   ${corpus.programId}`)
+  log('  interval:  RunRevealed → RunCompleted (reveal callback → finalize_run)')
+  for (const [name, set] of [
+    ['measured', audit.measured],
+    ['control', audit.control],
+  ] as const) {
+    log('')
+    log(
+      `  ${name}: ${set.timings.length} of ${set.onChain} runs examined ` +
+        `(count: Run accounts of the buyer on chain; the corpus names ${set.named})`,
+    )
+    log(
+      '    run                                                pool  paid  owners  slots  ms/slot  by slots  by blockTime',
+    )
+    for (const t of set.timings) {
+      log(
+        `    ${t.label.slice(0, 50).padEnd(50)} ${String(t.datasets).padEnd(5)} ${String(t.payouts).padEnd(5)} ` +
+          `${String(t.owners).padEnd(7)} ${String(t.slots ?? '—').padEnd(6)} ` +
+          `${(t.msPerSlot === null ? '—' : t.msPerSlot.toFixed(1)).padEnd(8)} ` +
+          `${seconds(t.secondsBySlots).padEnd(9)} ${seconds(t.secondsByBlockTime)}` +
+          (t.withinBudget ? '' : '   ✗'),
+      )
+      for (const problem of t.problems.slice(0, 6)) log(`        ${problem}`)
+    }
+  }
+  log('')
+  if (audit.worst !== null) {
+    log(`  worst measured: ${seconds(audit.worst.seconds)} — "${audit.worst.label}"`)
+  }
+  for (const gap of audit.gaps) log(`  discrepancy: ${gap}`)
+  log('')
+  if (audit.passed) log('  SC-007 MET')
+  else {
+    log('  SC-007 NOT MET')
+    process.exitCode = 1
+  }
+  log('')
+}
+
 async function main(): Promise<void> {
   const command = positionals.at(0) ?? 'e2e-buyer'
   if (command === 'sc004') return consentMatrix()
   if (command === 'sc005') return revocationLatency()
   if (command === 'sc006') return settlement()
+  if (command === 'sc007') return distribution()
   if (command === 'e2e-buyer') return buyerPath()
   if (command === 'no-plaintext') return noPlaintext()
   if (command === 'parity') return parityCheck()
   if (command === 'timing') return timingCheck()
   throw new Error(
-    `unknown command "${command}": expected e2e-buyer, no-plaintext, parity, timing, sc004, sc005 or sc006`,
+    `unknown command "${command}": expected e2e-buyer, no-plaintext, parity, timing, sc004, sc005, sc006 or sc007`,
   )
 }
 

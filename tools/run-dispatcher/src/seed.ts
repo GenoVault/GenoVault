@@ -26,8 +26,19 @@ import {
 import type { FrequenciesParams } from '@genovault/shared'
 import { encodeFrequenciesParams, FREQUENCIES_RECIPE_ID } from '@genovault/shared'
 import { ed25519 } from '@noble/curves/ed25519'
-import type { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js'
-import { TransactionMessage, VersionedTransaction } from '@solana/web3.js'
+import type {
+  AddressLookupTableAccount,
+  Connection,
+  Keypair,
+  PublicKey,
+  TransactionInstruction,
+} from '@solana/web3.js'
+import {
+  AddressLookupTableProgram,
+  PACKET_DATA_SIZE,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js'
 
 export class SeedError extends Error {
   override readonly name = 'SeedError'
@@ -174,22 +185,35 @@ export async function orderRun(options: OrderOptions): Promise<OrderedRun> {
     consentVersion: dataset.consentVersion,
   }))
 
-  await send(options.connection, options.buyer, [
-    await requestRunIx(options.program, {
-      buyer: options.buyer.publicKey,
-      mint: options.mint,
-      nonce: options.nonce,
-      recipeId: FREQUENCIES_RECIPE_ID,
-      useType: options.useType,
-      buyerCategory: options.buyerCategory,
-      maxEscrow: options.maxEscrow,
-      buyerX25519: reportKey.publicKey,
-      dispatcher: options.dispatcher,
-      recipeParams: encodeFrequenciesParams(options.params),
-      datasets: pool,
-      tokenProgram: TOKEN_2022_PROGRAM_ID,
-    }),
-  ])
+  const request = await requestRunIx(options.program, {
+    buyer: options.buyer.publicKey,
+    mint: options.mint,
+    nonce: options.nonce,
+    recipeId: FREQUENCIES_RECIPE_ID,
+    useType: options.useType,
+    buyerCategory: options.buyerCategory,
+    maxEscrow: options.maxEscrow,
+    buyerX25519: reportKey.publicKey,
+    dispatcher: options.dispatcher,
+    recipeParams: encodeFrequenciesParams(options.params),
+    datasets: pool,
+    tokenProgram: TOKEN_2022_PROGRAM_ID,
+  })
+
+  // An order is one transaction (`T024`), so a pool that does not fit in a
+  // packet goes through an address lookup table, not in portions. The table
+  // only when it does not fit without one: a small pool stays the same order
+  // it was before `T051`.
+  const lookupTables = fitsInline(options.buyer.publicKey, [request])
+    ? []
+    : [
+        await lookupTableFor(
+          options.connection,
+          options.buyer,
+          request.keys.filter((key) => !key.isSigner).map((key) => key.pubkey),
+        ),
+      ]
+  await send(options.connection, options.buyer, [request], lookupTables)
 
   return {
     run: runAddress(options.buyer.publicKey, options.nonce, options.program.programId).address,
@@ -200,17 +224,93 @@ export async function orderRun(options: OrderOptions): Promise<OrderedRun> {
   }
 }
 
+/** How many addresses one extend transaction puts into the table. */
+const LOOKUP_EXTEND_CHUNK = 30
+
+/** Whether a single-signature transaction fits in a packet without a lookup table. */
+function fitsInline(payer: PublicKey, instructions: TransactionInstruction[]): boolean {
+  const message = new TransactionMessage({
+    payerKey: payer,
+    // Any 32 bytes: the size does not depend on the hash.
+    recentBlockhash: payer.toBase58(),
+    instructions,
+  }).compileToV0Message()
+  try {
+    // One signature: 1 byte of list length + 64 bytes of signature.
+    return 1 + 64 + message.serialize().length <= PACKET_DATA_SIZE
+  } catch (error) {
+    // `serialize` writes into a packet-sized buffer and throws on overflow.
+    if (error instanceof RangeError) return false
+    throw error
+  }
+}
+
+/**
+ * An address lookup table for one order.
+ *
+ * The buyer creates and pays for it — the same key that signs the order: a
+ * table owned by someone else would make the pool in the buyer's transaction
+ * depend on an account another party controls. The table's rent stays on the
+ * stand.
+ */
+async function lookupTableFor(
+  connection: Connection,
+  payer: Keypair,
+  addresses: readonly PublicKey[],
+): Promise<AddressLookupTableAccount> {
+  const unique = addresses.filter(
+    (address, index) => addresses.findIndex((other) => other.equals(address)) === index,
+  )
+  // The creation slot must be in `SlotHashes`, i.e. already rooted.
+  const recentSlot = await connection.getSlot('finalized')
+  const [create, table] = AddressLookupTableProgram.createLookupTable({
+    authority: payer.publicKey,
+    payer: payer.publicKey,
+    recentSlot,
+  })
+  await send(connection, payer, [create])
+  for (let at = 0; at < unique.length; at += LOOKUP_EXTEND_CHUNK) {
+    await send(connection, payer, [
+      AddressLookupTableProgram.extendLookupTable({
+        authority: payer.publicKey,
+        payer: payer.publicKey,
+        lookupTable: table,
+        addresses: unique.slice(at, at + LOOKUP_EXTEND_CHUNK),
+      }),
+    ])
+  }
+
+  // Wait for the root, not for the next slot. By the rule a table is readable
+  // from the next slot, and simulation does see it, but the validator's
+  // scheduler resolves addresses against the root bank: measured 2026-10-28 on
+  // the bare validator, the first order on a fresh table landed after 12.5 s
+  // (about the time to root), the following ones in 0.3–0.5 s on any pool up
+  // to 50. With `maxRetries: 3` such an order simply expires.
+  const extendedAt = await connection.getSlot('confirmed')
+  while ((await connection.getSlot('finalized')) < extendedAt) {
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  }
+  const account = (await connection.getAddressLookupTable(table, { commitment: 'confirmed' })).value
+  if (account === null || account.state.addresses.length !== unique.length) {
+    throw new SeedError(
+      `table ${table.toBase58()} holds ${account?.state.addresses.length ?? 0} of ${unique.length} addresses`,
+    )
+  }
+  return account
+}
+
 async function send(
   connection: Connection,
   payer: Keypair,
   instructions: TransactionInstruction[],
+  lookupTables: AddressLookupTableAccount[] = [],
 ): Promise<string> {
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
   const message = new TransactionMessage({
     payerKey: payer.publicKey,
     recentBlockhash: blockhash,
     instructions,
-  }).compileToV0Message()
+  }).compileToV0Message(lookupTables)
 
   const transaction = new VersionedTransaction(message)
   transaction.sign([payer])

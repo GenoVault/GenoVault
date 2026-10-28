@@ -397,7 +397,8 @@ export const REQUIRED_SHAPES: readonly Shape[] = [
   'ceiling',
 ]
 
-async function signatures(connection: Connection, address: PublicKey): Promise<string[]> {
+/** Successful signatures of an address, oldest first. */
+export async function signatures(connection: Connection, address: PublicKey): Promise<string[]> {
   const found: string[] = []
   let before: string | undefined
   for (;;) {
@@ -411,6 +412,28 @@ async function signatures(connection: Connection, address: PublicKey): Promise<s
     if (page.length < 1000 || before === undefined) break
   }
   return found.reverse()
+}
+
+/** Every `Run` account of the buyer on chain. */
+export async function runsOfBuyer(
+  connection: Connection,
+  programId: PublicKey,
+  buyer: PublicKey,
+): ReturnType<Connection['getProgramAccounts']> {
+  return connection.getProgramAccounts(programId, {
+    commitment: 'confirmed',
+    filters: [
+      {
+        memcmp: {
+          offset: 0,
+          encoding: 'base64',
+          bytes: Buffer.from(RUN_DISCRIMINATOR).toString('base64'),
+        },
+      },
+      // `Run.buyer` is the first field after the discriminator.
+      { memcmp: { offset: 8, bytes: buyer.toBase58() } },
+    ],
+  })
 }
 
 export async function collectMoves(
@@ -517,24 +540,10 @@ export async function auditSettlement(
   corpus: SettlementCorpusFile,
 ): Promise<SettlementAudit> {
   const programId = new PublicKey(corpus.programId)
-  const buyer = new PublicKey(corpus.buyer)
 
   // The count of what must be examined, from the chain: every `Run` the buyer
   // has. A corpus file that lost a run would otherwise pass on fewer.
-  const accounts = await connection.getProgramAccounts(programId, {
-    commitment: 'confirmed',
-    filters: [
-      {
-        memcmp: {
-          offset: 0,
-          encoding: 'base64',
-          bytes: Buffer.from(RUN_DISCRIMINATOR).toString('base64'),
-        },
-      },
-      // `Run.buyer` is the first field after the discriminator.
-      { memcmp: { offset: 8, bytes: buyer.toBase58() } },
-    ],
-  })
+  const accounts = await runsOfBuyer(connection, programId, new PublicKey(corpus.buyer))
 
   const judgements: RunJudgement[] = []
   for (const entry of corpus.runs) {
